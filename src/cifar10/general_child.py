@@ -608,8 +608,7 @@ class GeneralChild(Model):
     self.num_vars = count_model_params(tf_variables)
     print("Model has {} params".format(self.num_vars))
 
-    self.global_step = tf.Variable(
-      0, dtype=tf.int32, trainable=False, name="global_step")
+    self.global_step = tf.compat.v1.train.get_or_create_global_step()
     self.train_op, self.lr, self.grad_norm, self.optimizer = get_train_ops(
       self.loss,
       tf_variables,

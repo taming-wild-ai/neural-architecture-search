@@ -161,9 +161,9 @@ def get_train_ops(
 
     curr_epoch = train_step // num_train_batches
 
-    last_reset = tf.Variable(0, dtype=tf.int32, trainable=False,
+    last_reset = tf.Variable(0, dtype=tf.int64, trainable=False,
                              name="last_reset")
-    T_i = tf.Variable(lr_T_0, dtype=tf.int32, trainable=False, name="T_i")
+    T_i = tf.Variable(lr_T_0, dtype=tf.int64, trainable=False, name="T_i")
     T_curr = curr_epoch - last_reset
 
     def _update():
