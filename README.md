@@ -18,6 +18,11 @@ _This is not an official Google product._
 
 To run the experiments on CIFAR-10, please first download the [dataset](https://www.cs.toronto.edu/~kriz/cifar.html). Again, all hyper-parameters are specified in the scripts that we descibe below.
 
+To install dependencies, run the following:
+```shell
+pip install -r requirements-macos.txt
+```
+
 To run the ENAS experiments on the _macro search space_ as described in our paper, please use the following scripts:
 ```
 ./scripts/cifar10_macro_search.sh

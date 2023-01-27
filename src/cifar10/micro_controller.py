@@ -53,7 +53,7 @@ class MicroController(Controller):
     self.num_branches = num_branches
 
     self.lstm_size = lstm_size
-    self.lstm_num_layers = lstm_num_layers 
+    self.lstm_num_layers = lstm_num_layers
     self.lstm_keep_prob = lstm_keep_prob
     self.tanh_constant = tanh_constant
     self.op_tanh_reduce = op_tanh_reduce
@@ -84,34 +84,34 @@ class MicroController(Controller):
 
   def _create_params(self):
     initializer = tf.random_uniform_initializer(minval=-0.1, maxval=0.1)
-    with tf.variable_scope(self.name, initializer=initializer):
-      with tf.variable_scope("lstm"):
+    with tf.compat.v1.variable_scope(self.name, initializer=initializer):
+      with tf.compat.v1.variable_scope("lstm"):
         self.w_lstm = []
         for layer_id in range(self.lstm_num_layers):
-          with tf.variable_scope("layer_{}".format(layer_id)):
-            w = tf.get_variable("w", [2 * self.lstm_size, 4 * self.lstm_size])
+          with tf.compat.v1.variable_scope("layer_{}".format(layer_id)):
+            w = tf.compat.v1.get_variable("w", [2 * self.lstm_size, 4 * self.lstm_size])
             self.w_lstm.append(w)
 
-      self.g_emb = tf.get_variable("g_emb", [1, self.lstm_size])
-      with tf.variable_scope("emb"):
-        self.w_emb = tf.get_variable("w", [self.num_branches, self.lstm_size])
-      with tf.variable_scope("softmax"):
-        self.w_soft = tf.get_variable("w", [self.lstm_size, self.num_branches])
+      self.g_emb = tf.compat.v1.get_variable("g_emb", [1, self.lstm_size])
+      with tf.compat.v1.variable_scope("emb"):
+        self.w_emb = tf.compat.v1.get_variable("w", [self.num_branches, self.lstm_size])
+      with tf.compat.v1.variable_scope("softmax"):
+        self.w_soft = tf.compat.v1.get_variable("w", [self.lstm_size, self.num_branches])
         b_init = np.array([10.0, 10.0] + [0] * (self.num_branches - 2),
                           dtype=np.float32)
-        self.b_soft = tf.get_variable(
+        self.b_soft = tf.compat.v1.get_variable(
           "b", [1, self.num_branches],
-          initializer=tf.constant_initializer(b_init))
+          initializer=tf.compat.v1.keras.initializers.Constant(b_init))
 
         b_soft_no_learn = np.array(
           [0.25, 0.25] + [-0.25] * (self.num_branches - 2), dtype=np.float32)
         b_soft_no_learn = np.reshape(b_soft_no_learn, [1, self.num_branches])
         self.b_soft_no_learn = tf.constant(b_soft_no_learn, dtype=tf.float32)
 
-      with tf.variable_scope("attention"):
-        self.w_attn_1 = tf.get_variable("w_1", [self.lstm_size, self.lstm_size])
-        self.w_attn_2 = tf.get_variable("w_2", [self.lstm_size, self.lstm_size])
-        self.v_attn = tf.get_variable("v", [self.lstm_size, 1])
+      with tf.compat.v1.variable_scope("attention"):
+        self.w_attn_1 = tf.compat.v1.get_variable("w_1", [self.lstm_size, self.lstm_size])
+        self.w_attn_2 = tf.compat.v1.get_variable("w_2", [self.lstm_size, self.lstm_size])
+        self.v_attn = tf.compat.v1.get_variable("v", [self.lstm_size, 1])
 
   def _build_sampler(self, prev_c=None, prev_h=None, use_bias=False):
     """Build the sampler ops and the log_prob ops."""
@@ -159,8 +159,8 @@ class MicroController(Controller):
           logits /= self.temperature
         if self.tanh_constant is not None:
           logits = self.tanh_constant * tf.tanh(logits)
-        index = tf.multinomial(logits, 1)
-        index = tf.to_int32(index)
+        index = tf.compat.v1.multinomial(logits, 1)
+        index = tf.compat.v1.to_int32(index)
         index = tf.reshape(index, [1])
         arc_seq = arc_seq.write(start_id + 2 * i, index)
         curr_log_prob = tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -183,8 +183,8 @@ class MicroController(Controller):
           logits = op_tanh * tf.tanh(logits)
         if use_bias:
           logits += self.b_soft_no_learn
-        op_id = tf.multinomial(logits, 1)
-        op_id = tf.to_int32(op_id)
+        op_id = tf.compat.v1.multinomial(logits, 1)
+        op_id = tf.compat.v1.to_int32(op_id)
         op_id = tf.reshape(op_id, [1])
         arc_seq = arc_seq.write(start_id + 2 * i + 1, op_id)
         curr_log_prob = tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -214,7 +214,7 @@ class MicroController(Controller):
       tf.constant([0.0], dtype=tf.float32, name="entropy"),
       tf.constant([0.0], dtype=tf.float32, name="log_prob"),
     ]
-    
+
     loop_outputs = tf.while_loop(_condition, _body, loop_vars,
                                  parallel_iterations=1)
 
@@ -230,8 +230,8 @@ class MicroController(Controller):
 
   def build_trainer(self, child_model):
     child_model.build_valid_rl()
-    self.valid_acc = (tf.to_float(child_model.valid_shuffle_acc) /
-                      tf.to_float(child_model.batch_size))
+    self.valid_acc = (tf.compat.v1.to_float(child_model.valid_shuffle_acc) /
+                      tf.compat.v1.to_float(child_model.batch_size))
     self.reward = self.valid_acc
 
     if self.entropy_weight is not None:
@@ -239,7 +239,7 @@ class MicroController(Controller):
 
     self.sample_log_prob = tf.reduce_sum(self.sample_log_prob)
     self.baseline = tf.Variable(0.0, dtype=tf.float32, trainable=False)
-    baseline_update = tf.assign_sub(
+    baseline_update = tf.compat.v1.assign_sub(
       self.baseline, (1 - self.bl_dec) * (self.baseline - self.reward))
 
     with tf.control_dependencies([baseline_update]):
@@ -248,7 +248,7 @@ class MicroController(Controller):
     self.loss = self.sample_log_prob * (self.reward - self.baseline)
     self.train_step = tf.Variable(0, dtype=tf.int32, trainable=False, name="train_step")
 
-    tf_variables = [var for var in tf.trainable_variables() if var.name.startswith(self.name)]
+    tf_variables = [var for var in tf.compat.v1.trainable_variables() if var.name.startswith(self.name)]
     print("-" * 80)
     for var in tf_variables:
       print(var)

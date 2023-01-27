@@ -101,9 +101,9 @@ class GeneralChild(Model):
       x: tensor of shape [N, H, W, C] or [N, C, H, W]
     """
     if self.data_format == "NHWC":
-      return x.get_shape()[3].value
+      return x.get_shape()[3]
     elif self.data_format == "NCHW":
-      return x.get_shape()[1].value
+      return x.get_shape()[1]
     else:
       raise ValueError("Unknown data_format '{0}'".format(self.data_format))
 
@@ -112,7 +112,7 @@ class GeneralChild(Model):
     Args:
       x: tensor of shape [N, H, W, C] or [N, C, H, W]
     """
-    return x.get_shape()[2].value
+    return x.get_shape()[2]
 
   def _get_strides(self, stride):
     """
@@ -131,7 +131,7 @@ class GeneralChild(Model):
     assert out_filters % 2 == 0, (
         "Need even number of filters when using this factorized reduction.")
     if stride == 1:
-      with tf.variable_scope("path_conv"):
+      with tf.compat.v1.variable_scope("path_conv"):
         inp_c = self._get_C(x)
         w = create_weight("w", [1, 1, inp_c, out_filters])
         x = tf.nn.conv2d(x, w, [1, 1, 1, 1], "SAME",
@@ -143,12 +143,12 @@ class GeneralChild(Model):
     # Skip path 1
     path1 = tf.nn.avg_pool(
         x, [1, 1, 1, 1], stride_spec, "VALID", data_format=self.data_format)
-    with tf.variable_scope("path1_conv"):
+    with tf.compat.v1.variable_scope("path1_conv"):
       inp_c = self._get_C(path1)
       w = create_weight("w", [1, 1, inp_c, out_filters // 2])
       path1 = tf.nn.conv2d(path1, w, [1, 1, 1, 1], "SAME",
                            data_format=self.data_format)
-  
+
     # Skip path 2
     # First pad with 0"s on the right and bottom, then shift the filter to
     # include those 0"s that were added.
@@ -160,15 +160,15 @@ class GeneralChild(Model):
       pad_arr = [[0, 0], [0, 0], [0, 1], [0, 1]]
       path2 = tf.pad(x, pad_arr)[:, :, 1:, 1:]
       concat_axis = 1
-  
+
     path2 = tf.nn.avg_pool(
         path2, [1, 1, 1, 1], stride_spec, "VALID", data_format=self.data_format)
-    with tf.variable_scope("path2_conv"):
+    with tf.compat.v1.variable_scope("path2_conv"):
       inp_c = self._get_C(path2)
       w = create_weight("w", [1, 1, inp_c, out_filters // 2])
       path2 = tf.nn.conv2d(path2, w, [1, 1, 1, 1], "SAME",
                            data_format=self.data_format)
-  
+
     # Concat and apply BN
     final_path = tf.concat(values=[path1, path2], axis=concat_axis)
     final_path = batch_norm(final_path, is_training,
@@ -183,18 +183,18 @@ class GeneralChild(Model):
       x: tensor of shape [N, H, W, C] or [N, C, H, W]
     """
     if self.data_format == "NHWC":
-      return x.get_shape()[3].value
+      return x.get_shape()[3]
     elif self.data_format == "NCHW":
-      return x.get_shape()[1].value
+      return x.get_shape()[1]
     else:
       raise ValueError("Unknown data_format '{0}'".format(self.data_format))
 
   def _model(self, images, is_training, reuse=False):
-    with tf.variable_scope(self.name, reuse=reuse):
+    with tf.compat.v1.variable_scope(self.name, reuse=reuse):
       layers = []
 
       out_filters = self.out_filters
-      with tf.variable_scope("stem_conv"):
+      with tf.compat.v1.variable_scope("stem_conv"):
         w = create_weight("w", [3, 3, 3, out_filters])
         x = tf.nn.conv2d(images, w, [1, 1, 1, 1], "SAME", data_format=self.data_format)
         x = batch_norm(x, is_training, data_format=self.data_format)
@@ -205,7 +205,7 @@ class GeneralChild(Model):
       else:
         start_idx = self.num_branches
       for layer_id in range(self.num_layers):
-        with tf.variable_scope("layer_{0}".format(layer_id)):
+        with tf.compat.v1.variable_scope("layer_{0}".format(layer_id)):
           if self.fixed_arc is None:
             x = self._enas_layer(layer_id, layers, start_idx, out_filters, is_training)
           else:
@@ -214,10 +214,10 @@ class GeneralChild(Model):
           if layer_id in self.pool_layers:
             if self.fixed_arc is not None:
               out_filters *= 2
-            with tf.variable_scope("pool_at_{0}".format(layer_id)):
+            with tf.compat.v1.variable_scope("pool_at_{0}".format(layer_id)):
               pooled_layers = []
               for i, layer in enumerate(layers):
-                with tf.variable_scope("from_{0}".format(i)):
+                with tf.compat.v1.variable_scope("from_{0}".format(i)):
                   x = self._factorized_reduction(
                     layer, out_filters, 2, is_training)
                 pooled_layers.append(x)
@@ -231,11 +231,11 @@ class GeneralChild(Model):
       x = global_avg_pool(x, data_format=self.data_format)
       if is_training:
         x = tf.nn.dropout(x, self.keep_prob)
-      with tf.variable_scope("fc"):
+      with tf.compat.v1.variable_scope("fc"):
         if self.data_format == "NWHC":
-          inp_c = x.get_shape()[3].value
+          inp_c = x.get_shape()[3]
         elif self.data_format == "NCHW":
-          inp_c = x.get_shape()[1].value
+          inp_c = x.get_shape()[1]
         else:
           raise ValueError("Unknown data_format {0}".format(self.data_format))
         w = create_weight("w", [inp_c, 10])
@@ -255,39 +255,39 @@ class GeneralChild(Model):
     inputs = prev_layers[-1]
     if self.whole_channels:
       if self.data_format == "NHWC":
-        inp_h = inputs.get_shape()[1].value
-        inp_w = inputs.get_shape()[2].value
-        inp_c = inputs.get_shape()[3].value
+        inp_h = inputs.get_shape()[1]
+        inp_w = inputs.get_shape()[2]
+        inp_c = inputs.get_shape()[3]
       elif self.data_format == "NCHW":
-        inp_c = inputs.get_shape()[1].value
-        inp_h = inputs.get_shape()[2].value
-        inp_w = inputs.get_shape()[3].value
+        inp_c = inputs.get_shape()[1]
+        inp_h = inputs.get_shape()[2]
+        inp_w = inputs.get_shape()[3]
 
       count = self.sample_arc[start_idx]
       branches = {}
-      with tf.variable_scope("branch_0"):
+      with tf.compat.v1.variable_scope("branch_0"):
         y = self._conv_branch(inputs, 3, is_training, out_filters, out_filters,
                               start_idx=0)
         branches[tf.equal(count, 0)] = lambda: y
-      with tf.variable_scope("branch_1"):
+      with tf.compat.v1.variable_scope("branch_1"):
         y = self._conv_branch(inputs, 3, is_training, out_filters, out_filters,
                               start_idx=0, separable=True)
         branches[tf.equal(count, 1)] = lambda: y
-      with tf.variable_scope("branch_2"):
+      with tf.compat.v1.variable_scope("branch_2"):
         y = self._conv_branch(inputs, 5, is_training, out_filters, out_filters,
                               start_idx=0)
         branches[tf.equal(count, 2)] = lambda: y
-      with tf.variable_scope("branch_3"):
+      with tf.compat.v1.variable_scope("branch_3"):
         y = self._conv_branch(inputs, 5, is_training, out_filters, out_filters,
                               start_idx=0, separable=True)
         branches[tf.equal(count, 3)] = lambda: y
       if self.num_branches >= 5:
-        with tf.variable_scope("branch_4"):
+        with tf.compat.v1.variable_scope("branch_4"):
           y = self._pool_branch(inputs, is_training, out_filters, "avg",
                                 start_idx=0)
         branches[tf.equal(count, 4)] = lambda: y
       if self.num_branches >= 6:
-        with tf.variable_scope("branch_5"):
+        with tf.compat.v1.variable_scope("branch_5"):
           y = self._pool_branch(inputs, is_training, out_filters, "max",
                                 start_idx=0)
         branches[tf.equal(count, 5)] = lambda: y
@@ -301,30 +301,30 @@ class GeneralChild(Model):
     else:
       count = self.sample_arc[start_idx:start_idx + 2 * self.num_branches]
       branches = []
-      with tf.variable_scope("branch_0"):
+      with tf.compat.v1.variable_scope("branch_0"):
         branches.append(self._conv_branch(inputs, 3, is_training, count[1],
                                           out_filters, start_idx=count[0]))
-      with tf.variable_scope("branch_1"):
+      with tf.compat.v1.variable_scope("branch_1"):
         branches.append(self._conv_branch(inputs, 3, is_training, count[3],
                                           out_filters, start_idx=count[2],
                                           separable=True))
-      with tf.variable_scope("branch_2"):
+      with tf.compat.v1.variable_scope("branch_2"):
         branches.append(self._conv_branch(inputs, 5, is_training, count[5],
                                           out_filters, start_idx=count[4]))
-      with tf.variable_scope("branch_3"):
+      with tf.compat.v1.variable_scope("branch_3"):
         branches.append(self._conv_branch(inputs, 5, is_training, count[7],
                                           out_filters, start_idx=count[6],
                                           separable=True))
       if self.num_branches >= 5:
-        with tf.variable_scope("branch_4"):
+        with tf.compat.v1.variable_scope("branch_4"):
           branches.append(self._pool_branch(inputs, is_training, count[9],
                                             "avg", start_idx=count[8]))
       if self.num_branches >= 6:
-        with tf.variable_scope("branch_5"):
+        with tf.compat.v1.variable_scope("branch_5"):
           branches.append(self._pool_branch(inputs, is_training, count[11],
                                             "max", start_idx=count[10]))
 
-      with tf.variable_scope("final_conv"):
+      with tf.compat.v1.variable_scope("final_conv"):
         w = create_weight("w", [self.num_branches * out_filters, out_filters])
         w_mask = tf.constant([False] * (self.num_branches * out_filters), tf.bool)
         new_range = tf.range(0, self.num_branches * out_filters, dtype=tf.int32)
@@ -342,8 +342,8 @@ class GeneralChild(Model):
         elif self.data_format == "NCHW":
           branches = tf.concat(branches, axis=1)
           N = tf.shape(inp)[0]
-          H = inp.get_shape()[2].value
-          W = inp.get_shape()[3].value
+          H = inp.get_shape()[2]
+          W = inp.get_shape()[3]
           branches = tf.reshape(branches, [N, -1, H, W])
         out = tf.nn.conv2d(
           branches, w, [1, 1, 1, 1], "SAME", data_format=self.data_format)
@@ -356,7 +356,7 @@ class GeneralChild(Model):
       else:
         skip_start = start_idx + 2 * self.num_branches
       skip = self.sample_arc[skip_start: skip_start + layer_id]
-      with tf.variable_scope("skip"):
+      with tf.compat.v1.variable_scope("skip"):
         res_layers = []
         for i in range(layer_id):
           res_layers.append(tf.cond(tf.equal(skip[i], 1),
@@ -382,22 +382,22 @@ class GeneralChild(Model):
     inputs = prev_layers[-1]
     if self.whole_channels:
       if self.data_format == "NHWC":
-        inp_c = inputs.get_shape()[3].value
+        inp_c = inputs.get_shape()[3]
       elif self.data_format == "NCHW":
-        inp_c = inputs.get_shape()[1].value
+        inp_c = inputs.get_shape()[1]
 
       count = self.sample_arc[start_idx]
       if count in [0, 1, 2, 3]:
         size = [3, 3, 5, 5]
         filter_size = size[count]
-        with tf.variable_scope("conv_1x1"):
+        with tf.compat.v1.variable_scope("conv_1x1"):
           w = create_weight("w", [1, 1, inp_c, out_filters])
           out = tf.nn.relu(inputs)
           out = tf.nn.conv2d(out, w, [1, 1, 1, 1], "SAME",
                              data_format=self.data_format)
           out = batch_norm(out, is_training, data_format=self.data_format)
 
-        with tf.variable_scope("conv_{0}x{0}".format(filter_size)):
+        with tf.compat.v1.variable_scope("conv_{0}x{0}".format(filter_size)):
           w = create_weight("w", [filter_size, filter_size, out_filters, out_filters])
           out = tf.nn.relu(out)
           out = tf.nn.conv2d(out, w, [1, 1, 1, 1], "SAME",
@@ -414,32 +414,32 @@ class GeneralChild(Model):
                self.out_filters_scale)
       branches = []
       total_out_channels = 0
-      with tf.variable_scope("branch_0"):
+      with tf.compat.v1.variable_scope("branch_0"):
         total_out_channels += count[1]
         branches.append(self._conv_branch(inputs, 3, is_training, count[1]))
-      with tf.variable_scope("branch_1"):
+      with tf.compat.v1.variable_scope("branch_1"):
         total_out_channels += count[3]
         branches.append(
           self._conv_branch(inputs, 3, is_training, count[3], separable=True))
-      with tf.variable_scope("branch_2"):
+      with tf.compat.v1.variable_scope("branch_2"):
         total_out_channels += count[5]
         branches.append(self._conv_branch(inputs, 5, is_training, count[5]))
-      with tf.variable_scope("branch_3"):
+      with tf.compat.v1.variable_scope("branch_3"):
         total_out_channels += count[7]
         branches.append(
           self._conv_branch(inputs, 5, is_training, count[7], separable=True))
       if self.num_branches >= 5:
-        with tf.variable_scope("branch_4"):
+        with tf.compat.v1.variable_scope("branch_4"):
           total_out_channels += count[9]
           branches.append(
             self._pool_branch(inputs, is_training, count[9], "avg"))
       if self.num_branches >= 6:
-        with tf.variable_scope("branch_5"):
+        with tf.compat.v1.variable_scope("branch_5"):
           total_out_channels += count[11]
           branches.append(
             self._pool_branch(inputs, is_training, count[11], "max"))
 
-      with tf.variable_scope("final_conv"):
+      with tf.compat.v1.variable_scope("final_conv"):
         w = create_weight("w", [1, 1, total_out_channels, out_filters])
         if self.data_format == "NHWC":
           branches = tf.concat(branches, axis=3)
@@ -470,7 +470,7 @@ class GeneralChild(Model):
         prev = tf.concat(prev, axis=1)
 
       out = prev
-      with tf.variable_scope("skip"):
+      with tf.compat.v1.variable_scope("skip"):
         w = create_weight(
           "w", [1, 1, total_skip_channels * out_filters, out_filters])
         out = tf.nn.relu(out)
@@ -493,17 +493,17 @@ class GeneralChild(Model):
       assert self.fixed_arc is not None, "you screwed up!"
 
     if self.data_format == "NHWC":
-      inp_c = inputs.get_shape()[3].value
+      inp_c = inputs.get_shape()[3]
     elif self.data_format == "NCHW":
-      inp_c = inputs.get_shape()[1].value
+      inp_c = inputs.get_shape()[1]
 
-    with tf.variable_scope("inp_conv_1"):
+    with tf.compat.v1.variable_scope("inp_conv_1"):
       w = create_weight("w", [1, 1, inp_c, out_filters])
       x = tf.nn.conv2d(inputs, w, [1, 1, 1, 1], "SAME", data_format=self.data_format)
       x = batch_norm(x, is_training, data_format=self.data_format)
       x = tf.nn.relu(x)
 
-    with tf.variable_scope("out_conv_{}".format(filter_size)):
+    with tf.compat.v1.variable_scope("out_conv_{}".format(filter_size)):
       if start_idx is None:
         if separable:
           w_depth = create_weight(
@@ -555,27 +555,27 @@ class GeneralChild(Model):
       assert self.fixed_arc is not None, "you screwed up!"
 
     if self.data_format == "NHWC":
-      inp_c = inputs.get_shape()[3].value
+      inp_c = inputs.get_shape()[3]
     elif self.data_format == "NCHW":
-      inp_c = inputs.get_shape()[1].value
+      inp_c = inputs.get_shape()[1]
 
-    with tf.variable_scope("conv_1"):
+    with tf.compat.v1.variable_scope("conv_1"):
       w = create_weight("w", [1, 1, inp_c, self.out_filters])
       x = tf.nn.conv2d(inputs, w, [1, 1, 1, 1], "SAME", data_format=self.data_format)
       x = batch_norm(x, is_training, data_format=self.data_format)
       x = tf.nn.relu(x)
 
-    with tf.variable_scope("pool"):
+    with tf.compat.v1.variable_scope("pool"):
       if self.data_format == "NHWC":
         actual_data_format = "channels_last"
       elif self.data_format == "NCHW":
         actual_data_format = "channels_first"
 
       if avg_or_max == "avg":
-        x = tf.layers.average_pooling2d(
+        x = tf.compat.v1.layers.average_pooling2d(
           x, [3, 3], [1, 1], "SAME", data_format=actual_data_format)
       elif avg_or_max == "max":
-        x = tf.layers.max_pooling2d(
+        x = tf.compat.v1.layers.max_pooling2d(
           x, [3, 3], [1, 1], "SAME", data_format=actual_data_format)
       else:
         raise ValueError("Unknown pool {}".format(avg_or_max))
@@ -598,13 +598,13 @@ class GeneralChild(Model):
     self.loss = tf.reduce_mean(log_probs)
 
     self.train_preds = tf.argmax(logits, axis=1)
-    self.train_preds = tf.to_int32(self.train_preds)
+    self.train_preds = tf.compat.v1.to_int32(self.train_preds)
     self.train_acc = tf.equal(self.train_preds, self.y_train)
-    self.train_acc = tf.to_int32(self.train_acc)
+    self.train_acc = tf.compat.v1.to_int32(self.train_acc)
     self.train_acc = tf.reduce_sum(self.train_acc)
 
     tf_variables = [var
-        for var in tf.trainable_variables() if var.name.startswith(self.name)]
+        for var in tf.compat.v1.trainable_variables() if var.name.startswith(self.name)]
     self.num_vars = count_model_params(tf_variables)
     print("Model has {} params".format(self.num_vars))
 
@@ -639,9 +639,9 @@ class GeneralChild(Model):
       print("Build valid graph")
       logits = self._model(self.x_valid, False, reuse=True)
       self.valid_preds = tf.argmax(logits, axis=1)
-      self.valid_preds = tf.to_int32(self.valid_preds)
+      self.valid_preds = tf.compat.v1.to_int32(self.valid_preds)
       self.valid_acc = tf.equal(self.valid_preds, self.y_valid)
-      self.valid_acc = tf.to_int32(self.valid_acc)
+      self.valid_acc = tf.compat.v1.to_int32(self.valid_acc)
       self.valid_acc = tf.reduce_sum(self.valid_acc)
 
   # override
@@ -650,9 +650,9 @@ class GeneralChild(Model):
     print("Build test graph")
     logits = self._model(self.x_test, False, reuse=True)
     self.test_preds = tf.argmax(logits, axis=1)
-    self.test_preds = tf.to_int32(self.test_preds)
+    self.test_preds = tf.compat.v1.to_int32(self.test_preds)
     self.test_acc = tf.equal(self.test_preds, self.y_test)
-    self.test_acc = tf.to_int32(self.test_acc)
+    self.test_acc = tf.compat.v1.to_int32(self.test_acc)
     self.test_acc = tf.reduce_sum(self.test_acc)
 
   # override
@@ -664,7 +664,7 @@ class GeneralChild(Model):
       if not shuffle and self.data_format == "NCHW":
         self.images["valid_original"] = np.transpose(
           self.images["valid_original"], [0, 3, 1, 2])
-      x_valid_shuffle, y_valid_shuffle = tf.train.shuffle_batch(
+      x_valid_shuffle, y_valid_shuffle = tf.compat.v1.train.shuffle_batch(
         [self.images["valid_original"], self.labels["valid_original"]],
         batch_size=self.batch_size,
         capacity=25000,
@@ -677,7 +677,7 @@ class GeneralChild(Model):
 
       def _pre_process(x):
         x = tf.pad(x, [[4, 4], [4, 4], [0, 0]])
-        x = tf.random_crop(x, [32, 32, 3], seed=self.seed)
+        x = tf.image.random_crop(x, [32, 32, 3], seed=self.seed)
         x = tf.image.random_flip_left_right(x, seed=self.seed)
         if self.data_format == "NCHW":
           x = tf.transpose(x, [2, 0, 1])
@@ -690,9 +690,9 @@ class GeneralChild(Model):
 
     logits = self._model(x_valid_shuffle, False, reuse=True)
     valid_shuffle_preds = tf.argmax(logits, axis=1)
-    valid_shuffle_preds = tf.to_int32(valid_shuffle_preds)
+    valid_shuffle_preds = tf.compat.v1.to_int32(valid_shuffle_preds)
     self.valid_shuffle_acc = tf.equal(valid_shuffle_preds, y_valid_shuffle)
-    self.valid_shuffle_acc = tf.to_int32(self.valid_shuffle_acc)
+    self.valid_shuffle_acc = tf.compat.v1.to_int32(self.valid_shuffle_acc)
     self.valid_shuffle_acc = tf.reduce_sum(self.valid_shuffle_acc)
 
   def connect_controller(self, controller_model):

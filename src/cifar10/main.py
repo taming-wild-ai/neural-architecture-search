@@ -1,9 +1,9 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+
+
+
 
 import os
-import cPickle as pickle
+import pickle as pickle
 import shutil
 import sys
 import time
@@ -26,7 +26,7 @@ from src.cifar10.general_child import GeneralChild
 from src.cifar10.micro_controller import MicroController
 from src.cifar10.micro_child import MicroChild
 
-flags = tf.app.flags
+flags = tf.compat.v1.app.flags
 FLAGS = flags.FLAGS
 
 DEFINE_boolean("reset_output_dir", False, "Delete output_dir if exists.")
@@ -224,8 +224,8 @@ def train():
     child_ops = ops["child"]
     controller_ops = ops["controller"]
 
-    saver = tf.train.Saver(max_to_keep=2)
-    checkpoint_saver_hook = tf.train.CheckpointSaverHook(
+    saver = tf.compat.v1.train.Saver(max_to_keep=2)
+    checkpoint_saver_hook = tf.compat.v1.train.CheckpointSaverHook(
       FLAGS.output_dir, save_steps=child_ops["num_train_batches"], saver=saver)
 
     hooks = [checkpoint_saver_hook]
@@ -236,10 +236,10 @@ def train():
       sync_replicas_hook = controller_ops["optimizer"].make_session_run_hook(True)
       hooks.append(sync_replicas_hook)
 
-    print("-" * 80)
+    print(("-" * 80))
     print("Starting session")
-    config = tf.ConfigProto(allow_soft_placement=True)
-    with tf.train.SingularMonitoredSession(
+    config = tf.compat.v1.ConfigProto(allow_soft_placement=True)
+    with tf.compat.v1.train.SingularMonitoredSession(
       config=config, hooks=hooks, checkpoint_dir=FLAGS.output_dir) as sess:
         start_time = time.time()
         while True:
@@ -271,11 +271,11 @@ def train():
             log_string += " mins={:<10.2f}".format(
                 float(curr_time - start_time) / 60)
             print(log_string)
-            
+
           if actual_step % ops["eval_every"] == 0:
             if (FLAGS.controller_training and
                 epoch % FLAGS.controller_train_every == 0):
-              print("Epoch {}: Training controller".format(epoch))
+              print(("Epoch {}: Training controller".format(epoch)))
               for ct_step in range(FLAGS.controller_train_steps *
                                     FLAGS.controller_num_aggregate):
                 run_ops = [
@@ -313,8 +313,8 @@ def train():
                 ])
                 if FLAGS.search_for == "micro":
                   normal_arc, reduce_arc = arc
-                  print(np.reshape(normal_arc, [-1]))
-                  print(np.reshape(reduce_arc, [-1]))
+                  print((np.reshape(normal_arc, [-1])))
+                  print((np.reshape(reduce_arc, [-1])))
                 else:
                   start = 0
                   for layer_id in range(FLAGS.child_num_layers):
@@ -322,12 +322,12 @@ def train():
                       end = start + 1 + layer_id
                     else:
                       end = start + 2 * FLAGS.child_num_branches + layer_id
-                    print(np.reshape(arc[start: end], [-1]))
+                    print((np.reshape(arc[start: end], [-1])))
                     start = end
-                print("val_acc={:<6.4f}".format(acc))
-                print("-" * 80)
+                print(("val_acc={:<6.4f}".format(acc)))
+                print(("-" * 80))
 
-            print("Epoch {}: Eval".format(epoch))
+            print(("Epoch {}: Eval".format(epoch)))
             if FLAGS.child_fixed_arc is None:
               ops["eval_func"](sess, "valid")
             ops["eval_func"](sess, "test")
@@ -337,18 +337,18 @@ def train():
 
 
 def main(_):
-  print("-" * 80)
+  print(("-" * 80))
   if not os.path.isdir(FLAGS.output_dir):
-    print("Path {} does not exist. Creating.".format(FLAGS.output_dir))
+    print(("Path {} does not exist. Creating.".format(FLAGS.output_dir)))
     os.makedirs(FLAGS.output_dir)
   elif FLAGS.reset_output_dir:
-    print("Path {} exists. Remove and remake.".format(FLAGS.output_dir))
+    print(("Path {} exists. Remove and remake.".format(FLAGS.output_dir)))
     shutil.rmtree(FLAGS.output_dir)
     os.makedirs(FLAGS.output_dir)
 
-  print("-" * 80)
+  print(("-" * 80))
   log_file = os.path.join(FLAGS.output_dir, "stdout")
-  print("Logging to {}".format(log_file))
+  print(("Logging to {}".format(log_file)))
   sys.stdout = Logger(log_file)
 
   utils.print_user_flags()
@@ -356,4 +356,4 @@ def main(_):
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  tf.compat.v1.app.run()

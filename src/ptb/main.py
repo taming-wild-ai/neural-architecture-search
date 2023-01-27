@@ -22,7 +22,7 @@ from src.utils import print_user_flags
 from src.ptb.ptb_enas_child import PTBEnasChild
 from src.ptb.ptb_enas_controller import PTBEnasController
 
-flags = tf.app.flags
+flags = tf.compat.v1.app.flags
 FLAGS = flags.FLAGS
 
 DEFINE_boolean("reset_output_dir", False, "Delete output_dir if exists.")
@@ -222,10 +222,10 @@ def train(mode="train"):
     controller_ops = ops["controller"]
 
     if FLAGS.child_optim_moving_average is None or mode == "eval":
-      saver = tf.train.Saver(max_to_keep=10)
+      saver = tf.compat.v1.train.Saver(max_to_keep=10)
     else:
       saver = child_ops["optimizer"].swapping_saver(max_to_keep=10)
-    checkpoint_saver_hook = tf.train.CheckpointSaverHook(
+    checkpoint_saver_hook = tf.compat.v1.train.CheckpointSaverHook(
       FLAGS.output_dir, save_steps=ops["num_train_batches"], saver=saver)
 
     hooks = [checkpoint_saver_hook]
@@ -237,7 +237,7 @@ def train(mode="train"):
 
     print("-" * 80)
     print("Starting session")
-    with tf.train.SingularMonitoredSession(
+    with tf.compat.v1.train.SingularMonitoredSession(
       hooks=hooks, checkpoint_dir=FLAGS.output_dir) as sess:
         start_time = time.time()
 
@@ -389,5 +389,5 @@ def main(_):
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  tf.compat.v1.app.run()
 

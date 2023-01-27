@@ -43,7 +43,7 @@ class ConvController(Controller):
     self.num_layers = num_layers
     self.num_blocks_per_branch = num_blocks_per_branch
     self.lstm_size = lstm_size
-    self.lstm_num_layers = lstm_num_layers 
+    self.lstm_num_layers = lstm_num_layers
     self.lstm_keep_prob = lstm_keep_prob
     self.tanh_constant = tanh_constant
     self.temperature = temperature
@@ -66,25 +66,25 @@ class ConvController(Controller):
     self._build_sampler()
 
   def _create_params(self):
-    with tf.variable_scope(self.name):
-      with tf.variable_scope("lstm"):
+    with tf.compat.v1.variable_scope(self.name):
+      with tf.compat.v1.variable_scope("lstm"):
         self.w_lstm = []
         for layer_id in xrange(self.lstm_num_layers):
-          with tf.variable_scope("layer_{}".format(layer_id)):
-            w = tf.get_variable("w", [2 * self.lstm_size, 4 * self.lstm_size])
+          with tf.compat.v1.variable_scope("layer_{}".format(layer_id)):
+            w = tf.compat.v1.get_variable("w", [2 * self.lstm_size, 4 * self.lstm_size])
             self.w_lstm.append(w)
 
       self.num_configs = (2 ** self.num_blocks_per_branch) - 1
-      with tf.variable_scope("embedding"):
-        self.g_emb = tf.get_variable("g_emb", [1, self.lstm_size])
-        self.w_emb = tf.get_variable("w", [self.num_blocks_per_branch,
+      with tf.compat.v1.variable_scope("embedding"):
+        self.g_emb = tf.compat.v1.get_variable("g_emb", [1, self.lstm_size])
+        self.w_emb = tf.compat.v1.get_variable("w", [self.num_blocks_per_branch,
                                            self.lstm_size])
 
-      with tf.variable_scope("softmax"):
-        self.w_soft = tf.get_variable("w", [self.lstm_size,
+      with tf.compat.v1.variable_scope("softmax"):
+        self.w_soft = tf.compat.v1.get_variable("w", [self.lstm_size,
                                             self.num_blocks_per_branch])
-      with tf.variable_scope("critic"):
-        self.w_critic = tf.get_variable("w", [self.lstm_size, 1])
+      with tf.compat.v1.variable_scope("critic"):
+        self.w_critic = tf.compat.v1.get_variable("w", [self.lstm_size, 1])
 
   def _build_sampler(self):
     """Build the sampler ops and the log_prob ops."""
@@ -110,8 +110,8 @@ class ConvController(Controller):
         if self.tanh_constant is not None:
           logits = self.tanh_constant * tf.tanh(logits)
 
-        config_id = tf.multinomial(logits, 1)
-        config_id = tf.to_int32(config_id)
+        config_id = tf.compat.v1.multinomial(logits, 1)
+        config_id = tf.compat.v1.to_int32(config_id)
         config_id = tf.reshape(config_id, [1])
         arc_seq.append(config_id)
         log_prob = tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -124,14 +124,14 @@ class ConvController(Controller):
 
     self.sample_log_probs = tf.concat(sample_log_probs, axis=0)
     self.ppl = tf.exp(tf.reduce_sum(self.sample_log_probs) /
-                      tf.to_float(self.num_layers * self.num_branches))
+                      tf.compat.v1.to_float(self.num_layers * self.num_branches))
     self.all_h = all_h
 
   def build_trainer(self, child_model):
     # actor
     child_model.build_valid_rl()
-    self.valid_acc = (tf.to_float(child_model.valid_shuffle_acc) /
-                      tf.to_float(child_model.batch_size))
+    self.valid_acc = (tf.compat.v1.to_float(child_model.valid_shuffle_acc) /
+                      tf.compat.v1.to_float(child_model.batch_size))
     self.reward = self.valid_acc
 
     if self.use_critic:
@@ -159,7 +159,7 @@ class ConvController(Controller):
       # or baseline
       self.sample_log_probs = tf.reduce_sum(self.sample_log_probs)
       self.baseline = tf.Variable(0.0, dtype=tf.float32, trainable=False)
-      baseline_update = tf.assign_sub(
+      baseline_update = tf.compat.v1.assign_sub(
         self.baseline, (1 - self.bl_dec) * (self.baseline - self.reward))
       with tf.control_dependencies([baseline_update]):
         self.reward = tf.identity(self.reward)
@@ -167,7 +167,7 @@ class ConvController(Controller):
 
     self.train_step = tf.Variable(
         0, dtype=tf.int32, trainable=False, name="train_step")
-    tf_variables = [var for var in tf.trainable_variables()
+    tf_variables = [var for var in tf.compat.v1.trainable_variables()
                     if var.name.startswith(self.name)
                       and "w_critic" not in var.name]
     print "-" * 80

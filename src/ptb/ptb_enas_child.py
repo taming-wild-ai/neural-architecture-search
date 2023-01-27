@@ -99,7 +99,7 @@ class PTBEnasChild(object):
 
     self.name = name
     self.seed = seed
-    
+
     self.global_step = None
     self.valid_loss = None
     self.test_loss = None
@@ -145,7 +145,7 @@ class PTBEnasChild(object):
     assert self.global_step is not None, "TF op self.global_step not defined."
     global_step = sess.run(self.global_step)
     print("Eval at {}".format(global_step))
-   
+
     if eval_set == "valid":
       assert self.valid_loss is not None, "TF op self.valid_loss is not defined."
       num_batches = self.num_valid_batches
@@ -186,11 +186,11 @@ class PTBEnasChild(object):
     all_h, self.train_reset = self._model(self.x_train, True, False)
     log_probs = self._get_log_probs(
       all_h, self.y_train, batch_size=self.batch_size, is_training=True)
-    self.loss = tf.reduce_sum(log_probs) / tf.to_float(self.batch_size)
+    self.loss = tf.reduce_sum(log_probs) / tf.compat.v1.to_float(self.batch_size)
     self.train_ppl = tf.exp(tf.reduce_mean(log_probs))
 
     tf_variables = [
-      var for var in tf.trainable_variables() if var.name.startswith(self.name)]
+      var for var in tf.compat.v1.trainable_variables() if var.name.startswith(self.name)]
     self.num_vars = count_model_params(tf_variables)
     print("-" * 80)
     print("Model has {} parameters".format(self.num_vars))
@@ -198,10 +198,10 @@ class PTBEnasChild(object):
     loss = self.loss
     if self.rnn_l2_reg is not None:
       loss += (self.rnn_l2_reg * tf.reduce_sum(all_h ** 2) /
-               tf.to_float(self.batch_size))
+               tf.compat.v1.to_float(self.batch_size))
     if self.rnn_slowness_reg is not None:
       loss += (self.rnn_slowness_reg * self.all_h_diff /
-               tf.to_float(self.batch_size))
+               tf.compat.v1.to_float(self.batch_size))
     self.global_step = tf.Variable(
       0, dtype=tf.int32, trainable=False, name="global_step")
     (self.train_op,
@@ -265,7 +265,7 @@ class PTBEnasChild(object):
 
   def _rhn_fixed(self, x, prev_s, w_prev, w_skip, is_training,
                  x_mask=None, s_mask=None):
-    batch_size = prev_s.get_shape()[0].value
+    batch_size = prev_s.get_shape()[0]
     start_idx = self.sample_arc[0] * 2 * self.lstm_hidden_size
     end_idx = start_idx + 2 * self.lstm_hidden_size
     if is_training:
@@ -274,7 +274,7 @@ class PTBEnasChild(object):
       ht = tf.matmul(tf.concat([x * x_mask, prev_s * s_mask], axis=1), w_prev)
     else:
       ht = tf.matmul(tf.concat([x, prev_s], axis=1), w_prev)
-    # with tf.variable_scope("rhn_layer_0"):
+    # with tf.compat.v1.variable_scope("rhn_layer_0"):
     #   ht = layer_norm(ht, is_training)
     h, t = tf.split(ht, 2, axis=1)
 
@@ -295,7 +295,7 @@ class PTBEnasChild(object):
     start_idx = 1
     used = np.zeros([self.rhn_depth], dtype=np.int32)
     for rhn_layer_id in range(1, self.rhn_depth):
-      with tf.variable_scope("rhn_layer_{}".format(rhn_layer_id)):
+      with tf.compat.v1.variable_scope("rhn_layer_{}".format(rhn_layer_id)):
         prev_idx = self.sample_arc[start_idx]
         func_idx = self.sample_arc[start_idx + 1]
         used[prev_idx] = 1
@@ -331,7 +331,7 @@ class PTBEnasChild(object):
 
   def _rhn_enas(self, x, prev_s, w_prev, w_skip, is_training,
                 x_mask=None, s_mask=None):
-    batch_size = prev_s.get_shape()[0].value
+    batch_size = prev_s.get_shape()[0]
     start_idx = self.sample_arc[0] * 2 * self.lstm_hidden_size
     end_idx = start_idx + 2 * self.lstm_hidden_size
     if is_training:
@@ -342,7 +342,7 @@ class PTBEnasChild(object):
     else:
       ht = tf.matmul(tf.concat([x, prev_s], axis=1),
                      w_prev[start_idx:end_idx, :])
-    with tf.variable_scope("rhn_layer_0"):
+    with tf.compat.v1.variable_scope("rhn_layer_0"):
       ht = batch_norm(ht, is_training)
     h, t = tf.split(ht, 2, axis=1)
     func_idx = self.sample_arc[0]
@@ -361,7 +361,7 @@ class PTBEnasChild(object):
     start_idx = 1
     used = []
     for rhn_layer_id in range(1, self.rhn_depth):
-      with tf.variable_scope("rhn_layer_{}".format(rhn_layer_id)):
+      with tf.compat.v1.variable_scope("rhn_layer_{}".format(rhn_layer_id)):
         prev_idx = self.sample_arc[start_idx]
         func_idx = self.sample_arc[start_idx + 1]
         curr_used = tf.one_hot(prev_idx, depth=self.rhn_depth, dtype=tf.int32)
@@ -398,7 +398,7 @@ class PTBEnasChild(object):
     layers = tf.reduce_mean(layers, axis=0)
     layers.set_shape([batch_size, self.lstm_hidden_size])
     layers = batch_norm(layers, is_training)
-    
+
     return layers
 
   def _model(self, x, is_training, is_test, should_carry=True):
@@ -430,7 +430,7 @@ class PTBEnasChild(object):
         should_zero = tf.logical_and(
           tf.equal(x[:, :step], x[:, step:step+1]),
           tf.equal(e_mask[:, :step], 0))
-        should_zero = tf.reduce_any(should_zero, axis=1, keep_dims=True)
+        should_zero = tf.reduce_any(should_zero, axis=1, keepdims=True)
         r.append(should_zero)
       r = tf.concat(r, axis=1)
       e_mask = tf.where(r, tf.zeros_like(e_mask), e_mask)
@@ -451,10 +451,10 @@ class PTBEnasChild(object):
       return tf.less(step, num_steps)
 
     def body(step, prev_h, all_h):
-      with tf.variable_scope(self.name):
+      with tf.compat.v1.variable_scope(self.name):
         next_h = []
         for layer_id, (p_h, w_prev, w_skip) in enumerate(zip(prev_h, self.w_prev, self.w_skip)):
-          with tf.variable_scope("layer_{}".format(layer_id)):
+          with tf.compat.v1.variable_scope("layer_{}".format(layer_id)):
             if layer_id == 0:
               inputs = embedding[:, step, :]
             else:
@@ -481,7 +481,7 @@ class PTBEnasChild(object):
           out_h *= o_mask
         all_h = all_h.write(step, out_h)
       return step + 1, next_h, all_h
-    
+
     loop_vars = [tf.constant(0, dtype=tf.int32), start_h, all_h]
     loop_outputs = tf.while_loop(condition, body, loop_vars, back_prop=True)
     next_h = loop_outputs[-2]
@@ -490,12 +490,12 @@ class PTBEnasChild(object):
     self.all_h_diff = tf.reduce_sum(all_h_diff)
     all_h = tf.transpose(all_h, [1, 0, 2])
     all_h = tf.reshape(all_h, [batch_size * num_steps, self.lstm_hidden_size])
-    
+
     carry_states = []
     reset_states = []
     for layer_id, (s_h, n_h) in enumerate(zip(start_h, next_h)):
-      reset_states.append(tf.assign(s_h, tf.zeros_like(s_h), use_locking=True))
-      carry_states.append(tf.assign(s_h, tf.stop_gradient(n_h), use_locking=True))
+      reset_states.append(tf.compat.v1.assign(s_h, tf.zeros_like(s_h), use_locking=True))
+      carry_states.append(tf.compat.v1.assign(s_h, tf.stop_gradient(n_h), use_locking=True))
 
     if should_carry:
       with tf.control_dependencies(carry_states):
@@ -512,46 +512,46 @@ class PTBEnasChild(object):
       init_range = 0.04
     initializer = tf.random_uniform_initializer(
       minval=-init_range, maxval=init_range)
-    with tf.variable_scope(self.name, initializer=initializer):
+    with tf.compat.v1.variable_scope(self.name, initializer=initializer):
       if self.fixed_arc is None:
-        with tf.variable_scope("rnn"):
+        with tf.compat.v1.variable_scope("rnn"):
           self.w_prev, self.w_skip = [], []
           for layer_id in range(self.lstm_num_layers):
-            with tf.variable_scope("layer_{}".format(layer_id)):
-              w_prev = tf.get_variable(
+            with tf.compat.v1.variable_scope("layer_{}".format(layer_id)):
+              w_prev = tf.compat.v1.get_variable(
                 "w_prev",
                 [2 * self.num_funcs * self.lstm_hidden_size,
                  2 * self.lstm_hidden_size])
               w_skip = [None]
               for rhn_layer_id in range(1, self.rhn_depth):
-                with tf.variable_scope("layer_{}".format(rhn_layer_id)):
-                  w = tf.get_variable(
+                with tf.compat.v1.variable_scope("layer_{}".format(rhn_layer_id)):
+                  w = tf.compat.v1.get_variable(
                     "w", [self.num_funcs * rhn_layer_id * self.lstm_hidden_size,
                           2 * self.lstm_hidden_size])
                   w_skip.append(w)
               self.w_prev.append(w_prev)
               self.w_skip.append(w_skip)
       else:
-        with tf.variable_scope("rnn"):
+        with tf.compat.v1.variable_scope("rnn"):
           self.w_prev, self.w_skip = [], []
           for layer_id in range(self.lstm_num_layers):
-            with tf.variable_scope("layer_{}".format(layer_id)):
-              w_prev = tf.get_variable("w_prev", [2 * self.lstm_hidden_size,
+            with tf.compat.v1.variable_scope("layer_{}".format(layer_id)):
+              w_prev = tf.compat.v1.get_variable("w_prev", [2 * self.lstm_hidden_size,
                                                   2 * self.lstm_hidden_size])
               w_skip = [None]
               for rhn_layer_id in range(1, self.rhn_depth):
-                with tf.variable_scope("layer_{}".format(rhn_layer_id)):
-                  w = tf.get_variable("w", [self.lstm_hidden_size,
+                with tf.compat.v1.variable_scope("layer_{}".format(rhn_layer_id)):
+                  w = tf.compat.v1.get_variable("w", [self.lstm_hidden_size,
                                             2 * self.lstm_hidden_size])
                   w_skip.append(w)
               self.w_prev.append(w_prev)
               self.w_skip.append(w_skip)
 
-      with tf.variable_scope("embedding"):
-        self.w_emb = tf.get_variable(
+      with tf.compat.v1.variable_scope("embedding"):
+        self.w_emb = tf.compat.v1.get_variable(
           "w", [self.vocab_size, self.lstm_hidden_size])
 
-      with tf.variable_scope("starting_states"):
+      with tf.compat.v1.variable_scope("starting_states"):
         zeros = np.zeros(
           [self.batch_size, self.lstm_hidden_size], dtype=np.float32)
         zeros_one_instance = np.zeros(
