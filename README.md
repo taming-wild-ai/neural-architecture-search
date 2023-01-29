@@ -27,7 +27,6 @@ To run the experiments on CIFAR-10, please first download the Python version of 
 To install dependencies, run the following:
 ```shell
 # On MacOS, use requirements-macos.txt
-# On Intel system with no GPU, use requirements-intel-nogpu.txt
 pip install -r requirements.txt
 ```
 

@@ -1,2 +1,3 @@
 numpy==1.24.1
 tensorflow==2.11.0
+intel-tensorflow==2.11.0
