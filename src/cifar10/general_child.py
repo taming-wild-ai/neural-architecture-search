@@ -658,7 +658,7 @@ class GeneralChild(Model):
   def build_valid_rl(self, shuffle=False):
     print("-" * 80)
     print("Build valid graph on shuffled data")
-    with tf.device("/cpu:0"):
+    with tf.device("/gpu:0"):
       # shuffled valid data: for choosing validation model
       if not shuffle and self.data_format == "NCHW":
         self.images["valid_original"] = np.transpose(
