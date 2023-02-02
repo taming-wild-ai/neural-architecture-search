@@ -100,8 +100,7 @@ class MicroChild(Model):
     self.num_cells = num_cells
     self.fixed_arc = fixed_arc
 
-    self.global_step = tf.Variable(
-      0, dtype=tf.int32, trainable=False, name="global_step")
+    self.global_step = tf.compat.v1.train.get_or_create_global_step()
 
     if self.drop_path_keep_prob is not None:
       assert num_epochs is not None, "Need num_epochs to drop_path"
@@ -598,8 +597,8 @@ class MicroChild(Model):
           w_pointwise = tf.reshape(w_pointwise, [1, 1, inp_c, out_filters])
 
           with tf.compat.v1.variable_scope("bn"):
-            zero_init = tf.initializers.zeros(dtype=tf.float32)
-            one_init = tf.initializers.ones(dtype=tf.float32)
+            zero_init = tf.compat.v1.keras.initializers.zeros(dtype=tf.float32)
+            one_init = tf.compat.v1.keras.initializers.ones(dtype=tf.float32)
             offset = create_weight(
               "offset", [num_possible_inputs, out_filters],
               initializer=zero_init)
@@ -773,7 +772,7 @@ class MicroChild(Model):
   def build_valid_rl(self, shuffle=False):
     print("-" * 80)
     print("Build valid graph on shuffled data")
-    with tf.device("/cpu:0"):
+    with tf.device("/gpu:0"):
       # shuffled valid data: for choosing validation model
       if not shuffle and self.data_format == "NCHW":
         self.images["valid_original"] = np.transpose(

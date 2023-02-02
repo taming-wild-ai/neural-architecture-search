@@ -246,7 +246,7 @@ class MicroController(Controller):
       self.reward = tf.identity(self.reward)
 
     self.loss = self.sample_log_prob * (self.reward - self.baseline)
-    self.train_step = tf.Variable(0, dtype=tf.int32, trainable=False, name="train_step")
+    self.train_step = tf.Variable(0, dtype=tf.int64, trainable=False, name="train_step")
 
     tf_variables = [var for var in tf.compat.v1.trainable_variables() if var.name.startswith(self.name)]
     print("-" * 80)
