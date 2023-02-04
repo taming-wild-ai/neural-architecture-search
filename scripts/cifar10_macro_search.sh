@@ -13,7 +13,7 @@ python src/cifar10/main.py \
   --log_every=50 \
   --eval_every_epochs=1 \
   --child_use_aux_heads \
-  --child_num_layers=12 \
+  --child_num_layers=14 \
   --child_out_filters=36 \
   --child_l2_reg=0.00025 \
   --child_num_branches=6 \

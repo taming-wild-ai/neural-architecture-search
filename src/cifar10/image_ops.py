@@ -12,9 +12,9 @@ def drop_path(x, keep_prob):
   batch_size = tf.shape(x)[0]
   noise_shape = [batch_size, 1, 1, 1]
   random_tensor = keep_prob
-  random_tensor += tf.random_uniform(noise_shape, dtype=tf.float32)
+  random_tensor += tf.random.uniform(noise_shape, dtype=tf.float32)
   binary_tensor = tf.floor(random_tensor)
-  x = tf.div(x, keep_prob) * binary_tensor
+  x = tf.math.divide(x, keep_prob) * binary_tensor
 
   return x
 
