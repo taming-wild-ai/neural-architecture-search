@@ -1,0 +1,360 @@
+import unittest
+import sys
+import unittest.mock as mock
+from unittest.mock import patch
+
+import src.cifar10.main as main
+
+
+class RestoreFLAGS:
+    main.FLAGS(sys.argv) # Need to parse flags before accessing them
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.old_values = {}
+
+    def __enter__(self):
+        for key, value in self.kwargs.items():
+            self.old_values[key] = main.FLAGS.__getattr__(key)
+            main.FLAGS.__setattr__(key, value)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        for key, value in self.old_values.items():
+            main.FLAGS.__setattr__(key, value)
+
+
+class TestCIFAR10Main(unittest.TestCase):
+    @patch('src.cifar10.main.os.path.isdir', return_value=False)
+    @patch('src.cifar10.main.Logger', return_value=sys.stdout)
+    @patch('src.cifar10.main.train')
+    @patch('src.cifar10.main.print')
+    @patch('src.cifar10.main.shutil.rmtree')
+    @patch('src.cifar10.main.os.makedirs')
+    @patch('src.cifar10.main.utils.print_user_flags')
+    def test_main_creates_output_directory(self, print_flags, makedirs, rmtree, print, train, _logger, _isdir):
+        main.main(None)
+
+        print.assert_any_call(("-" * 80))
+        print.assert_any_call("Path  does not exist. Creating.")
+        rmtree.assert_not_called()
+        makedirs.assert_called_with("")
+        print_flags.assert_called_with()
+        train.assert_called_with()
+
+    @patch('src.cifar10.main.os.path.isdir', return_value=True)
+    @patch('src.cifar10.main.Logger', return_value=sys.stdout)
+    @patch('src.cifar10.main.utils.print_user_flags')
+    @patch('src.cifar10.main.os.makedirs')
+    @patch('src.cifar10.main.shutil.rmtree')
+    @patch('src.cifar10.main.train')
+    @patch('src.cifar10.main.print')
+    def test_main_reset_output_dir(self, print, train, rmtree, makedirs, print_flags, _logger, _isdir):
+        with RestoreFLAGS(reset_output_dir=True):
+            main.main(None)
+
+            print.assert_any_call(("-" * 80))
+            print.assert_any_call("Path  exists. Remove and remake.")
+            rmtree.assert_called_with("")
+            makedirs.assert_called()
+            print_flags.assert_called_with()
+            train.assert_called_with()
+
+    @patch('src.cifar10.main.os.path.isdir', return_value=True)
+    @patch('src.cifar10.main.Logger', return_value=sys.stdout)
+    @patch('src.cifar10.main.utils.print_user_flags')
+    @patch('src.cifar10.main.os.makedirs')
+    @patch('src.cifar10.main.shutil.rmtree')
+    @patch('src.cifar10.main.train')
+    @patch('src.cifar10.main.print')
+    def test_main_ignore_output_dir(self, print, train, rmtree, makedirs, print_flags, _logger, _isdir):
+        with RestoreFLAGS(reset_output_dir=False):
+            main.main(None)
+
+            print.assert_any_call(("-" * 80))
+            rmtree.assert_not_called()
+            makedirs.assert_not_called()
+            print_flags.assert_called_with()
+            train.assert_called_with()
+
+    def test_get_ops_fails_assertion(self):
+        with RestoreFLAGS(search_for=None):
+            self.assertRaises(AssertionError, main.get_ops, None, None)
+
+    @patch('src.cifar10.main.MicroController')
+    @patch('src.cifar10.main.MicroChild')
+    @patch('src.cifar10.main.GeneralController')
+    @patch('src.cifar10.main.GeneralChild')
+    def test_get_ops_micro_fails_assertion(self, _gch_ctor, _gco_ctor, _mch_ctor, _mco_ctor):
+        with RestoreFLAGS(search_for="micro", child_fixed_arc="", controller_training=True):
+            self.assertRaises(AssertionError, main.get_ops, None, None)
+
+    @patch('src.cifar10.main.MicroController')
+    @patch('src.cifar10.main.MicroChild')
+    @patch('src.cifar10.main.GeneralController')
+    @patch('src.cifar10.main.GeneralChild')
+    def test_get_ops_micro(self, gch_ctor, gco_ctor, mch_ctor, mco_ctor):
+        mco = mock.MagicMock()
+        mco_ctor.return_value = mco
+        mch = mock.MagicMock()
+        mch_ctor.return_value = mch
+        with RestoreFLAGS(search_for="micro", controller_training=True, child_fixed_arc=None):
+            main.get_ops(None, None)
+
+        mco_ctor.assert_called()
+        mch_ctor.assert_called()
+        gco_ctor.assert_not_called()
+        gch_ctor.assert_not_called()
+        mco.build_trainer.assert_called()
+        mch.connect_controller.assert_called()
+
+    @patch('src.cifar10.main.MicroController')
+    @patch('src.cifar10.main.MicroChild')
+    @patch('src.cifar10.main.GeneralController')
+    @patch('src.cifar10.main.GeneralChild')
+    def test_get_ops_macro(self, gch_ctor, gco_ctor, mch_ctor, mco_ctor):
+        gco = mock.MagicMock()
+        gco_ctor.return_value = gco
+        gch = mock.MagicMock()
+        gch_ctor.return_value = gch
+        with RestoreFLAGS(search_for="macro", controller_training=True, child_fixed_arc=None):
+            main.get_ops(None, None)
+
+        mco_ctor.assert_not_called()
+        mch_ctor.assert_not_called()
+        gco_ctor.assert_called()
+        gch_ctor.assert_called()
+        gch.connect_controller.assert_called()
+        gco.build_trainer.assert_called()
+
+    @patch('src.cifar10.main.MicroController')
+    @patch('src.cifar10.main.MicroChild')
+    @patch('src.cifar10.main.GeneralController')
+    @patch('src.cifar10.main.GeneralChild')
+    def test_get_ops_macro_child_only(self, gch_ctor, gco_ctor, mch_ctor, mco_ctor):
+        gch = mock.MagicMock()
+        gch_ctor.return_value = gch
+        with RestoreFLAGS(search_for="macro", controller_training=False, child_fixed_arc=""):
+            main.get_ops(None, None)
+
+        mco_ctor.assert_not_called()
+        mch_ctor.assert_not_called()
+        gco_ctor.assert_not_called()
+        gch_ctor.assert_called()
+        gch.connect_controller.assert_called()
+
+    @staticmethod
+    def mock_session_run(ops):
+        if list == type(ops):
+            if 2 == len(ops):
+                return (["0", "1"], 0.95)
+            elif 5 == len(ops):
+                return (1, 2, 3, 4, None)
+            elif 8 == len(ops):
+                return (1, 2, 3, 4, 5, 6, 7, None)
+        else:
+            return 311 # global_step
+
+    @staticmethod
+    def mock_get_ops(controller_optimizer, child_optimizer, eval_func):
+        return mock.MagicMock(
+            return_value={
+                "eval_func": eval_func,
+                "eval_every": 1,
+                "num_train_batches": 1,
+                "child": {
+                    "num_train_batches": 1,
+                    "loss": 2.0,
+                    "lr": 0.01,
+                    "grad_norm": 5,
+                    "train_acc": 0.01,
+                    "train_op": {},
+                    "global_step": 311,
+                    "optimizer": child_optimizer},
+                "controller": {
+                    "optimizer": controller_optimizer,
+                    "loss": 2.0,
+                    "entropy": 2.0,
+                    "lr": 0.01,
+                    "grad_norm": 0.01,
+                    "valid_acc": 0.25,
+                    "baseline": 2.0,
+                    "skip_rate": 0.1,
+                    "train_op": 2.0,
+                    "train_step": 311,
+                    "sample_arc": "0" }})
+
+    @patch('src.cifar10.main.read_data', return_value=(None, None))
+    @patch('tensorflow.compat.v1.train')
+    @patch('src.cifar10.main.print')
+    def test_train_KNOWN_TO_FAIL(self, print, train, _rd):
+        main.FLAGS.child_sync_replicas = True
+        main.FLAGS.num_aggregate = 1
+        main.FLAGS.controller_training = False
+        main.FLAGS.child_fixed_arc = None
+        child_optimizer = mock.MagicMock()
+        controller_optimizer = mock.MagicMock()
+        main.get_ops = self.mock_get_ops(controller_optimizer, child_optimizer, mock.MagicMock())
+        mock_session = mock.MagicMock()
+        mock_session.run = self.mock_session_run
+        mock_session_context_mgr = mock.MagicMock()
+        mock_session_context_mgr.__enter__ = mock.MagicMock(return_value=mock_session)
+        train.SingularMonitoredSession = mock.MagicMock(return_value=mock_session_context_mgr)
+
+        main.train()
+
+        print.assert_any_call(("-" * 80))
+        print.assert_any_call("Starting session")
+        controller_optimizer.make_session_run_hooks.assert_called()
+        train.Saver.assert_any_call(max_to_keep=2)
+        controller_optimizer.make_session_run_hooks.assert_called()
+        child_optimizer.make_session_run_hooks.assert_called()
+
+    @patch('src.cifar10.main.read_data', return_value=(None, None))
+    @patch('tensorflow.compat.v1.train')
+    @patch('src.cifar10.main.print')
+    def test_train_child_only1(self, print, train, _rd):
+        with RestoreFLAGS(
+            child_sync_replicas=False,
+            controller_sync_replicas=False,
+            controller_training=False,
+            child_fixed_arc="",
+            log_every=1):
+            child_optimizer = mock.MagicMock()
+            controller_optimizer = mock.MagicMock()
+            eval_func = mock.MagicMock()
+            main.get_ops = self.mock_get_ops(controller_optimizer, child_optimizer, eval_func)
+            mock_session = mock.MagicMock()
+            mock_session.run = self.mock_session_run
+            mock_session_context_mgr = mock.MagicMock()
+            mock_session_context_mgr.__enter__ = mock.MagicMock(return_value=mock_session)
+            train.SingularMonitoredSession = mock.MagicMock(return_value=mock_session_context_mgr)
+
+            main.train()
+
+        train.Saver.assert_any_call(max_to_keep=2)
+        child_optimizer.make_session_run_hooks.assert_not_called()
+        controller_optimizer.make_session_run_hooks.assert_not_called()
+        print.assert_any_call(("-" * 80))
+        print.assert_any_call("Starting session")
+        train.SingularMonitoredSession.assert_called()
+        print.assert_called_with("Epoch 311: Eval")
+        eval_func.assert_called_with(mock_session, "test")
+
+    @patch('src.cifar10.main.read_data', return_value=(None, None))
+    @patch('tensorflow.compat.v1.train')
+    @patch('src.cifar10.main.print')
+    def test_train_child_only2(self, print, train, _rd):
+        with RestoreFLAGS(
+            child_sync_replicas=False,
+            controller_sync_replicas=True,
+            controller_training=True,
+            child_fixed_arc="",
+            search_for="micro",
+            controller_train_every=1):
+            child_optimizer = mock.MagicMock()
+            controller_optimizer = mock.MagicMock()
+            eval_func = mock.MagicMock()
+            main.get_ops = self.mock_get_ops(controller_optimizer, child_optimizer, eval_func)
+            mock_session = mock.MagicMock()
+            mock_session.run = self.mock_session_run # mock.MagicMock(return_value=(1, 2, 3, 4, None))
+            mock_session_context_mgr = mock.MagicMock()
+            mock_session_context_mgr.__enter__ = mock.MagicMock(return_value=mock_session)
+            train.SingularMonitoredSession = mock.MagicMock(return_value=mock_session_context_mgr)
+
+            main.train()
+
+        train.Saver.assert_any_call(max_to_keep=2)
+        controller_optimizer.make_session_run_hooks.assert_not_called()
+        print.assert_any_call(("-" * 80))
+        print.assert_any_call("Starting session")
+        train.SingularMonitoredSession.assert_called()
+        print.assert_any_call("Epoch 311: Training controller")
+        print.assert_called_with("Epoch 311: Eval")
+        eval_func.assert_called_with(mock_session, "test")
+
+    @patch('src.cifar10.main.read_data', return_value=(None, None))
+    @patch('tensorflow.compat.v1.train')
+    @patch('src.cifar10.main.print')
+    def test_train_child_only3(self, print, train, _rd):
+        with RestoreFLAGS(
+            child_sync_replicas=False,
+            controller_sync_replicas=True,
+            controller_training=True,
+            child_fixed_arc=None,
+            search_for="macro",
+            controller_train_every=1):
+            child_optimizer = mock.MagicMock()
+            controller_optimizer = mock.MagicMock()
+            eval_func = mock.MagicMock()
+            main.get_ops = self.mock_get_ops(controller_optimizer, child_optimizer, eval_func)
+            mock_session = mock.MagicMock()
+            mock_session.run = self.mock_session_run
+            mock_session_context_mgr = mock.MagicMock()
+            mock_session_context_mgr.__enter__ = mock.MagicMock(return_value=mock_session)
+            train.SingularMonitoredSession = mock.MagicMock(return_value=mock_session_context_mgr)
+
+            main.train()
+
+        train.Saver.assert_any_call(max_to_keep=2)
+        controller_optimizer.make_session_run_hook.assert_called_with(True)
+        print.assert_any_call("-" * 80)
+        print.assert_any_call("Starting session")
+        train.SingularMonitoredSession.assert_called()
+        print.assert_any_call("Epoch 311: Training controller")
+        print.assert_called_with("Epoch 311: Eval")
+        eval_func.assert_called_with(mock_session, "test")
+
+    @patch('src.cifar10.main.read_data', return_value=(None, None))
+    @patch('tensorflow.compat.v1.train')
+    @patch('src.cifar10.main.print')
+    def test_train_child_only_macro(self, print, train, _rd):
+        with RestoreFLAGS(
+            child_sync_replicas=False,
+            controller_sync_replicas=True,
+            controller_training=True,
+            child_fixed_arc=None,
+            search_for=None,
+            controller_train_every=1):
+            child_optimizer = mock.MagicMock()
+            controller_optimizer = mock.MagicMock()
+            main.get_ops = self.mock_get_ops(controller_optimizer, child_optimizer, mock.MagicMock())
+            mock_session = mock.MagicMock()
+            mock_session.run = self.mock_session_run
+            mock_session_context_mgr = mock.MagicMock()
+            mock_session_context_mgr.__enter__ = mock.MagicMock(return_value=mock_session)
+            train.SingularMonitoredSession = mock.MagicMock(return_value=mock_session_context_mgr)
+
+            main.train()
+
+        controller_optimizer.make_session_run_hook.assert_called_with(True)
+        print.assert_any_call(("-" * 80))
+        print.assert_any_call("Starting session")
+        train.Saver.assert_any_call(max_to_keep=2)
+
+    @patch('src.cifar10.main.read_data', return_value=(None, None))
+    @patch('tensorflow.compat.v1.train')
+    @patch('src.cifar10.main.print')
+    def test_train_child_only_macro_whole_channels(self, print, train, _rd):
+        with RestoreFLAGS(
+            child_sync_replicas=False,
+            controller_sync_replicas=True,
+            controller_training=True,
+            child_fixed_arc=None,
+            search_for=None,
+            controller_search_whole_channels=True,
+            controller_train_every=1):
+            child_optimizer = mock.MagicMock()
+            controller_optimizer = mock.MagicMock()
+            main.get_ops = self.mock_get_ops(controller_optimizer, child_optimizer, mock.MagicMock())
+            mock_session = mock.MagicMock()
+            mock_session.run = self.mock_session_run
+            mock_session_context_mgr = mock.MagicMock()
+            mock_session_context_mgr.__enter__ = mock.MagicMock(return_value=mock_session)
+            train.SingularMonitoredSession = mock.MagicMock(return_value=mock_session_context_mgr)
+
+            main.train()
+
+        controller_optimizer.make_session_run_hooks.assert_not_called()
+        print.assert_any_call(("-" * 80))
+        print.assert_any_call("Starting session")
+        train.Saver.assert_any_call(max_to_keep=2)

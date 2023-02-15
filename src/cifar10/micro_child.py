@@ -9,12 +9,7 @@ import numpy as np
 import tensorflow as tf
 
 from src.cifar10.models import Model
-from src.cifar10.image_ops import conv
-from src.cifar10.image_ops import fully_connected
 from src.cifar10.image_ops import batch_norm
-from src.cifar10.image_ops import batch_norm_with_mask
-from src.cifar10.image_ops import relu
-from src.cifar10.image_ops import max_pool
 from src.cifar10.image_ops import drop_path
 from src.cifar10.image_ops import global_avg_pool
 

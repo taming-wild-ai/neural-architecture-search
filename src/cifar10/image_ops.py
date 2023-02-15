@@ -3,7 +3,6 @@ import tensorflow as tf
 from tensorflow.python.training import moving_averages
 
 from src.common_ops import create_weight
-from src.common_ops import create_bias
 
 
 def drop_path(x, keep_prob):
@@ -17,66 +16,6 @@ def drop_path(x, keep_prob):
   x = tf.math.divide(x, keep_prob) * binary_tensor
 
   return x
-
-
-def conv(x, filter_size, out_filters, stride, name="conv", padding="SAME",
-         data_format="NHWC", seed=None):
-  """
-  Args:
-    stride: [h_stride, w_stride].
-  """
-
-  if data_format == "NHWC":
-    actual_data_format = "channels_last"
-  elif data_format == "NCHW":
-    actual_data_format = "channels_first"
-  else:
-    raise NotImplementedError("Unknown data_format {}".format(data_format))
-  x = tf.compat.v1.layers.conv2d(
-      x, out_filters, [filter_size, filter_size], stride, padding,
-      data_format=actual_data_format,
-      kernel_initializer=tf.keras.initializers.he_normal(seed=seed))
-
-  return x
-
-
-def fully_connected(x, out_size, name="fc", seed=None):
-  in_size = x.get_shape()[-1]
-  with tf.compat.v1.variable_scope(name):
-    w = create_weight("w", [in_size, out_size], seed=seed)
-  x = tf.matmul(x, w)
-  return x
-
-
-def max_pool(x, k_size, stride, padding="SAME", data_format="NHWC",
-             keep_size=False):
-  """
-  Args:
-    k_size: two numbers [h_k_size, w_k_size].
-    stride: two numbers [h_stride, w_stride].
-  """
-
-  if data_format == "NHWC":
-    actual_data_format = "channels_last"
-  elif data_format == "NCHW":
-    actual_data_format = "channels_first"
-  else:
-    raise NotImplementedError("Unknown data_format {}".format(data_format))
-  out = tf.compat.v1.layers.max_pooling2d(x, k_size, stride, padding,
-                                data_format=actual_data_format)
-
-  if keep_size:
-    if data_format == "NHWC":
-      h_pad = (x.get_shape()[1] - out.get_shape()[1]) // 2
-      w_pad = (x.get_shape()[2] - out.get_shape()[2]) // 2
-      out = tf.pad(out, [[0, 0], [h_pad, h_pad], [w_pad, w_pad], [0, 0]])
-    elif data_format == "NCHW":
-      h_pad = (x.get_shape()[2] - out.get_shape()[2]) // 2
-      w_pad = (x.get_shape()[3] - out.get_shape()[3]) // 2
-      out = tf.pad(out, [[0, 0], [0, 0], [h_pad, h_pad], [w_pad, w_pad]])
-    else:
-      raise NotImplementedError("Unknown data_format {}".format(data_format))
-  return out
 
 
 def global_avg_pool(x, data_format="NHWC"):
@@ -175,7 +114,3 @@ def batch_norm_with_mask(x, is_training, mask, num_channels, name="bn",
                                        epsilon=epsilon, data_format=data_format,
                                        is_training=False)
   return x
-
-
-def relu(x, leaky=0.0):
-  return tf.where(tf.greater(x, 0), x, x * leaky)

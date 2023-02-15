@@ -28,10 +28,3 @@ def create_weight(name, shape, initializer=None, trainable=True, seed=None):
   if initializer is None:
     initializer = tf.keras.initializers.he_normal(seed=seed)
   return tf.compat.v1.get_variable(name, shape, initializer=initializer, trainable=trainable)
-
-
-def create_bias(name, shape, initializer=None):
-  if initializer is None:
-    initializer = tf.compat.v1.keras.initializers.Constant(0.0, dtype=tf.float32)
-  return tf.compat.v1.get_variable(name, shape, initializer=initializer)
-

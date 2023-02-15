@@ -9,12 +9,8 @@ import numpy as np
 import tensorflow as tf
 
 from src.cifar10.models import Model
-from src.cifar10.image_ops import conv
-from src.cifar10.image_ops import fully_connected
 from src.cifar10.image_ops import batch_norm
 from src.cifar10.image_ops import batch_norm_with_mask
-from src.cifar10.image_ops import relu
-from src.cifar10.image_ops import max_pool
 from src.cifar10.image_ops import global_avg_pool
 
 from src.utils import count_model_params
@@ -94,18 +90,6 @@ class GeneralChild(Model):
 
     pool_distance = self.num_layers // 3
     self.pool_layers = [pool_distance - 1, 2 * pool_distance - 1]
-
-  def _get_C(self, x):
-    """
-    Args:
-      x: tensor of shape [N, H, W, C] or [N, C, H, W]
-    """
-    if self.data_format == "NHWC":
-      return x.get_shape()[3]
-    elif self.data_format == "NCHW":
-      return x.get_shape()[1]
-    else:
-      raise ValueError("Unknown data_format '{0}'".format(self.data_format))
 
   def _get_HW(self, x):
     """
