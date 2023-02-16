@@ -127,9 +127,9 @@ class TestMicroChild(unittest.TestCase):
             mc.data_format = "INVALID"
             self.assertRaises(ValueError, mc._get_strides, 2)
 
-    @patch('src.cifar10.general_controller.tf.compat.v1.to_float', return_value=1.0)
-    @patch('src.cifar10.general_controller.tf.math.divide', return_value=1.0)
-    @patch('src.cifar10.general_controller.tf.shape', return_value=[5])
+    @patch('src.cifar10.macro_controller.tf.compat.v1.to_float', return_value=1.0)
+    @patch('src.cifar10.macro_controller.tf.math.divide', return_value=1.0)
+    @patch('src.cifar10.macro_controller.tf.shape', return_value=[5])
     def test_apply_drop_path(self, shape, divide, to_float):
         with patch('src.cifar10.micro_child.Model.__init__', new=mock_init):
             mc = MicroChild({}, {}, num_epochs=310, drop_path_keep_prob=0.9)

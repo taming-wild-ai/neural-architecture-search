@@ -82,16 +82,16 @@ class TestCIFAR10Main(unittest.TestCase):
 
     @patch('src.cifar10.main.MicroController')
     @patch('src.cifar10.main.MicroChild')
-    @patch('src.cifar10.main.GeneralController')
-    @patch('src.cifar10.main.GeneralChild')
+    @patch('src.cifar10.main.MacroController')
+    @patch('src.cifar10.main.MacroChild')
     def test_get_ops_micro_fails_assertion(self, _gch_ctor, _gco_ctor, _mch_ctor, _mco_ctor):
         with RestoreFLAGS(search_for="micro", child_fixed_arc="", controller_training=True):
             self.assertRaises(AssertionError, main.get_ops, None, None)
 
     @patch('src.cifar10.main.MicroController')
     @patch('src.cifar10.main.MicroChild')
-    @patch('src.cifar10.main.GeneralController')
-    @patch('src.cifar10.main.GeneralChild')
+    @patch('src.cifar10.main.MacroController')
+    @patch('src.cifar10.main.MacroChild')
     def test_get_ops_micro(self, gch_ctor, gco_ctor, mch_ctor, mco_ctor):
         mco = mock.MagicMock()
         mco_ctor.return_value = mco
@@ -109,8 +109,8 @@ class TestCIFAR10Main(unittest.TestCase):
 
     @patch('src.cifar10.main.MicroController')
     @patch('src.cifar10.main.MicroChild')
-    @patch('src.cifar10.main.GeneralController')
-    @patch('src.cifar10.main.GeneralChild')
+    @patch('src.cifar10.main.MacroController')
+    @patch('src.cifar10.main.MacroChild')
     def test_get_ops_macro(self, gch_ctor, gco_ctor, mch_ctor, mco_ctor):
         gco = mock.MagicMock()
         gco_ctor.return_value = gco
@@ -128,8 +128,8 @@ class TestCIFAR10Main(unittest.TestCase):
 
     @patch('src.cifar10.main.MicroController')
     @patch('src.cifar10.main.MicroChild')
-    @patch('src.cifar10.main.GeneralController')
-    @patch('src.cifar10.main.GeneralChild')
+    @patch('src.cifar10.main.MacroController')
+    @patch('src.cifar10.main.MacroChild')
     def test_get_ops_macro_child_only(self, gch_ctor, gco_ctor, mch_ctor, mco_ctor):
         gch = mock.MagicMock()
         gch_ctor.return_value = gch

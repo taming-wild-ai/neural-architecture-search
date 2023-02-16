@@ -11,7 +11,7 @@ from src.common_ops import stack_lstm
 
 from tensorflow.python.training import moving_averages
 
-class GeneralController(Controller):
+class MacroController(Controller):
   def __init__(self,
                search_for="both",
                search_whole_channels=False,

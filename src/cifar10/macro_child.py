@@ -18,7 +18,7 @@ from src.utils import get_train_ops
 from src.common_ops import create_weight
 
 
-class GeneralChild(Model):
+class MacroChild(Model):
   def __init__(self,
                images,
                labels,

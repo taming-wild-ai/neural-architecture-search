@@ -20,8 +20,8 @@ from src.utils import DEFINE_string
 from src.utils import print_user_flags
 
 from src.cifar10.data_utils import read_data
-from src.cifar10.general_controller import GeneralController
-from src.cifar10.general_child import GeneralChild
+from src.cifar10.macro_controller import MacroController
+from src.cifar10.macro_child import MacroChild
 
 from src.cifar10.micro_controller import MicroController
 from src.cifar10.micro_child import MicroChild
@@ -103,8 +103,8 @@ def get_ops(images, labels):
     ControllerClass = MicroController
     ChildClass = MicroChild
   else:
-    ControllerClass = GeneralController
-    ChildClass = GeneralChild
+    ControllerClass = MacroController
+    ChildClass = MacroChild
 
   child_model = ChildClass(
     images,
