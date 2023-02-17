@@ -10,6 +10,7 @@ import time
 
 import numpy as np
 import tensorflow as tf
+import src.framework as fw
 
 from src import utils
 from src.utils import Logger
@@ -225,7 +226,7 @@ def train(mode="train"):
       saver = tf.compat.v1.train.Saver(max_to_keep=10)
     else:
       saver = child_ops["optimizer"].swapping_saver(max_to_keep=10)
-    checkpoint_saver_hook = tf.compat.v1.train.CheckpointSaverHook(
+    checkpoint_saver_hook = fw.Hook(
       FLAGS.output_dir, save_steps=ops["num_train_batches"], saver=saver)
 
     hooks = [checkpoint_saver_hook]

@@ -68,26 +68,26 @@ class PTBEnasController(object):
 
   def _create_params(self):
     initializer = tf.random_uniform_initializer(minval=-0.1, maxval=0.1)
-    with tf.compat.v1.variable_scope(self.name, initializer=initializer):
-      with tf.compat.v1.variable_scope("lstm"):
+    with fw.variable_scope(self.name, initializer=initializer):
+      with fw.variable_scope("lstm"):
         self.w_lstm = []
         for layer_id in xrange(self.lstm_num_layers):
-          with tf.compat.v1.variable_scope("layer_{}".format(layer_id)):
-            w = tf.compat.v1.get_variable("w", [2 * self.lstm_size, 4 * self.lstm_size])
+          with fw.variable_scope("layer_{}".format(layer_id)):
+            w = fw.get_variable("w", [2 * self.lstm_size, 4 * self.lstm_size])
             self.w_lstm.append(w)
 
       num_funcs = self.num_funcs
-      with tf.compat.v1.variable_scope("embedding"):
-        self.g_emb = tf.compat.v1.get_variable("g_emb", [1, self.lstm_size])
-        self.w_emb = tf.compat.v1.get_variable("w", [num_funcs, self.lstm_size])
+      with fw.variable_scope("embedding"):
+        self.g_emb = fw.get_variable("g_emb", [1, self.lstm_size])
+        self.w_emb = fw.get_variable("w", [num_funcs, self.lstm_size])
 
-      with tf.compat.v1.variable_scope("softmax"):
-        self.w_soft = tf.compat.v1.get_variable("w", [self.lstm_size, num_funcs])
+      with fw.variable_scope("softmax"):
+        self.w_soft = fw.get_variable("w", [self.lstm_size, num_funcs])
 
-      with tf.compat.v1.variable_scope("attention"):
-        self.attn_w_1 = tf.compat.v1.get_variable("w_1", [self.lstm_size, self.lstm_size])
-        self.attn_w_2 = tf.compat.v1.get_variable("w_2", [self.lstm_size, self.lstm_size])
-        self.attn_v = tf.compat.v1.get_variable("v", [self.lstm_size, 1])
+      with fw.variable_scope("attention"):
+        self.attn_w_1 = fw.get_variable("w_1", [self.lstm_size, self.lstm_size])
+        self.attn_w_2 = fw.get_variable("w_2", [self.lstm_size, self.lstm_size])
+        self.attn_v = fw.get_variable("v", [self.lstm_size, 1])
 
   def _build_sampler(self):
     """Build the sampler ops and the log_prob ops."""
@@ -123,11 +123,11 @@ class PTBEnasController(object):
           logits /= self.temperature
         if self.tanh_constant is not None:
           logits = self.tanh_constant * tf.tanh(logits)
-        diff = tf.compat.v1.to_float(layer_id - tf.range(0, layer_id)) ** 2
+        diff = fw.to_float(layer_id - tf.range(0, layer_id)) ** 2
         logits -= tf.reshape(diff, [1, layer_id]) / 6.0
 
-        skip_index = tf.compat.v1.multinomial(logits, 1)
-        skip_index = tf.compat.v1.to_int32(skip_index)
+        skip_index = fw.multinomial(logits, 1)
+        skip_index = fw.to_int32(skip_index)
         skip_index = tf.reshape(skip_index, [1])
         arc_seq.append(skip_index)
 
@@ -140,7 +140,7 @@ class PTBEnasController(object):
 
         inputs = tf.nn.embedding_lookup(
           tf.concat(all_h[:-1], axis=0), skip_index)
-        inputs /= (0.1 + tf.compat.v1.to_float(layer_id - skip_index))
+        inputs /= (0.1 + fw.to_float(layer_id - skip_index))
       else:
         inputs = self.g_emb
 
@@ -151,8 +151,8 @@ class PTBEnasController(object):
         logits /= self.temperature
       if self.tanh_constant is not None:
         logits = self.tanh_constant * tf.tanh(logits)
-      func = tf.compat.v1.multinomial(logits, 1)
-      func = tf.compat.v1.to_int32(func)
+      func = fw.multinomial(logits, 1)
+      func = fw.to_int32(func)
       func = tf.reshape(func, [1])
       arc_seq.append(func)
       log_prob = tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -175,7 +175,7 @@ class PTBEnasController(object):
 
   def build_trainer(self, child_model):
     # actor
-    self.valid_loss = tf.compat.v1.to_float(child_model.rl_loss)
+    self.valid_loss = fw.to_float(child_model.rl_loss)
     self.valid_loss = tf.stop_gradient(self.valid_loss)
     self.valid_ppl = tf.exp(self.valid_loss)
     self.reward = 80.0 / self.valid_ppl

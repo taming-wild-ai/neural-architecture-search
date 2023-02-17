@@ -2,7 +2,6 @@ import os
 import sys
 import pickle as pickle
 import numpy as np
-import tensorflow as tf
 
 
 def _read_data(data_path, train_files):

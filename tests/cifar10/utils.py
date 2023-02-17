@@ -16,11 +16,11 @@ class TestUtils(unittest.TestCase):
         print_user_flags()
         print.assert_any_call('-' * 80)
 
-    @patch('src.utils.tf.compat.v1.train.exponential_decay', return_value="exp_decay")
-    @patch('src.utils.tf.maximum', return_value="maximum")
-    @patch('src.utils.tf.linalg.global_norm', return_value="global_norm")
-    @patch('src.utils.tf.gradients', return_value="gradients")
-    @patch('src.utils.tf.add_n', return_value=1.0)
+    @patch('src.utils.fw.exp_decay', return_value="exp_decay")
+    @patch('src.utils.fw.maximum', return_value="maximum")
+    @patch('src.utils.fw.global_norm', return_value="global_norm")
+    @patch('src.utils.fw.gradients', return_value="gradients")
+    @patch('src.utils.fw.add_n', return_value=1.0)
     def test_get_train_ops_raises(self, add_n, gradients, global_norm, max, exp_decay):
         self.assertRaises(ValueError, get_train_ops, 0.0, [], 0, get_grad_norms=True)
         add_n.assert_called_with([])
@@ -29,15 +29,15 @@ class TestUtils(unittest.TestCase):
         max.assert_called_with(0, 0)
         exp_decay.assert_called_with(0.1, 'maximum', 10000, 0.1, staircase=True)
 
-    @patch('src.utils.tf.compat.v1.train.exponential_decay', return_value="exp_decay")
-    @patch('src.utils.tf.maximum', return_value="maximum")
-    @patch('src.utils.tf.sqrt', return_value=0.0)
-    @patch('src.utils.tf.linalg.global_norm', return_value="global_norm")
-    @patch('src.utils.tf.gradients', return_value=[0.0])
-    @patch('src.utils.tf.add_n', return_value=1.0)
+    @patch('src.utils.fw.exp_decay', return_value="exp_decay")
+    @patch('src.utils.fw.maximum', return_value="maximum")
+    @patch('src.utils.fw.sqrt', return_value=0.0)
+    @patch('src.utils.fw.global_norm', return_value="global_norm")
+    @patch('src.utils.fw.gradients', return_value=[0.0])
+    @patch('src.utils.fw.add_n', return_value=1.0)
     def test_get_train_ops_grad_norms_momentum_global(self, add_n, gradients, global_norm, sqrt, max, exp_decay):
         mock_momentum = mock.MagicMock()
-        with patch('src.utils.tf.compat.v1.train.MomentumOptimizer', return_value=mock_momentum) as mom:
+        with patch('src.utils.fw.Optimizer.Momentum', return_value=mock_momentum) as mom:
             var = tf.ones((1))
             get_train_ops(0.0, [var], 0, get_grad_norms=True, optim_algo="momentum", clip_mode="global", grad_bound=0.0)
             add_n.assert_called()
@@ -46,18 +46,18 @@ class TestUtils(unittest.TestCase):
             sqrt.assert_called()
             max.assert_called_with(0, 0)
             exp_decay.assert_called_with(0.1, 'maximum', 10000, 0.1, staircase=True)
-            mom.assert_called_with('exp_decay', 0.9, use_locking=True, use_nesterov=True)
+            mom.assert_called_with('exp_decay')
             mock_momentum.apply_gradients.assert_called()
 
-    @patch('src.utils.tf.compat.v1.train.exponential_decay', return_value="exp_decay")
-    @patch('src.utils.tf.maximum', return_value="maximum")
-    @patch('src.utils.tf.sqrt', return_value=0.0)
-    @patch('src.utils.tf.linalg.global_norm', return_value="global_norm")
-    @patch('src.utils.tf.gradients', return_value=[0.0])
-    @patch('src.utils.tf.add_n', return_value=1.0)
+    @patch('src.utils.fw.exp_decay', return_value="exp_decay")
+    @patch('src.utils.fw.maximum', return_value="maximum")
+    @patch('src.utils.fw.sqrt', return_value=0.0)
+    @patch('src.utils.fw.global_norm', return_value="global_norm")
+    @patch('src.utils.fw.gradients', return_value=[0.0])
+    @patch('src.utils.fw.add_n', return_value=1.0)
     def test_get_train_ops_grad_norms_adam_global(self, add_n, gradients, global_norm, sqrt, max, exp_decay):
         mock_adam = mock.MagicMock()
-        with patch('src.utils.tf.compat.v1.train.AdamOptimizer', return_value=mock_adam) as mom:
+        with patch('src.utils.fw.Optimizer.Adam', return_value=mock_adam) as mom:
             var = tf.ones((1))
             get_train_ops(0.0, [var], 0, get_grad_norms=True, optim_algo="adam", clip_mode="global", grad_bound=0.0)
             add_n.assert_called()
@@ -66,21 +66,21 @@ class TestUtils(unittest.TestCase):
             sqrt.assert_called()
             max.assert_called_with(0, 0)
             exp_decay.assert_called_with(0.1, 'maximum', 10000, 0.1, staircase=True)
-            mom.assert_called_with('exp_decay', beta1=0.0, epsilon=1e-3, use_locking=True)
+            mom.assert_called_with('exp_decay')
             mock_adam.apply_gradients.assert_called()
 
-    @patch('src.utils.tf.compat.v1.to_float', return_value=1.0)
-    @patch('src.utils.tf.compat.v1.train.exponential_decay', return_value="exp_decay")
-    @patch('src.utils.tf.maximum', return_value="maximum")
-    @patch('src.utils.tf.sqrt', return_value=0.0)
-    @patch('src.utils.tf.linalg.global_norm', return_value="global_norm")
-    @patch('src.utils.tf.gradients', return_value=[0.0])
-    @patch('src.utils.tf.add_n', return_value=1.0)
+    @patch('src.utils.fw.to_float', return_value=1.0)
+    @patch('src.utils.fw.exp_decay', return_value="exp_decay")
+    @patch('src.utils.fw.maximum', return_value="maximum")
+    @patch('src.utils.fw.sqrt', return_value=0.0)
+    @patch('src.utils.fw.global_norm', return_value="global_norm")
+    @patch('src.utils.fw.gradients', return_value=[0.0])
+    @patch('src.utils.fw.add_n', return_value=1.0)
     def test_get_train_ops_no_grad_norms_sgd_norm(self, add_n, gradients, global_norm, sqrt, max, exp_decay, to_float):
         mock_sro = mock.MagicMock()
         mock_sgd = mock.MagicMock()
-        with patch('src.utils.tf.compat.v1.train.GradientDescentOptimizer', return_value=mock_sgd) as sgd:
-            with patch('src.utils.tf.compat.v1.train.SyncReplicasOptimizer', return_value=mock_sro) as sro:
+        with patch('src.utils.fw.Optimizer.SGD', return_value=mock_sgd) as sgd:
+            with patch('src.utils.fw.Optimizer.SyncReplicas', return_value=mock_sro) as sro:
                 var = tf.ones((1))
                 get_train_ops(0.0, [var], 0, optim_algo="sgd", clip_mode="norm", grad_bound=0.0, lr_cosine=True, lr_max=1.0, lr_min=0.0, lr_T_0=0, lr_T_mul=1, num_train_batches=1, sync_replicas=True, num_aggregate=1, num_replicas=1)
                 add_n.assert_called()

@@ -1,7 +1,3 @@
-
-
-
-
 import os
 import pickle as pickle
 import shutil
@@ -9,7 +5,7 @@ import sys
 import time
 
 import numpy as np
-import tensorflow as tf
+import src.framework as fw
 
 from src import utils
 from src.utils import Logger
@@ -26,7 +22,7 @@ from src.cifar10.macro_child import MacroChild
 from src.cifar10.micro_controller import MicroController
 from src.cifar10.micro_child import MicroChild
 
-flags = tf.compat.v1.app.flags
+flags = fw.flags
 FLAGS = flags.FLAGS
 
 DEFINE_boolean("reset_output_dir", False, "Delete output_dir if exists.")
@@ -218,15 +214,14 @@ def train():
   else:
     images, labels = read_data(FLAGS.data_path, num_valids=0)
 
-  g = tf.Graph()
+  g = fw.Graph()
   with g.as_default():
     ops = get_ops(images, labels)
     child_ops = ops["child"]
     controller_ops = ops["controller"]
 
-    saver = tf.compat.v1.train.Saver(max_to_keep=2)
-    checkpoint_saver_hook = tf.compat.v1.train.CheckpointSaverHook(
-      FLAGS.output_dir, save_steps=child_ops["num_train_batches"], saver=saver)
+    saver = fw.Saver()
+    checkpoint_saver_hook = fw.Hook(FLAGS.output_dir, save_steps=child_ops["num_train_batches"], saver=saver)
 
     hooks = [checkpoint_saver_hook]
     if FLAGS.child_sync_replicas:
@@ -238,9 +233,11 @@ def train():
 
     print(("-" * 80))
     print("Starting session")
-    config = tf.compat.v1.ConfigProto(allow_soft_placement=True)
-    with tf.compat.v1.train.SingularMonitoredSession(
-      config=config, hooks=hooks, checkpoint_dir=FLAGS.output_dir) as sess:
+    config = fw.ConfigProto()
+    with fw.Session(
+      config=config,
+      hooks=hooks,
+      checkpoint_dir=FLAGS.output_dir) as sess:
         start_time = time.time()
         while True:
           run_ops = [
@@ -356,4 +353,4 @@ def main(_):
 
 
 if __name__ == "__main__":
-  tf.compat.v1.app.run()
+  fw.run()

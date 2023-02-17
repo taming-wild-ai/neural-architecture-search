@@ -2,7 +2,7 @@ import os
 import sys
 
 import numpy as np
-import tensorflow as tf
+import src.framework as fw
 
 from src.utils import count_model_params
 from src.utils import get_train_ops
@@ -60,42 +60,38 @@ class Model(object):
     self.valid_acc = None
     self.test_acc = None
     print("Build data ops")
-    with tf.device("/gpu:0"):
+    with fw.device("/gpu:0"):
       # training data
       self.num_train_examples = np.shape(images["train"])[0]
       self.num_train_batches = (
         self.num_train_examples + self.batch_size - 1) // self.batch_size
-      x_train, y_train = tf.compat.v1.train.shuffle_batch(
+      x_train, y_train = fw.shuffle_batch(
         [images["train"], labels["train"]],
-        batch_size=self.batch_size,
-        capacity=50000,
-        enqueue_many=True,
-        min_after_dequeue=0,
-        num_threads=16,
-        seed=self.seed,
-        allow_smaller_final_batch=True,
+        self.batch_size,
+        self.seed,
+        50000
       )
       self.lr_dec_every = lr_dec_every * self.num_train_batches
 
       def _pre_process(x):
-        x = tf.pad(x, [[4, 4], [4, 4], [0, 0]])
-        x = tf.image.random_crop(x, [32, 32, 3], seed=self.seed)
-        x = tf.image.random_flip_left_right(x, seed=self.seed)
+        x = fw.pad(x, [[4, 4], [4, 4], [0, 0]])
+        x = fw.image.random_crop(x, [32, 32, 3], seed=self.seed)
+        x = fw.image.random_flip_left_right(x, seed=self.seed)
         if self.cutout_size is not None:
-          mask = tf.ones([self.cutout_size, self.cutout_size], dtype=tf.int32)
-          start = tf.random_uniform([2], minval=0, maxval=32, dtype=tf.int32)
-          mask = tf.pad(mask, [[self.cutout_size + start[0], 32 - start[0]],
+          mask = fw.ones([self.cutout_size, self.cutout_size], dtype=fw.int32)
+          start = fw.random_uniform([2], minval=0, maxval=32, dtype=fw.int32)
+          mask = fw.pad(mask, [[self.cutout_size + start[0], 32 - start[0]],
                                [self.cutout_size + start[1], 32 - start[1]]])
           mask = mask[self.cutout_size: self.cutout_size + 32,
                       self.cutout_size: self.cutout_size + 32]
-          mask = tf.reshape(mask, [32, 32, 1])
-          mask = tf.tile(mask, [1, 1, 3])
-          x = tf.where(tf.equal(mask, 0), x=x, y=tf.zeros_like(x))
+          mask = fw.reshape(mask, [32, 32, 1])
+          mask = fw.tile(mask, [1, 1, 3])
+          x = fw.where(fw.equal(mask, 0), x=x, y=fw.zeros_like(x))
         if self.data_format == "NCHW":
-          x = tf.transpose(x, [2, 0, 1])
+          x = fw.transpose(x, [2, 0, 1])
 
         return x
-      self.x_train = tf.map_fn(_pre_process, x_train, back_prop=False)
+      self.x_train = fw.map_fn(_pre_process, x_train, back_prop=False)
       self.y_train = y_train
 
       # valid data
@@ -104,35 +100,27 @@ class Model(object):
         images["valid_original"] = np.copy(images["valid"])
         labels["valid_original"] = np.copy(labels["valid"])
         if self.data_format == "NCHW":
-          images["valid"] = tf.transpose(images["valid"], [0, 3, 1, 2])
+          images["valid"] = fw.transpose(images["valid"], [0, 3, 1, 2])
         self.num_valid_examples = np.shape(images["valid"])[0]
         self.num_valid_batches = (
           (self.num_valid_examples + self.eval_batch_size - 1)
           // self.eval_batch_size)
-        self.x_valid, self.y_valid = tf.compat.v1.train.batch(
+        self.x_valid, self.y_valid = fw.batch(
           [images["valid"], labels["valid"]],
           batch_size=self.eval_batch_size,
-          capacity=5000,
-          enqueue_many=True,
-          num_threads=1,
-          allow_smaller_final_batch=True,
-        )
+          capacity=5000)
 
       # test data
       if self.data_format == "NCHW":
-        images["test"] = tf.transpose(images["test"], [0, 3, 1, 2])
+        images["test"] = fw.transpose(images["test"], [0, 3, 1, 2])
       self.num_test_examples = np.shape(images["test"])[0]
       self.num_test_batches = (
         (self.num_test_examples + self.eval_batch_size - 1)
         // self.eval_batch_size)
-      self.x_test, self.y_test = tf.compat.v1.train.batch(
+      self.x_test, self.y_test = fw.batch(
         [images["test"], labels["test"]],
         batch_size=self.eval_batch_size,
-        capacity=10000,
-        enqueue_many=True,
-        num_threads=1,
-        allow_smaller_final_batch=True,
-      )
+        capacity=10000)
 
     # cache images and labels
     self.images = images
@@ -142,7 +130,7 @@ class Model(object):
     """Expects self.acc and self.global_step to be defined.
 
     Args:
-      sess: tf.Session() or one of its wrap arounds.
+      sess: fw.Session() or one of its wrap arounds.
       feed_dict: can be used to give more information to sess.run().
       eval_set: "valid" or "test"
     """
@@ -181,25 +169,24 @@ class Model(object):
   def _build_train(self):
     print("Build train graph")
     logits = self._model(self.x_train, True)
-    log_probs = tf.nn.sparse_softmax_cross_entropy_with_logits(
+    log_probs = fw.sparse_softmax_cross_entropy_with_logits(
       logits=logits, labels=self.y_train)
-    self.loss = tf.reduce_mean(log_probs)
+    self.loss = fw.reduce_mean(log_probs)
 
-    self.train_preds = tf.argmax(logits, axis=1)
-    self.train_preds = tf.compat.v1.to_int32(self.train_preds)
-    self.train_acc = tf.equal(self.train_preds, self.y_train)
-    self.train_acc = tf.compat.v1.to_int32(self.train_acc)
-    self.train_acc = tf.reduce_sum(self.train_acc)
+    self.train_preds = fw.argmax(logits, axis=1)
+    self.train_preds = fw.to_int32(self.train_preds)
+    self.train_acc = fw.equal(self.train_preds, self.y_train)
+    self.train_acc = fw.to_int32(self.train_acc)
+    self.train_acc = fw.reduce_sum(self.train_acc)
 
     tf_variables = [var
-        for var in tf.compat.v1.trainable_variables() if var.name.startswith(self.name)]
+        for var in fw.trainable_variables() if var.name.startswith(self.name)]
     self.num_vars = count_model_params(tf_variables)
     print("-" * 80)
     for var in tf_variables:
       print(var)
 
-    self.global_step = tf.Variable(
-      0, dtype=tf.int32, trainable=False, name="global_step")
+    self.global_step = fw.Variable(0, dtype=fw.int32, name="global_step")
     self.train_op, self.lr, self.grad_norm, self.optimizer = get_train_ops(
       self.loss,
       tf_variables,
@@ -221,31 +208,31 @@ class Model(object):
       print("-" * 80)
       print("Build valid graph")
       logits = self._model(self.x_valid, False, reuse=True)
-      self.valid_preds = tf.argmax(logits, axis=1)
-      self.valid_preds = tf.compat.v1.to_int32(self.valid_preds)
-      self.valid_acc = tf.equal(self.valid_preds, self.y_valid)
-      self.valid_acc = tf.compat.v1.to_int32(self.valid_acc)
-      self.valid_acc = tf.reduce_sum(self.valid_acc)
+      self.valid_preds = fw.argmax(logits, axis=1)
+      self.valid_preds = fw.to_int32(self.valid_preds)
+      self.valid_acc = fw.equal(self.valid_preds, self.y_valid)
+      self.valid_acc = fw.to_int32(self.valid_acc)
+      self.valid_acc = fw.reduce_sum(self.valid_acc)
 
   def _build_test(self):
     print("-" * 80)
     print("Build test graph")
     logits = self._model(self.x_test, False, reuse=True)
-    self.test_preds = tf.argmax(logits, axis=1)
-    self.test_preds = tf.compat.v1.to_int32(self.test_preds)
-    self.test_acc = tf.equal(self.test_preds, self.y_test)
-    self.test_acc = tf.compat.v1.to_int32(self.test_acc)
-    self.test_acc = tf.reduce_sum(self.test_acc)
+    self.test_preds = fw.argmax(logits, axis=1)
+    self.test_preds = fw.to_int32(self.test_preds)
+    self.test_acc = fw.equal(self.test_preds, self.y_test)
+    self.test_acc = fw.to_int32(self.test_acc)
+    self.test_acc = fw.reduce_sum(self.test_acc)
 
   def build_valid_rl(self, shuffle=False):
     print("-" * 80)
     print("Build valid graph on shuffled data")
-    with tf.device("/gpu:0"):
+    with fw.device("/gpu:0"):
       # shuffled valid data: for choosing validation model
       if not shuffle and self.data_format == "NCHW":
         self.images["valid_original"] = np.transpose(
           self.images["valid_original"], [0, 3, 1, 2])
-      x_valid_shuffle, y_valid_shuffle = tf.compat.v1.train.shuffle_batch(
+      x_valid_shuffle, y_valid_shuffle = fw.shuffle_batch(
         [self.images["valid_original"], self.labels["valid_original"]],
         batch_size=self.batch_size,
         capacity=25000,
@@ -257,24 +244,24 @@ class Model(object):
       )
 
       def _pre_process(x):
-        x = tf.pad(x, [[4, 4], [4, 4], [0, 0]])
-        x = tf.image.random_crop(x, [32, 32, 3], seed=self.seed)
-        x = tf.image.random_flip_left_right(x, seed=self.seed)
+        x = fw.pad(x, [[4, 4], [4, 4], [0, 0]])
+        x = fw.image.random_crop(x, [32, 32, 3], seed=self.seed)
+        x = fw.image.random_flip_left_right(x, seed=self.seed)
         if self.data_format == "NCHW":
-          x = tf.transpose(x, [2, 0, 1])
+          x = fw.transpose(x, [2, 0, 1])
 
         return x
 
       if shuffle:
-        x_valid_shuffle = tf.map_fn(_pre_process, x_valid_shuffle,
+        x_valid_shuffle = fw.map_fn(_pre_process, x_valid_shuffle,
                                     back_prop=False)
 
     logits = self._model(x_valid_shuffle, False, reuse=True)
-    valid_shuffle_preds = tf.argmax(logits, axis=1)
-    valid_shuffle_preds = tf.compat.v1.to_int32(valid_shuffle_preds)
-    self.valid_shuffle_acc = tf.equal(valid_shuffle_preds, y_valid_shuffle)
-    self.valid_shuffle_acc = tf.compat.v1.to_int32(self.valid_shuffle_acc)
-    self.valid_shuffle_acc = tf.reduce_sum(self.valid_shuffle_acc)
+    valid_shuffle_preds = fw.argmax(logits, axis=1)
+    valid_shuffle_preds = fw.to_int32(valid_shuffle_preds)
+    self.valid_shuffle_acc = fw.equal(valid_shuffle_preds, y_valid_shuffle)
+    self.valid_shuffle_acc = fw.to_int32(self.valid_shuffle_acc)
+    self.valid_shuffle_acc = fw.reduce_sum(self.valid_shuffle_acc)
 
   def _model(self, images, is_training, reuse=None):
     raise NotImplementedError("Abstract method")

@@ -1,5 +1,3 @@
-import tensorflow as tf
-
 class Controller(object):
   def __init__(self, *args, **kwargs):
     raise NotImplementedError("Abstract method.")

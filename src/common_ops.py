@@ -1,16 +1,15 @@
 import numpy as np
-import tensorflow as tf
-
+import src.framework as fw
 
 def lstm(x, prev_c, prev_h, w):
-  ifog = tf.matmul(tf.concat([x, prev_h], axis=1), w)
-  i, f, o, g = tf.split(ifog, 4, axis=1)
-  i = tf.sigmoid(i)
-  f = tf.sigmoid(f)
-  o = tf.sigmoid(o)
-  g = tf.tanh(g)
+  ifog = fw.matmul(fw.concat([x, prev_h], axis=1), w)
+  i, f, o, g = fw.split(ifog, 4, axis=1)
+  i = fw.sigmoid(i)
+  f = fw.sigmoid(f)
+  o = fw.sigmoid(o)
+  g = fw.tanh(g)
   next_c = i * g + f * prev_c
-  next_h = o * tf.tanh(next_c)
+  next_h = o * fw.tanh(next_c)
   return next_c, next_h
 
 
@@ -22,9 +21,3 @@ def stack_lstm(x, prev_c, prev_h, w):
     next_c.append(curr_c)
     next_h.append(curr_h)
   return next_c, next_h
-
-
-def create_weight(name, shape, initializer=None, trainable=True, seed=None):
-  if initializer is None:
-    initializer = tf.keras.initializers.he_normal(seed=seed)
-  return tf.compat.v1.get_variable(name, shape, initializer=initializer, trainable=trainable)

@@ -4,32 +4,32 @@ from __future__ import print_function
 
 import sys
 import numpy as np
-import tensorflow as tf
 
+import src.framework as fw
 
 user_flags = []
 
 
 def DEFINE_string(name, default_value, doc_string):
-  tf.compat.v1.app.flags.DEFINE_string(name, default_value, doc_string)
+  fw.DEFINE_string(name, default_value, doc_string)
   global user_flags
   user_flags.append(name)
 
 
 def DEFINE_integer(name, default_value, doc_string):
-  tf.compat.v1.app.flags.DEFINE_integer(name, default_value, doc_string)
+  fw.DEFINE_integer(name, default_value, doc_string)
   global user_flags
   user_flags.append(name)
 
 
 def DEFINE_float(name, default_value, doc_string):
-  tf.compat.v1.app.flags.DEFINE_float(name, default_value, doc_string)
+  fw.DEFINE_float(name, default_value, doc_string)
   global user_flags
   user_flags.append(name)
 
 
 def DEFINE_boolean(name, default_value, doc_string):
-  tf.compat.v1.app.flags.DEFINE_boolean(name, default_value, doc_string)
+  fw.DEFINE_boolean(name, default_value, doc_string)
   global user_flags
   user_flags.append(name)
 
@@ -38,7 +38,7 @@ def print_user_flags(line_limit=80):
   print("-" * 80)
 
   global user_flags
-  FLAGS = tf.compat.v1.app.flags.FLAGS
+  FLAGS = fw.FLAGS
 
   for flag_name in sorted(user_flags):
     value = "{}".format(getattr(FLAGS, flag_name))
@@ -118,34 +118,34 @@ def get_train_ops(
   if l2_reg > 0:
     l2_losses = []
     for var in tf_variables:
-      l2_losses.append(tf.reduce_sum(var ** 2))
-    l2_loss = tf.add_n(l2_losses)
+      l2_losses.append(fw.reduce_sum(var ** 2))
+    l2_loss = fw.add_n(l2_losses)
     loss += l2_reg * l2_loss
 
-  grads = tf.gradients(loss, tf_variables)
-  grad_norm = tf.linalg.global_norm(grads)
+  grads = fw.gradients(loss, tf_variables)
+  grad_norm = fw.global_norm(grads)
 
   grad_norms = {}
   for v, g in zip(tf_variables, grads):
     if v is None or g is None:
       continue
-    if isinstance(g, tf.IndexedSlices):
-      grad_norms[v.name] = tf.sqrt(tf.reduce_sum(g.values ** 2))
+    if isinstance(g, fw.IndexedSlices):
+      grad_norms[v.name] = fw.sqrt(fw.reduce_sum(g.values ** 2))
     else:
-      grad_norms[v.name] = tf.sqrt(tf.reduce_sum(g ** 2))
+      grad_norms[v.name] = fw.sqrt(fw.reduce_sum(g ** 2))
 
   if clip_mode is not None:
     assert grad_bound is not None, "Need grad_bound to clip gradients."
     if clip_mode == "global":
-      grads, _ = tf.clip_by_global_norm(grads, grad_bound)
+      grads, _ = fw.clip_by_global_norm(grads, grad_bound)
     elif clip_mode == "norm":
       clipped = []
       for g in grads:
-        if isinstance(g, tf.IndexedSlices):
-          c_g = tf.clip_by_norm(g.values, grad_bound)
-          c_g = tf.IndexedSlices(g.indices, c_g)
+        if isinstance(g, fw.IndexedSlices):
+          c_g = fw.clip_by_norm(g.values, grad_bound)
+          c_g = fw.IndexedSlices(g.indices, c_g)
         else:
-          c_g = tf.clip_by_norm(g, grad_bound)
+          c_g = fw.clip_by_norm(g, grad_bound)
         clipped.append(g)
       grads = clipped
     else:
@@ -161,62 +161,59 @@ def get_train_ops(
 
     curr_epoch = train_step // num_train_batches
 
-    last_reset = tf.Variable(0, dtype=tf.int64, trainable=False,
-                             name="last_reset")
-    T_i = tf.Variable(lr_T_0, dtype=tf.int64, trainable=False, name="T_i")
+    last_reset = fw.Variable(0, dtype=fw.int64, name="last_reset")
+    T_i = fw.Variable(lr_T_0, dtype=fw.int64, name="T_i")
     T_curr = curr_epoch - last_reset
 
     def _update():
-      update_last_reset = tf.compat.v1.assign(last_reset, curr_epoch, use_locking=True)
-      update_T_i = tf.compat.v1.assign(T_i, T_i * lr_T_mul, use_locking=True)
-      with tf.control_dependencies([update_last_reset, update_T_i]):
-        rate = tf.compat.v1.to_float(T_curr) / tf.compat.v1.to_float(T_i) * 3.1415926
-        lr = lr_min + 0.5 * (lr_max - lr_min) * (1.0 + tf.cos(rate))
+      update_last_reset = fw.assign(last_reset, curr_epoch)
+      update_T_i = fw.assign(T_i, T_i * lr_T_mul)
+      with fw.control_dependencies([update_last_reset, update_T_i]):
+        rate = fw.to_float(T_curr) / fw.to_float(T_i) * 3.1415926
+        lr = lr_min + 0.5 * (lr_max - lr_min) * (1.0 + fw.cos(rate))
       return lr
 
     def _no_update():
-      rate = tf.compat.v1.to_float(T_curr) / tf.compat.v1.to_float(T_i) * 3.1415926
-      lr = lr_min + 0.5 * (lr_max - lr_min) * (1.0 + tf.cos(rate))
+      rate = fw.to_float(T_curr) / fw.to_float(T_i) * 3.1415926
+      lr = lr_min + 0.5 * (lr_max - lr_min) * (1.0 + fw.cos(rate))
       return lr
 
-    learning_rate = tf.cond(
-      tf.greater_equal(T_curr, T_i), _update, _no_update)
+    learning_rate = fw.cond(
+      fw.greater_equal(T_curr, T_i), _update, _no_update)
   else:
-    learning_rate = tf.compat.v1.train.exponential_decay(
-      lr_init, tf.maximum(train_step - lr_dec_start, 0), lr_dec_every,
+    learning_rate = fw.exp_decay(
+      lr_init, fw.maximum(train_step - lr_dec_start, 0), lr_dec_every,
       lr_dec_rate, staircase=True)
     if lr_dec_min is not None:
-      learning_rate = tf.maximum(learning_rate, lr_dec_min)
+      learning_rate = fw.maximum(learning_rate, lr_dec_min)
 
   if lr_warmup_val is not None:
-    learning_rate = tf.cond(tf.less(train_step, lr_warmup_steps),
+    learning_rate = fw.cond(fw.less(train_step, lr_warmup_steps),
                             lambda: lr_warmup_val, lambda: learning_rate)
 
   # if get_grad_norms:
   #   g_1, g_2 = 0.0001, 0.0001
   #   for v, g in zip(tf_variables, grads):
   #     if g is not None:
-  #       if isinstance(g, tf.IndexedSlices):
-  #         g_n = tf.reduce_sum(g.values ** 2)
+  #       if isinstance(g, fw.IndexedSlices):
+  #         g_n = fw.reduce_sum(g.values ** 2)
   #       else:
-  #         g_n = tf.reduce_sum(g ** 2)
+  #         g_n = fw.reduce_sum(g ** 2)
   #       if "enas_cell" in v.name:
   #         print("g_1: {}".format(v.name))
   #         g_1 += g_n
   #       else:
   #         print("g_2: {}".format(v.name))
   #         g_2 += g_n
-  #   learning_rate = tf.Print(learning_rate, [g_1, g_2, tf.sqrt(g_1 / g_2)],
+  #   learning_rate = fw.Print(learning_rate, [g_1, g_2, fw.sqrt(g_1 / g_2)],
   #                            message="g_1, g_2, g_1/g_2: ", summarize=5)
 
   if optim_algo == "momentum":
-    opt = tf.compat.v1.train.MomentumOptimizer(
-      learning_rate, 0.9, use_locking=True, use_nesterov=True)
+    opt = fw.Optimizer.Momentum(learning_rate)
   elif optim_algo == "sgd":
-    opt = tf.compat.v1.train.GradientDescentOptimizer(learning_rate, use_locking=True)
+    opt = fw.Optimizer.SGD(learning_rate)
   elif optim_algo == "adam":
-    opt = tf.compat.v1.train.AdamOptimizer(learning_rate, beta1=0.0, epsilon=1e-3,
-                                 use_locking=True)
+    opt = fw.Optimizer.Adam(learning_rate)
   else:
     raise ValueError("Unknown optim_algo {}".format(optim_algo))
 
@@ -224,15 +221,10 @@ def get_train_ops(
     assert num_aggregate is not None, "Need num_aggregate to sync."
     assert num_replicas is not None, "Need num_replicas to sync."
 
-    opt = tf.compat.v1.train.SyncReplicasOptimizer(
-      opt,
-      replicas_to_aggregate=num_aggregate,
-      total_num_replicas=num_replicas,
-      use_locking=True)
+    opt = fw.Optimizer.SyncReplicas(opt, num_aggregate, num_replicas)
 
   if moving_average is not None:
-    opt = tf.contrib.opt.MovingAverageOptimizer(
-      opt, average_decay=moving_average)
+    opt = fw.Optimizer.MovingAverage(opt, moving_average)
 
   train_op = opt.apply_gradients(
     zip(grads, tf_variables), global_step=train_step)

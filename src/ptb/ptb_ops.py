@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.training import moving_averages
 
-from src.common_ops import create_weight
+from src.common_ops import fw.create_weight
 
 
 def layer_norm(x, is_training, name="layer_norm"):
@@ -12,19 +12,19 @@ def layer_norm(x, is_training, name="layer_norm"):
 
 def batch_norm(x, is_training, name="batch_norm", decay=0.999, epsilon=1.0):
   shape = x.get_shape()[1]
-  with tf.compat.v1.variable_scope(name, reuse=None if is_training else True):
-    offset = tf.compat.v1.get_variable(
+  with fw.variable_scope(name, reuse=None if is_training else True):
+    offset = fw.get_variable(
       "offset", shape,
-      initializer=tf.compat.v1.keras.initializers.Constant(0.0, dtype=tf.float32))
-    scale = tf.compat.v1.get_variable(
+      initializer=fw.Constant(0.0))
+    scale = fw.get_variable(
       "scale", shape,
-      initializer=tf.compat.v1.keras.initializers.Constant(1.0, dtype=tf.float32))
-    moving_mean = tf.compat.v1.get_variable(
+      initializer=fw.Constant(1.0))
+    moving_mean = fw.get_variable(
       "moving_mean", shape, trainable=False,
-      initializer=tf.compat.v1.keras.initializers.Constant(0.0, dtype=tf.float32))
-    moving_variance = tf.compat.v1.get_variable(
+      initializer=fw.Constant(0.0))
+    moving_variance = fw.get_variable(
       "moving_variance", shape, trainable=False,
-      initializer=tf.compat.v1.keras.initializers.Constant(1.0, dtype=tf.float32))
+      initializer=fw.Constant(1.0))
 
     if is_training:
       mean, variance = tf.nn.moments(x, [0])
