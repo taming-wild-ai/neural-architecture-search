@@ -14,19 +14,13 @@ def _read_data(data_path, train_files):
   images, labels = [], []
   for file_name in train_files:
     print(file_name)
-    full_name = os.path.join(data_path, file_name)
-    with open(full_name, 'rb') as finp:
+    with open(os.path.join(data_path, file_name), 'rb') as finp:
       data = pickle.load(finp, encoding="latin1")
-      batch_images = data["data"].astype(np.float32) / 255.0
-      batch_labels = np.array(data["labels"], dtype=np.int32)
-      images.append(batch_images)
-      labels.append(batch_labels)
-  images = np.concatenate(images, axis=0)
-  labels = np.concatenate(labels, axis=0)
-  images = np.reshape(images, [-1, 3, 32, 32])
-  images = np.transpose(images, [0, 2, 3, 1])
-
-  return images, labels
+      images.append(data["data"].astype(np.float32) / 255.0)
+      labels.append(np.array(data["labels"], dtype=np.int32))
+  return (
+    np.transpose(np.reshape(np.concatenate(images, axis=0), [-1, 3, 32, 32]), [0, 2, 3, 1]),
+    np.concatenate(labels, axis=0))
 
 
 def read_data(data_path, num_valids=5000):
@@ -34,18 +28,13 @@ def read_data(data_path, num_valids=5000):
   print("Reading data")
 
   images, labels = {}, {}
-
-  train_files = [
+  images["train"], labels["train"] = _read_data(data_path, [
     "data_batch_1",
     "data_batch_2",
     "data_batch_3",
     "data_batch_4",
     "data_batch_5",
-  ]
-  test_file = [
-    "test_batch",
-  ]
-  images["train"], labels["train"] = _read_data(data_path, train_files)
+  ])
 
   if num_valids:
     images["valid"] = images["train"][-num_valids:]
@@ -56,7 +45,9 @@ def read_data(data_path, num_valids=5000):
   else:
     images["valid"], labels["valid"] = None, None
 
-  images["test"], labels["test"] = _read_data(data_path, test_file)
+  images["test"], labels["test"] = _read_data(data_path, [
+    "test_batch",
+  ])
 
   print("Prepropcess: [subtract mean], [divide std]")
   mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)

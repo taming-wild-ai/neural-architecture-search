@@ -22,8 +22,7 @@ from src.cifar10.macro_child import MacroChild
 from src.cifar10.micro_controller import MicroController
 from src.cifar10.micro_child import MicroChild
 
-flags = fw.flags
-FLAGS = flags.FLAGS
+FLAGS = fw.flags.FLAGS
 
 DEFINE_boolean("reset_output_dir", False, "Delete output_dir if exists.")
 DEFINE_string("data_path", "", "")
@@ -186,26 +185,22 @@ def get_ops(images, labels):
     child_model.connect_controller(None)
     controller_ops = None
 
-  child_ops = {
-    "global_step": child_model.global_step,
-    "loss": child_model.loss,
-    "train_op": child_model.train_op,
-    "lr": child_model.lr,
-    "grad_norm": child_model.grad_norm,
-    "train_acc": child_model.train_acc,
-    "optimizer": child_model.optimizer,
-    "num_train_batches": child_model.num_train_batches,
-  }
-
-  ops = {
-    "child": child_ops,
+  return {
+    "child": {
+      "global_step": child_model.global_step,
+      "loss": child_model.loss,
+      "train_op": child_model.train_op,
+      "lr": child_model.lr,
+      "grad_norm": child_model.grad_norm,
+      "train_acc": child_model.train_acc,
+      "optimizer": child_model.optimizer,
+      "num_train_batches": child_model.num_train_batches,
+    },
     "controller": controller_ops,
     "eval_every": child_model.num_train_batches * FLAGS.eval_every_epochs,
     "eval_func": child_model.eval_once,
     "num_train_batches": child_model.num_train_batches,
   }
-
-  return ops
 
 
 def train():
@@ -217,38 +212,31 @@ def train():
   g = fw.Graph()
   with g.as_default():
     ops = get_ops(images, labels)
-    child_ops = ops["child"]
-    controller_ops = ops["controller"]
 
-    saver = fw.Saver()
-    checkpoint_saver_hook = fw.Hook(FLAGS.output_dir, save_steps=child_ops["num_train_batches"], saver=saver)
-
-    hooks = [checkpoint_saver_hook]
+    hooks = [fw.Hook(FLAGS.output_dir, save_steps=ops["child"]["num_train_batches"], saver=fw.Saver())]
     if FLAGS.child_sync_replicas:
-      sync_replicas_hook = child_ops["optimizer"].make_session_run_hook(True)
+      sync_replicas_hook = ops["child"]["optimizer"].make_session_run_hook(True)
       hooks.append(sync_replicas_hook)
     if FLAGS.controller_training and FLAGS.controller_sync_replicas:
-      sync_replicas_hook = controller_ops["optimizer"].make_session_run_hook(True)
+      sync_replicas_hook = ops["controller"]["optimizer"].make_session_run_hook(True)
       hooks.append(sync_replicas_hook)
 
     print(("-" * 80))
     print("Starting session")
-    config = fw.ConfigProto()
     with fw.Session(
-      config=config,
+      config=fw.ConfigProto(),
       hooks=hooks,
       checkpoint_dir=FLAGS.output_dir) as sess:
         start_time = time.time()
         while True:
-          run_ops = [
-            child_ops["loss"],
-            child_ops["lr"],
-            child_ops["grad_norm"],
-            child_ops["train_acc"],
-            child_ops["train_op"],
-          ]
-          loss, lr, gn, tr_acc, _ = sess.run(run_ops)
-          global_step = sess.run(child_ops["global_step"])
+          loss, lr, gn, tr_acc, _ = sess.run([
+            ops["child"]["loss"],
+            ops["child"]["lr"],
+            ops["child"]["grad_norm"],
+            ops["child"]["train_acc"],
+            ops["child"]["train_op"],
+          ])
+          global_step = sess.run(ops["child"]["global_step"])
 
           if FLAGS.child_sync_replicas:
             actual_step = global_step * FLAGS.num_aggregate
@@ -275,23 +263,21 @@ def train():
               print(("Epoch {}: Training controller".format(epoch)))
               for ct_step in range(FLAGS.controller_train_steps *
                                     FLAGS.controller_num_aggregate):
-                run_ops = [
-                  controller_ops["loss"],
-                  controller_ops["entropy"],
-                  controller_ops["lr"],
-                  controller_ops["grad_norm"],
-                  controller_ops["valid_acc"],
-                  controller_ops["baseline"],
-                  controller_ops["skip_rate"],
-                  controller_ops["train_op"],
-                ]
-                loss, entropy, lr, gn, val_acc, bl, skip, _ = sess.run(run_ops)
-                controller_step = sess.run(controller_ops["train_step"])
+                loss, entropy, lr, gn, val_acc, bl, skip, _ = sess.run([
+                  ops["controller"]["loss"],
+                  ops["controller"]["entropy"],
+                  ops["controller"]["lr"],
+                  ops["controller"]["grad_norm"],
+                  ops["controller"]["valid_acc"],
+                  ops["controller"]["baseline"],
+                  ops["controller"]["skip_rate"],
+                  ops["controller"]["train_op"],
+                ])
 
                 if ct_step % FLAGS.log_every == 0:
                   curr_time = time.time()
                   log_string = ""
-                  log_string += "ctrl_step={:<6d}".format(controller_step)
+                  log_string += "ctrl_step={:<6d}".format(sess.run(ops["controller"]["train_step"]))
                   log_string += " loss={:<7.3f}".format(loss)
                   log_string += " ent={:<5.2f}".format(entropy)
                   log_string += " lr={:<6.4f}".format(lr)
@@ -305,8 +291,8 @@ def train():
               print("Here are 10 architectures")
               for _ in range(10):
                 arc, acc = sess.run([
-                  controller_ops["sample_arc"],
-                  controller_ops["valid_acc"],
+                  ops["controller"]["sample_arc"],
+                  ops["controller"]["valid_acc"],
                 ])
                 if FLAGS.search_for == "micro":
                   normal_arc, reduce_arc = arc

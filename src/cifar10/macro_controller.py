@@ -86,9 +86,8 @@ class MacroController(Controller):
         self.w_lstm = []
         for layer_id in range(self.lstm_num_layers):
           with fw.variable_scope("layer_{}".format(layer_id)):
-            w = fw.get_variable(
-              "w", [2 * self.lstm_size, 4 * self.lstm_size])
-            self.w_lstm.append(w)
+            self.w_lstm.append(fw.get_variable(
+              "w", [2 * self.lstm_size, 4 * self.lstm_size]))
 
       self.g_emb = fw.get_variable("g_emb", [1, self.lstm_size])
       if self.search_whole_channels:
@@ -153,9 +152,7 @@ class MacroController(Controller):
         if self.tanh_constant is not None:
           logit = self.tanh_constant * fw.tanh(logit)
         if self.search_for == "macro" or self.search_for == "branch":
-          branch_id = fw.multinomial(logit, 1)
-          branch_id = fw.to_int32(branch_id)
-          branch_id = fw.reshape(branch_id, [1])
+          branch_id = fw.reshape(fw.to_int32(fw.multinomial(logit, 1)), [1])
         elif self.search_for == "connection":
           branch_id = fw.constant([0], dtype=fw.int32)
         else:
@@ -164,8 +161,7 @@ class MacroController(Controller):
         log_prob = fw.sparse_softmax_cross_entropy_with_logits(
           logits=logit, labels=branch_id)
         log_probs.append(log_prob)
-        entropy = fw.stop_gradient(log_prob * fw.exp(-log_prob))
-        entropys.append(entropy)
+        entropys.append(fw.stop_gradient(log_prob * fw.exp(-log_prob)))
         inputs = fw.embedding_lookup(self.w_emb, branch_id)
       else:
         for branch_id in range(self.num_branches):
@@ -176,15 +172,12 @@ class MacroController(Controller):
             logit /= self.temperature
           if self.tanh_constant is not None:
             logit = self.tanh_constant * fw.tanh(logit)
-          start = fw.multinomial(logit, 1)
-          start = fw.to_int32(start)
-          start = fw.reshape(start, [1])
+          start = fw.reshape(fw.to_int32(fw.multinomial(logit, 1)), [1])
           arc_seq.append(start)
           log_prob = fw.sparse_softmax_cross_entropy_with_logits(
             logits=logit, labels=start)
           log_probs.append(log_prob)
-          entropy = fw.stop_gradient(log_prob * fw.exp(-log_prob))
-          entropys.append(entropy)
+          entropys.append(fw.stop_gradient(log_prob * fw.exp(-log_prob)))
           inputs = fw.embedding_lookup(self.w_emb["start"][branch_id], start)
 
           next_c, next_h = stack_lstm(inputs, prev_c, prev_h, self.w_lstm)
@@ -194,77 +187,65 @@ class MacroController(Controller):
             logit /= self.temperature
           if self.tanh_constant is not None:
             logit = self.tanh_constant * fw.tanh(logit)
-          mask = fw.range(0, limit=self.out_filters-1, delta=1, dtype=fw.int32)
-          mask = fw.reshape(mask, [1, self.out_filters - 1])
-          mask = fw.less_equal(mask, self.out_filters-1 - start)
-          logit = fw.where(mask, x=logit, y=fw.fill(fw.shape(logit), -np.inf))
-          count = fw.multinomial(logit, 1)
-          count = fw.to_int32(count)
-          count = fw.reshape(count, [1])
+          logit = fw.where(
+            fw.less_equal(
+              fw.reshape(
+                fw.range(0, limit=self.out_filters-1, delta=1, dtype=fw.int32),
+                [1, self.out_filters - 1]),
+              self.out_filters-1 - start),
+              x=logit,
+              y=fw.fill(fw.shape(logit), -np.inf))
+          count = fw.reshape(fw.to_int32(fw.multinomial(logit, 1)), [1])
           arc_seq.append(count + 1)
           log_prob = fw.sparse_softmax_cross_entropy_with_logits(
             logits=logit, labels=count)
           log_probs.append(log_prob)
-          entropy = fw.stop_gradient(log_prob * fw.exp(-log_prob))
-          entropys.append(entropy)
+          entropys.append(fw.stop_gradient(log_prob * fw.exp(-log_prob)))
           inputs = fw.embedding_lookup(self.w_emb["count"][branch_id], count)
 
       next_c, next_h = stack_lstm(inputs, prev_c, prev_h, self.w_lstm)
       prev_c, prev_h = next_c, next_h
 
       if layer_id > 0:
-        query = fw.concat(anchors_w_1, axis=0)
-        query = fw.tanh(query + fw.matmul(next_h[-1], self.w_attn_2))
-        query = fw.matmul(query, self.v_attn)
+        query = fw.matmul(fw.tanh(fw.concat(anchors_w_1, axis=0) + fw.matmul(next_h[-1], self.w_attn_2)), self.v_attn)
         logit = fw.concat([-query, query], axis=1)
         if self.temperature is not None:
           logit /= self.temperature
         if self.tanh_constant is not None:
           logit = self.tanh_constant * fw.tanh(logit)
 
-        skip = fw.multinomial(logit, 1)
-        skip = fw.to_int32(skip)
-        skip = fw.reshape(skip, [layer_id])
+        skip = fw.reshape(fw.to_int32(fw.multinomial(logit, 1)), [layer_id])
         arc_seq.append(skip)
 
         skip_prob = fw.sigmoid(logit)
-        kl = skip_prob * fw.log(skip_prob / skip_targets)
-        kl = fw.reduce_sum(kl)
-        skip_penaltys.append(kl)
+        skip_penaltys.append(fw.reduce_sum(skip_prob * fw.log(skip_prob / skip_targets)))
 
         log_prob = fw.sparse_softmax_cross_entropy_with_logits(
           logits=logit, labels=skip)
         log_probs.append(fw.reduce_sum(log_prob, keepdims=True))
 
-        entropy = fw.stop_gradient(
-          fw.reduce_sum(log_prob * fw.exp(-log_prob), keepdims=True))
-        entropys.append(entropy)
+        entropys.append(
+          fw.stop_gradient(
+            fw.reduce_sum(log_prob * fw.exp(-log_prob), keepdims=True)))
 
-        skip = fw.to_float(skip)
-        skip = fw.reshape(skip, [1, layer_id])
+        skip = fw.reshape(fw.to_float(skip), [1, layer_id])
         skip_count.append(fw.reduce_sum(skip))
-        inputs = fw.matmul(skip, fw.concat(anchors, axis=0))
-        inputs /= (1.0 + fw.reduce_sum(skip))
+        inputs = fw.matmul(skip, fw.concat(anchors, axis=0)) / (1.0 + fw.reduce_sum(skip))
       else:
         inputs = self.g_emb
 
       anchors.append(next_h[-1])
       anchors_w_1.append(fw.matmul(next_h[-1], self.w_attn_1))
 
-    arc_seq = fw.concat(arc_seq, axis=0)
-    self.sample_arc = fw.reshape(arc_seq, [-1])
+    self.sample_arc = fw.reshape(fw.concat(arc_seq, axis=0), [-1])
 
-    entropys = fw.stack(entropys)
-    self.sample_entropy = fw.reduce_sum(entropys)
+    self.sample_entropy = fw.reduce_sum(fw.stack(entropys))
 
-    log_probs = fw.stack(log_probs)
-    self.sample_log_prob = fw.reduce_sum(log_probs)
+    self.sample_log_prob = fw.reduce_sum(fw.stack(log_probs))
 
-    skip_count = fw.stack(skip_count)
-    self.skip_count = fw.reduce_sum(skip_count)
+    self.skip_count = fw.reduce_sum(fw.stack(skip_count))
 
-    skip_penaltys = fw.stack(skip_penaltys)
-    self.skip_penaltys = fw.reduce_mean(skip_penaltys)
+    self.skip_penaltys = fw.reduce_mean(fw.stack(skip_penaltys))
 
   def build_trainer(self, child_model):
     child_model.build_valid_rl()
@@ -272,8 +253,7 @@ class MacroController(Controller):
                       fw.to_float(child_model.batch_size))
     self.reward = self.valid_acc
 
-    normalize = fw.to_float(self.num_layers * (self.num_layers - 1) / 2)
-    self.skip_rate = fw.to_float(self.skip_count) / normalize
+    self.skip_rate = fw.to_float(self.skip_count) / fw.to_float(self.num_layers * (self.num_layers - 1) / 2)
 
     if self.entropy_weight is not None:
       self.reward += self.entropy_weight * self.sample_entropy
@@ -281,10 +261,9 @@ class MacroController(Controller):
     self.sample_log_prob = fw.reduce_sum(self.sample_log_prob)
     self.baseline = fw.Variable(0.0, dtype=fw.float32)
     print(f"self.baseline = {self.baseline}, self.bl_dec = {self.bl_dec}, self.reward = {self.reward}")
-    baseline_update = fw.assign_sub(
-      self.baseline, (1 - self.bl_dec) * (self.baseline - self.reward))
 
-    with fw.control_dependencies([baseline_update]):
+    with fw.control_dependencies([fw.assign_sub(
+      self.baseline, (1 - self.bl_dec) * (self.baseline - self.reward))]):
       self.reward = fw.identity(self.reward)
 
     self.loss = self.sample_log_prob * (self.reward - self.baseline)

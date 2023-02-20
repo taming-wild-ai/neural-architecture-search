@@ -345,8 +345,8 @@ class TestMicroChild(unittest.TestCase):
                     ec.assert_called_with('batch_norm', 0, 1, 5, 24)
                     stack.assert_called_with(['ec', 'ec', 'batch_norm', 'batch_norm', 'batch_norm'], axis=0)
 
-    @patch('src.cifar10.micro_child.fw.ones', return_value="ones")
-    @patch('src.cifar10.micro_child.fw.zeros', return_value="zeros")
+    @patch('src.cifar10.micro_child.fw.ones_init', return_value="ones")
+    @patch('src.cifar10.micro_child.fw.zeros_init', return_value="zeros")
     @patch('src.cifar10.micro_child.fw.fused_batch_norm', return_value="fbn")
     @patch('src.cifar10.micro_child.fw.separable_conv2d', return_value="s_conv2d")
     @patch('src.cifar10.micro_child.fw.relu', return_value="relu")
@@ -565,11 +565,7 @@ class TestMicroChild(unittest.TestCase):
                     [mc.images['valid_original'], mc.labels['valid_original']],
                     mc.batch_size,
                     mc.seed,
-                    25000,
-                    enqueue_many=True,
-                    min_after_dequeue=0,
-                    num_threads=16,
-                    allow_smaller_final_batch=True)
+                    25000)
                 model.assert_called()
                 argmax.assert_called_with("model", axis=1)
                 to_int32.assert_any_call("argmax")

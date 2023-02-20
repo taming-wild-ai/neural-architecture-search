@@ -83,30 +83,32 @@ class MicroController(Controller):
     self.sample_log_prob = log_prob_1 + log_prob_2
 
   def _create_params(self):
-    initializer = fw.random_uniform_initializer(minval=-0.1, maxval=0.1)
-    with fw.variable_scope(self.name, initializer=initializer):
+    with fw.variable_scope(self.name, initializer=fw.random_uniform_initializer(minval=-0.1, maxval=0.1)):
       with fw.variable_scope("lstm"):
         self.w_lstm = []
         for layer_id in range(self.lstm_num_layers):
           with fw.variable_scope("layer_{}".format(layer_id)):
-            w = fw.get_variable("w", [2 * self.lstm_size, 4 * self.lstm_size])
-            self.w_lstm.append(w)
+            self.w_lstm.append(fw.get_variable("w", [2 * self.lstm_size, 4 * self.lstm_size]))
 
       self.g_emb = fw.get_variable("g_emb", [1, self.lstm_size])
       with fw.variable_scope("emb"):
         self.w_emb = fw.get_variable("w", [self.num_branches, self.lstm_size])
       with fw.variable_scope("softmax"):
         self.w_soft = fw.get_variable("w", [self.lstm_size, self.num_branches])
-        b_init = np.array([10.0, 10.0] + [0] * (self.num_branches - 2),
-                          dtype=np.float32)
         self.b_soft = fw.get_variable(
-          "b", [1, self.num_branches],
-          initializer=fw.Constant(b_init))
+          "b",
+          [1, self.num_branches],
+          initializer=fw.Constant(
+            np.array([10.0, 10.0] + [0] * (self.num_branches - 2),
+            dtype=np.float32)))
 
-        b_soft_no_learn = np.array(
-          [0.25, 0.25] + [-0.25] * (self.num_branches - 2), dtype=np.float32)
-        b_soft_no_learn = np.reshape(b_soft_no_learn, [1, self.num_branches])
-        self.b_soft_no_learn = fw.constant(b_soft_no_learn, dtype=fw.float32)
+        self.b_soft_no_learn = fw.constant(
+          np.reshape(
+            np.array(
+              [0.25, 0.25] + [-0.25] * (self.num_branches - 2),
+              dtype=np.float32),
+            [1, self.num_branches]),
+          dtype=fw.float32)
 
       with fw.variable_scope("attention"):
         self.w_attn_1 = fw.get_variable("w_1", [self.lstm_size, self.lstm_size])
@@ -130,6 +132,7 @@ class MicroController(Controller):
                 for _ in range(self.lstm_num_layers)]
       prev_h = [fw.zeros([1, self.lstm_size], fw.float32)
                 for _ in range(self.lstm_num_layers)]
+
     inputs = self.g_emb
 
     for layer_id in range(2):
@@ -150,25 +153,26 @@ class MicroController(Controller):
       for i in range(2):  # index_1, index_2
         next_c, next_h = stack_lstm(inputs, prev_c, prev_h, self.w_lstm)
         prev_c, prev_h = next_c, next_h
-        query = anchors_w_1.gather(indices)
-        query = fw.reshape(query, [layer_id, self.lstm_size])
-        query = fw.tanh(query + fw.matmul(next_h[-1], self.w_attn_2))
-        query = fw.matmul(query, self.v_attn)
-        logits = fw.reshape(query, [1, layer_id])
+        logits = fw.reshape(
+          fw.matmul(
+            fw.tanh(
+              fw.reshape(anchors_w_1.gather(indices), [layer_id, self.lstm_size]) + fw.matmul(
+                next_h[-1],
+                self.w_attn_2)),
+            self.v_attn),
+          [1, layer_id])
         if self.temperature is not None:
           logits /= self.temperature
         if self.tanh_constant is not None:
           logits = self.tanh_constant * fw.tanh(logits)
-        index = fw.multinomial(logits, 1)
-        index = fw.to_int32(index)
-        index = fw.reshape(index, [1])
+        index = fw.reshape(fw.to_int32(fw.multinomial(logits, 1)), [1])
         arc_seq = arc_seq.write(start_id + 2 * i, index)
-        curr_log_prob = fw.nn.sparse_softmax_cross_entropy_with_logits(
-          logits=logits, labels=index)
-        log_prob += curr_log_prob
-        curr_ent = fw.stop_gradient(fw.nn.softmax_cross_entropy_with_logits(
-          logits=logits, labels=fw.nn.softmax(logits)))
-        entropy += curr_ent
+        log_prob += fw.sparse_softmax_cross_entropy_with_logits(
+          logits=logits,
+          labels=index)
+        entropy += fw.stop_gradient(fw.softmax_cross_entropy_with_logits(
+          logits=logits,
+          labels=fw.softmax(logits)))
         prev_layers.append(anchors.read(fw.reduce_sum(index)))
         inputs = prev_layers[-1]
 
@@ -183,17 +187,15 @@ class MicroController(Controller):
           logits = op_tanh * fw.tanh(logits)
         if use_bias:
           logits += self.b_soft_no_learn
-        op_id = fw.multinomial(logits, 1)
-        op_id = fw.to_int32(op_id)
-        op_id = fw.reshape(op_id, [1])
+        op_id = fw.reshape(fw.to_int32(fw.multinomial(logits, 1)), [1])
         arc_seq = arc_seq.write(start_id + 2 * i + 1, op_id)
-        curr_log_prob = fw.nn.sparse_softmax_cross_entropy_with_logits(
-          logits=logits, labels=op_id)
-        log_prob += curr_log_prob
-        curr_ent = fw.stop_gradient(fw.nn.softmax_cross_entropy_with_logits(
-          logits=logits, labels=fw.nn.softmax(logits)))
-        entropy += curr_ent
-        inputs = fw.nn.embedding_lookup(self.w_emb, op_id)
+        log_prob += fw.sparse_softmax_cross_entropy_with_logits(
+          logits=logits,
+          labels=op_id)
+        entropy += fw.stop_gradient(fw.softmax_cross_entropy_with_logits(
+          logits=logits,
+          labels=fw.softmax(logits)))
+        inputs = fw.embedding_lookup(self.w_emb, op_id)
 
       next_c, next_h = stack_lstm(inputs, prev_c, prev_h, self.w_lstm)
       anchors = anchors.write(layer_id, next_h[-1])
@@ -203,30 +205,27 @@ class MicroController(Controller):
       return (layer_id + 1, inputs, next_c, next_h, anchors, anchors_w_1,
               arc_seq, entropy, log_prob)
 
-    loop_vars = [
-      fw.constant(2, dtype=fw.int32, name="layer_id"),
-      inputs,
-      prev_c,
-      prev_h,
-      anchors,
-      anchors_w_1,
-      arc_seq,
-      fw.constant([0.0], dtype=fw.float32, name="entropy"),
-      fw.constant([0.0], dtype=fw.float32, name="log_prob"),
-    ]
+    loop_outputs = fw.while_loop(
+      _condition,
+      _body,
+      [
+        fw.constant(2, dtype=fw.int32, name="layer_id"),
+        inputs,
+        prev_c,
+        prev_h,
+        anchors,
+        anchors_w_1,
+        arc_seq,
+        fw.constant([0.0], dtype=fw.float32, name="entropy"),
+        fw.constant([0.0], dtype=fw.float32, name="log_prob")],
+      parallel_iterations=1)
 
-    loop_outputs = fw.while_loop(_condition, _body, loop_vars,
-                                 parallel_iterations=1)
-
-    arc_seq = loop_outputs[-3].stack()
-    arc_seq = fw.reshape(arc_seq, [-1])
-    entropy = fw.reduce_sum(loop_outputs[-2])
-    log_prob = fw.reduce_sum(loop_outputs[-1])
-
-    last_c = loop_outputs[-7]
-    last_h = loop_outputs[-6]
-
-    return arc_seq, entropy, log_prob, last_c, last_h
+    return (
+      fw.reshape(loop_outputs[-3].stack(), [-1]),
+      fw.reduce_sum(loop_outputs[-2]),
+      fw.reduce_sum(loop_outputs[-1]),
+      loop_outputs[-7],
+      loop_outputs[-6])
 
   def build_trainer(self, child_model):
     child_model.build_valid_rl()

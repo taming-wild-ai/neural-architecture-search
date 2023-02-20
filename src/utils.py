@@ -48,17 +48,6 @@ def print_user_flags(line_limit=80):
     print(log_string)
 
 
-class TextColors:
-  HEADER = '\033[95m'
-  OKBLUE = '\033[94m'
-  OKGREEN = '\033[92m'
-  WARNING = '\033[93m'
-  FAIL = '\033[91m'
-  ENDC = '\033[0m'
-  BOLD = '\033[1m'
-  UNDERLINE = '\033[4m'
-
-
 class Logger(object):
   def __init__(self, output_file):
     self.terminal = sys.stdout
@@ -119,8 +108,7 @@ def get_train_ops(
     l2_losses = []
     for var in tf_variables:
       l2_losses.append(fw.reduce_sum(var ** 2))
-    l2_loss = fw.add_n(l2_losses)
-    loss += l2_reg * l2_loss
+    loss += l2_reg * fw.add_n(l2_losses)
 
   grads = fw.gradients(loss, tf_variables)
   grad_norm = fw.global_norm(grads)
@@ -142,8 +130,7 @@ def get_train_ops(
       clipped = []
       for g in grads:
         if isinstance(g, fw.IndexedSlices):
-          c_g = fw.clip_by_norm(g.values, grad_bound)
-          c_g = fw.IndexedSlices(g.indices, c_g)
+          c_g = fw.IndexedSlices(g.indices, fw.clip_by_norm(g.values, grad_bound))
         else:
           c_g = fw.clip_by_norm(g, grad_bound)
         clipped.append(g)
@@ -166,17 +153,13 @@ def get_train_ops(
     T_curr = curr_epoch - last_reset
 
     def _update():
-      update_last_reset = fw.assign(last_reset, curr_epoch)
-      update_T_i = fw.assign(T_i, T_i * lr_T_mul)
-      with fw.control_dependencies([update_last_reset, update_T_i]):
-        rate = fw.to_float(T_curr) / fw.to_float(T_i) * 3.1415926
-        lr = lr_min + 0.5 * (lr_max - lr_min) * (1.0 + fw.cos(rate))
-      return lr
+      with fw.control_dependencies([
+        fw.assign(last_reset, curr_epoch),
+        fw.assign(T_i, T_i * lr_T_mul)]):
+        return lr_min + 0.5 * (lr_max - lr_min) * (1.0 + fw.cos(fw.to_float(T_curr) / fw.to_float(T_i) * 3.1415926))
 
     def _no_update():
-      rate = fw.to_float(T_curr) / fw.to_float(T_i) * 3.1415926
-      lr = lr_min + 0.5 * (lr_max - lr_min) * (1.0 + fw.cos(rate))
-      return lr
+      return lr_min + 0.5 * (lr_max - lr_min) * (1.0 + fw.cos(fw.to_float(T_curr) / fw.to_float(T_i) * 3.1415926))
 
     learning_rate = fw.cond(
       fw.greater_equal(T_curr, T_i), _update, _no_update)

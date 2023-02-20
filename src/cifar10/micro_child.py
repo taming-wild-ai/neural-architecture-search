@@ -591,8 +591,8 @@ class MicroChild(Model):
           w_pointwise = fw.reshape(w_pointwise, [1, 1, inp_c, out_filters])
 
           with fw.variable_scope("bn"):
-            zero_init = fw.zeros()
-            one_init = fw.ones()
+            zero_init = fw.zeros_init()
+            one_init = fw.ones_init()
             offset = fw.create_weight(
               "offset", [num_possible_inputs, out_filters],
               initializer=zero_init)
@@ -775,12 +775,7 @@ class MicroChild(Model):
         [self.images["valid_original"], self.labels["valid_original"]],
         self.batch_size,
         self.seed,
-        25000,
-        enqueue_many=True,
-        min_after_dequeue=0,
-        num_threads=16,
-        allow_smaller_final_batch=True,
-      )
+        25000)
 
       def _pre_process(x):
         x = fw.pad(x, [[4, 4], [4, 4], [0, 0]])

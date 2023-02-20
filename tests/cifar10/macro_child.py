@@ -579,6 +579,7 @@ class TestMacroChild(unittest.TestCase):
             mc._build_train()
             print.assert_any_call("-" * 80)
             print.assert_any_call("Build train graph")
+            print.assert_called_with("Model has 0 params")
             model.assert_called_with(mc.x_train, is_training=True)
             sscewl.assert_called_with(logits="model", labels=mc.y_train)
             reduce_mean.assert_called_with("sscewl")

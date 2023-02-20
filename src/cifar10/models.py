@@ -74,19 +74,22 @@ class Model(object):
       self.lr_dec_every = lr_dec_every * self.num_train_batches
 
       def _pre_process(x):
-        x = fw.pad(x, [[4, 4], [4, 4], [0, 0]])
-        x = fw.image.random_crop(x, [32, 32, 3], seed=self.seed)
-        x = fw.image.random_flip_left_right(x, seed=self.seed)
+        x = fw.random_flip_left_right(fw.random_crop(fw.pad(x, [[4, 4], [4, 4], [0, 0]]), [32, 32, 3], seed=self.seed), seed=self.seed)
         if self.cutout_size is not None:
-          mask = fw.ones([self.cutout_size, self.cutout_size], dtype=fw.int32)
           start = fw.random_uniform([2], minval=0, maxval=32, dtype=fw.int32)
-          mask = fw.pad(mask, [[self.cutout_size + start[0], 32 - start[0]],
-                               [self.cutout_size + start[1], 32 - start[1]]])
-          mask = mask[self.cutout_size: self.cutout_size + 32,
-                      self.cutout_size: self.cutout_size + 32]
-          mask = fw.reshape(mask, [32, 32, 1])
-          mask = fw.tile(mask, [1, 1, 3])
-          x = fw.where(fw.equal(mask, 0), x=x, y=fw.zeros_like(x))
+          x = fw.where(
+            fw.equal(
+              fw.tile(
+                fw.reshape(
+                  fw.pad(
+                    fw.ones([self.cutout_size, self.cutout_size], dtype=fw.int32),
+                    [[self.cutout_size + start[0], 32 - start[0]],
+                    [self.cutout_size + start[1], 32 - start[1]]])[self.cutout_size: self.cutout_size + 32, self.cutout_size: self.cutout_size + 32],
+                  [32, 32, 1]),
+                [1, 1, 3]),
+              0),
+              x=x,
+              y=fw.zeros_like(x))
         if self.data_format == "NCHW":
           x = fw.transpose(x, [2, 0, 1])
 

@@ -36,6 +36,7 @@ greater_equal = tf.greater_equal
 identity = tf.identity
 int32 = tf.int32
 int64 = tf.int64
+less = tf.less
 less_equal = tf.less_equal
 log = tf.math.log
 logical_and = tf.logical_and
@@ -46,6 +47,8 @@ maximum = tf.maximum
 minimum = tf.minimum
 one_hot = tf.one_hot
 pad = tf.pad
+random_crop = tf.image.random_crop
+random_flip_left_right = tf.image.random_flip_left_right
 random_uniform = tf.random.uniform
 random_uniform_initializer = tf.random_uniform_initializer
 range = tf.range
@@ -57,6 +60,8 @@ separable_conv2d = tf.nn.separable_conv2d
 shape = tf.shape
 sigmoid = tf.sigmoid
 size = tf.size
+softmax = tf.nn.softmax
+softmax_cross_entropy_with_logits = tf.nn.softmax_cross_entropy_with_logits
 sparse_softmax_cross_entropy_with_logits = tf.nn.sparse_softmax_cross_entropy_with_logits
 split = tf.split
 sqrt = tf.sqrt
@@ -99,10 +104,10 @@ create_weight = partial(
     trainable=True)
 max_pool2d = tf.compat.v1.layers.max_pooling2d
 multinomial = tf.compat.v1.multinomial
-ones = partial(tf.compat.v1.keras.initializers.ones, dtype=tf.float32)
+ones_init = partial(tf.compat.v1.keras.initializers.ones, dtype=tf.float32)
 run = tf.compat.v1.app.run
 scatter_sub = partial(tf.compat.v1.scatter_sub, use_locking=True)
-zeros = partial(tf.compat.v1.keras.initializers.zeros, dtype=tf.float32)
+zeros_init = partial(tf.compat.v1.keras.initializers.zeros, dtype=tf.float32)
 
 def shuffle_batch(data, batch_size, seed, capacity=25000):
     return tf.compat.v1.train.shuffle_batch(
