@@ -97,7 +97,7 @@ class TestMacroController(unittest.TestCase):
     def test_build_trainer(self, print, zeros, variable, assign_sub, get_train_ops, to_float, reshape, sscewl, embedding_lookup, stack_lstm, matmul, multinomial, to_int32, where, concat, reduce_sum, cd):
         mc = MacroController(temperature=0.9, tanh_constant=0.5)
         child_model = mock.MagicMock()
-        mc.skip_penaltys = 1.0 # print(f"*** mc.skip_penaltys = {mc.skip_penaltys}")
+        mc.skip_penaltys = 1.0
         mc.build_trainer(child_model)
         child_model.build_valid_rl.assert_called_with()
         assign_sub.assert_called()

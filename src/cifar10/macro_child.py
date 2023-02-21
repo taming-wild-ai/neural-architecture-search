@@ -729,8 +729,7 @@ class MacroChild(Model):
     if self.fixed_arc is None:
       self.sample_arc = controller_model.sample_arc
     else:
-      fixed_arc = np.array([int(x) for x in self.fixed_arc.split(" ") if x])
-      self.sample_arc = fixed_arc
+      self.sample_arc = np.array([int(x) for x in self.fixed_arc.split(" ") if x])
 
     self._build_train()
     self._build_valid()

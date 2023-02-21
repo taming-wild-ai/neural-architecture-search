@@ -16,7 +16,12 @@ _This is not an official Google product._
 
 ## CIFAR-10
 
-To run the experiments on CIFAR-10, please first download the Python version of the [dataset](https://www.cs.toronto.edu/~kriz/cifar.html). Expand it using `tar xovf cifar-10-python.tar.gz`. Make the CIFAR 10 subdirectory using `mkdir data/cifar10` and copy the contents of `cifar-10-batches-py/` into `data/cifar10/`. Again, all hyper-parameters are specified in the scripts that we descibe below.
+To run the experiments on CIFAR-10, please first download the Python version of
+the [dataset](https://www.cs.toronto.edu/~kriz/cifar.html). Expand it using
+`tar xovf cifar-10-python.tar.gz`. Make the CIFAR 10 subdirectory using `mkdir
+data/cifar10` and copy the contents of `cifar-10-batches-py/` into
+`data/cifar10/`. Again, all hyper-parameters are specified in the scripts that
+we describe below.
 
 To install dependencies, run the following:
 ```shell

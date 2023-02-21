@@ -374,6 +374,7 @@ class MicroChild(Model):
 
     with fw.variable_scope("final_combine"):
       for i, layer in enumerate(layers):
+        # print(f"*** layer = {layer}")
         if used[i] == 0:
           hw = self._get_HW(layer)
           if hw > out_hw:
