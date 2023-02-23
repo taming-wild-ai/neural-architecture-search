@@ -8,45 +8,28 @@ import sys
 import numpy as np
 import src.framework as fw
 
-from src.cifar10.models import Model
+from src.cifar10.child import Child
 from src.cifar10.image_ops import batch_norm
 from src.cifar10.image_ops import drop_path
 from src.cifar10.image_ops import global_avg_pool
 
 from src.utils import count_model_params
 from src.utils import get_train_ops
+from src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer
 
-class MicroChild(Model):
+DEFINE_float("child_drop_path_keep_prob", 1.0, "minimum drop_path_keep_prob")
+DEFINE_integer("child_num_cells", 5, "")
+DEFINE_boolean("child_use_aux_heads", False, "Should we use an aux head")
+DEFINE_integer("num_epochs", 310, "")
+
+class MicroChild(Child):
   def __init__(self,
                images,
                labels,
-               use_aux_heads=False,
-               cutout_size=None,
-               fixed_arc=None,
-               num_layers=2,
-               num_cells=5,
-               out_filters=24,
-               keep_prob=1.0,
-               drop_path_keep_prob=None,
-               batch_size=32,
                clip_mode=None,
-               grad_bound=None,
-               l2_reg=1e-4,
-               lr_init=0.1,
                lr_dec_start=0,
-               lr_dec_every=10000,
-               lr_dec_rate=0.1,
-               lr_cosine=False,
-               lr_max=None,
                lr_min=None,
-               lr_T_0=None,
-               lr_T_mul=None,
-               num_epochs=None,
                optim_algo=None,
-               sync_replicas=False,
-               num_aggregate=None,
-               num_replicas=None,
-               data_format="NHWC",
                name="child",
                **kwargs
               ):
@@ -56,23 +39,11 @@ class MicroChild(Model):
     super(self.__class__, self).__init__(
       images,
       labels,
-      cutout_size=cutout_size,
-      batch_size=batch_size,
       clip_mode=clip_mode,
-      grad_bound=grad_bound,
-      l2_reg=l2_reg,
-      lr_init=lr_init,
       lr_dec_start=lr_dec_start,
-      lr_dec_every=lr_dec_every,
-      lr_dec_rate=lr_dec_rate,
-      keep_prob=keep_prob,
       optim_algo=optim_algo,
-      sync_replicas=sync_replicas,
-      num_aggregate=num_aggregate,
-      num_replicas=num_replicas,
-      data_format=data_format,
       name=name)
-
+    FLAGS = fw.FLAGS
     if self.data_format == "NHWC":
       self.actual_data_format = "channels_last"
     elif self.data_format == "NCHW":
@@ -80,24 +51,17 @@ class MicroChild(Model):
     else:
       raise ValueError("Unknown data_format '{0}'".format(self.data_format))
 
-    self.use_aux_heads = use_aux_heads
-    self.num_epochs = num_epochs
+    self.use_aux_heads = FLAGS.child_use_aux_heads
+    self.num_epochs = FLAGS.num_epochs
     self.num_train_steps = self.num_epochs * self.num_train_batches
-    self.drop_path_keep_prob = drop_path_keep_prob
-    self.lr_cosine = lr_cosine
-    self.lr_max = lr_max
+    self.drop_path_keep_prob = FLAGS.child_drop_path_keep_prob
     self.lr_min = lr_min
-    self.lr_T_0 = lr_T_0
-    self.lr_T_mul = lr_T_mul
-    self.out_filters = out_filters
-    self.num_layers = num_layers
-    self.num_cells = num_cells
-    self.fixed_arc = fixed_arc
+    self.num_cells = FLAGS.child_num_cells
 
     self.global_step = fw.get_or_create_global_step()
 
     if self.drop_path_keep_prob is not None:
-      assert num_epochs is not None, "Need num_epochs to drop_path"
+      assert self.num_epochs is not None, "Need num_epochs to drop_path"
 
     pool_distance = self.num_layers // 3
     self.pool_layers = [pool_distance, 2 * pool_distance + 1]

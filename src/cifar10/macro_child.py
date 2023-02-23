@@ -8,45 +8,27 @@ import sys
 import numpy as np
 import src.framework as fw
 
-from src.cifar10.models import Model
+from src.cifar10.child import Child
 from src.cifar10.image_ops import batch_norm
 from src.cifar10.image_ops import batch_norm_with_mask
 from src.cifar10.image_ops import global_avg_pool
 
 from src.utils import count_model_params
 from src.utils import get_train_ops
+from src.utils import DEFINE_float, DEFINE_integer
 
+DEFINE_float("child_l2_reg", 1e-4, "")
+DEFINE_integer("child_num_branches", 6, "")
+DEFINE_integer("child_out_filters_scale", 1, "")
 
-class MacroChild(Model):
+class MacroChild(Child):
   def __init__(self,
                images,
                labels,
-               cutout_size=None,
-               whole_channels=False,
-               fixed_arc=None,
-               out_filters_scale=1,
-               num_layers=2,
-               num_branches=6,
-               out_filters=24,
-               keep_prob=1.0,
-               batch_size=32,
                clip_mode=None,
-               grad_bound=None,
-               l2_reg=1e-4,
-               lr_init=0.1,
                lr_dec_start=0,
-               lr_dec_every=10000,
-               lr_dec_rate=0.1,
-               lr_cosine=False,
-               lr_max=None,
                lr_min=None,
-               lr_T_0=None,
-               lr_T_mul=None,
                optim_algo=None,
-               sync_replicas=False,
-               num_aggregate=None,
-               num_replicas=None,
-               data_format="NHWC",
                name="child",
                *args,
                **kwargs
@@ -57,35 +39,17 @@ class MacroChild(Model):
     super(self.__class__, self).__init__(
       images,
       labels,
-      cutout_size=cutout_size,
-      batch_size=batch_size,
       clip_mode=clip_mode,
-      grad_bound=grad_bound,
-      l2_reg=l2_reg,
-      lr_init=lr_init,
       lr_dec_start=lr_dec_start,
-      lr_dec_every=lr_dec_every,
-      lr_dec_rate=lr_dec_rate,
-      keep_prob=keep_prob,
       optim_algo=optim_algo,
-      sync_replicas=sync_replicas,
-      num_aggregate=num_aggregate,
-      num_replicas=num_replicas,
-      data_format=data_format,
       name=name)
-
-    self.whole_channels = whole_channels
-    self.lr_cosine = lr_cosine
-    self.lr_max = lr_max
+    FLAGS = fw.FLAGS
+    self.whole_channels = FLAGS.controller_search_whole_channels
     self.lr_min = lr_min
-    self.lr_T_0 = lr_T_0
-    self.lr_T_mul = lr_T_mul
-    self.out_filters = out_filters * out_filters_scale
-    self.num_layers = num_layers
+    self.out_filters_scale = FLAGS.child_out_filters_scale
+    self.out_filters = FLAGS.child_out_filters * self.out_filters_scale
 
-    self.num_branches = num_branches
-    self.fixed_arc = fixed_arc
-    self.out_filters_scale = out_filters_scale
+    self.num_branches = FLAGS.child_num_branches
 
     pool_distance = self.num_layers // 3
     self.pool_layers = [pool_distance - 1, 2 * pool_distance - 1]

@@ -7,7 +7,7 @@ import src.cifar10.main as main
 
 
 class RestoreFLAGS:
-    main.FLAGS(sys.argv) # Need to parse flags before accessing them
+    main.fw.FLAGS(sys.argv) # Need to parse flags before accessing them
 
     def __init__(self, **kwargs):
         self.kwargs = kwargs
@@ -15,12 +15,12 @@ class RestoreFLAGS:
 
     def __enter__(self):
         for key, value in self.kwargs.items():
-            self.old_values[key] = main.FLAGS.__getattr__(key)
-            main.FLAGS.__setattr__(key, value)
+            self.old_values[key] = main.fw.FLAGS.__getattr__(key)
+            main.fw.FLAGS.__setattr__(key, value)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         for key, value in self.old_values.items():
-            main.FLAGS.__setattr__(key, value)
+            main.fw.FLAGS.__setattr__(key, value)
 
 
 class TestCIFAR10Main(unittest.TestCase):

@@ -10,69 +10,45 @@ import numpy as np
 import src.framework as fw
 
 from src.controller import Controller
-from src.utils import get_train_ops
+from src.utils import get_train_ops, DEFINE_float
 from src.common_ops import stack_lstm
 
 from tensorflow.python.training import moving_averages
 
+DEFINE_float("controller_op_tanh_reduce", 1.0, "")
+
 class MicroController(Controller):
   def __init__(self,
-               search_for="both",
-               search_whole_channels=False,
-               num_branches=6,
-               num_cells=6,
                lstm_size=32,
                lstm_num_layers=2,
                lstm_keep_prob=1.0,
-               tanh_constant=None,
-               op_tanh_reduce=1.0,
-               temperature=None,
-               lr_init=1e-3,
                lr_dec_start=0,
                lr_dec_every=100,
                lr_dec_rate=0.9,
-               l2_reg=0,
-               entropy_weight=None,
                clip_mode=None,
                grad_bound=None,
-               use_critic=False,
-               bl_dec=0.999,
                optim_algo="adam",
-               sync_replicas=False,
-               num_aggregate=None,
-               num_replicas=None,
                name="controller",
                **kwargs):
-
+    super(MicroController, self).__init__()
+    FLAGS = fw.FLAGS
     print("-" * 80)
     print("Building ConvController")
 
-    self.search_for = search_for
-    self.search_whole_channels = search_whole_channels
-    self.num_cells = num_cells
-    self.num_branches = num_branches
+    self.num_cells = FLAGS.child_num_cells
+    self.num_branches = FLAGS.child_num_branches
 
     self.lstm_size = lstm_size
     self.lstm_num_layers = lstm_num_layers
     self.lstm_keep_prob = lstm_keep_prob
-    self.tanh_constant = tanh_constant
-    self.op_tanh_reduce = op_tanh_reduce
-    self.temperature = temperature
-    self.lr_init = lr_init
+    self.op_tanh_reduce = FLAGS.controller_op_tanh_reduce
     self.lr_dec_start = lr_dec_start
     self.lr_dec_every = lr_dec_every
     self.lr_dec_rate = lr_dec_rate
-    self.l2_reg = l2_reg
-    self.entropy_weight = entropy_weight
     self.clip_mode = clip_mode
     self.grad_bound = grad_bound
-    self.use_critic = use_critic
-    self.bl_dec = bl_dec
 
     self.optim_algo = optim_algo
-    self.sync_replicas = sync_replicas
-    self.num_aggregate = num_aggregate
-    self.num_replicas = num_replicas
     self.name = name
 
     self._create_params()

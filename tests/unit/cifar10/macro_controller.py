@@ -8,6 +8,7 @@ tf.compat.v1.disable_eager_execution()
 import src.framework as fw
 
 from src.cifar10.macro_controller import MacroController
+from src.cifar10.macro_child import DEFINE_integer # for child_num_layers, child_num_branches, child_out_filters
 
 class TestMacroController(unittest.TestCase):
     @patch('src.cifar10.macro_controller.fw.to_float', return_value=tf.constant(np.ones((1, 2))))
@@ -26,7 +27,8 @@ class TestMacroController(unittest.TestCase):
     @patch('src.cifar10.macro_controller.fw.zeros', return_value="zeros")
     @patch('src.cifar10.macro_controller.print')
     def test_constructor_not_whole_channels(self, print, zeros, get_variable, matmul, stack_lstm, multinomial, to_int32, reshape, sscewl, stop_gradient, embedding_lookup, concat, tanh, reduce_sum, to_float):
-        mc = MacroController(temperature=0.9, tanh_constant=0.5)
+        with tf.Graph().as_default():
+            mc = MacroController(temperature=0.9)
         self.assertEqual(MacroController, type(mc))
         print.assert_any_call('-' * 80)
         zeros.assert_called_with([1, 32], tf.float32)
@@ -60,7 +62,13 @@ class TestMacroController(unittest.TestCase):
     @patch('src.cifar10.macro_controller.fw.zeros', return_value="zeros")
     @patch('src.cifar10.macro_controller.print')
     def test_constructor_whole_channels(self, print, zeros, get_variable, matmul, stack_lstm, multinomial, to_int32, reshape, sscewl, stop_gradient, embedding_lookup, concat, tanh, reduce_sum, to_float):
-        self.assertEqual(MacroController, type(MacroController(search_whole_channels=True, search_for="macro", temperature=0.9, tanh_constant=0.5)))
+        fw.FLAGS.controller_search_whole_channels = True
+        fw.FLAGS.child_num_layers = 4
+        fw.FLAGS.child_num_branches = 6
+        fw.FLAGS.child_out_filters = 24
+        fw.FLAGS.controller_tanh_constant = 0.5
+        with tf.Graph().as_default():
+            self.assertEqual(MacroController, type(MacroController(temperature=0.9)))
         print.assert_any_call('-' * 80)
         zeros.assert_called_with([1, 32], tf.float32)
         get_variable.assert_called_with('v', [32, 1])
@@ -95,7 +103,13 @@ class TestMacroController(unittest.TestCase):
     @patch('src.cifar10.macro_controller.fw.zeros', return_value="zeros")
     @patch('src.cifar10.macro_controller.print')
     def test_build_trainer(self, print, zeros, variable, assign_sub, get_train_ops, to_float, reshape, sscewl, embedding_lookup, stack_lstm, matmul, multinomial, to_int32, where, concat, reduce_sum, cd):
-        mc = MacroController(temperature=0.9, tanh_constant=0.5)
+        fw.FLAGS.child_num_layers = 4
+        fw.FLAGS.child_num_branches = 6
+        fw.FLAGS.child_out_filters = 24
+        fw.FLAGS.controller_tanh_constant = 0.5
+        fw.FLAGS.controller_search_whole_channels = False
+        with tf.Graph().as_default():
+            mc = MacroController(temperature=0.9)
         child_model = mock.MagicMock()
         mc.skip_penaltys = 1.0
         mc.build_trainer(child_model)

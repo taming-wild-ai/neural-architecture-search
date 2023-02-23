@@ -9,7 +9,7 @@ from src.cifar10.micro_child import MicroChild
 from src.cifar10.macro_child import MacroChild
 
 class TestParameterCounts(unittest.TestCase):
-    @patch('src.cifar10.models.print')
+    @patch('src.cifar10.child.print')
     @patch('src.cifar10.macro_child.print')
     def test_macro_final_params(self, print, print2):
         IMAGES = {
@@ -65,7 +65,7 @@ class TestParameterCounts(unittest.TestCase):
             print2.assert_any_call("Build data ops")
             print.assert_called_with("Model has 42559392 params")
 
-    @patch('src.cifar10.models.print')
+    @patch('src.cifar10.child.print')
     @patch('src.cifar10.macro_child.print')
     def test_macro_search_params(self, print, print2):
         IMAGES = {
@@ -121,7 +121,7 @@ class TestParameterCounts(unittest.TestCase):
             print2.assert_any_call("Build data ops")
             print.assert_called_with("Model has 810756 params")
 
-    @patch('src.cifar10.models.print')
+    @patch('src.cifar10.child.print')
     @patch('src.cifar10.micro_child.print')
     def test_micro_final_params(self, print, print2):
         IMAGES = {
@@ -166,7 +166,7 @@ class TestParameterCounts(unittest.TestCase):
             print.assert_any_call("Aux head uses 494848 params")
             print.assert_any_call("Model has 3894372 params")
 
-    @patch('src.cifar10.models.print')
+    @patch('src.cifar10.child.print')
     @patch('src.cifar10.micro_child.print')
     def test_micro_search_params(self, print, print2):
         IMAGES = {

@@ -22,65 +22,14 @@ from src.cifar10.macro_child import MacroChild
 from src.cifar10.micro_controller import MicroController
 from src.cifar10.micro_child import MicroChild
 
-FLAGS = fw.flags.FLAGS
-
 DEFINE_boolean("reset_output_dir", False, "Delete output_dir if exists.")
 DEFINE_string("data_path", "", "")
 DEFINE_string("output_dir", "", "")
-DEFINE_string("data_format", "NHWC", "'NHWC' or 'NCWH'")
-DEFINE_string("search_for", None, "Must be [macro|micro]")
 
-DEFINE_integer("batch_size", 32, "")
-
-DEFINE_integer("num_epochs", 300, "")
-DEFINE_integer("child_lr_dec_every", 100, "")
-DEFINE_integer("child_num_layers", 5, "")
-DEFINE_integer("child_num_cells", 5, "")
-DEFINE_integer("child_filter_size", 5, "")
-DEFINE_integer("child_out_filters", 48, "")
-DEFINE_integer("child_out_filters_scale", 1, "")
-DEFINE_integer("child_num_branches", 4, "")
-DEFINE_integer("child_num_aggregate", None, "")
-DEFINE_integer("child_num_replicas", 1, "")
-DEFINE_integer("child_block_size", 3, "")
-DEFINE_integer("child_lr_T_0", None, "for lr schedule")
-DEFINE_integer("child_lr_T_mul", None, "for lr schedule")
-DEFINE_integer("child_cutout_size", None, "CutOut size")
-DEFINE_float("child_grad_bound", 5.0, "Gradient clipping")
-DEFINE_float("child_lr", 0.1, "")
-DEFINE_float("child_lr_dec_rate", 0.1, "")
-DEFINE_float("child_keep_prob", 0.5, "")
-DEFINE_float("child_drop_path_keep_prob", 1.0, "minimum drop_path_keep_prob")
-DEFINE_float("child_l2_reg", 1e-4, "")
-DEFINE_float("child_lr_max", None, "for lr schedule")
-DEFINE_float("child_lr_min", None, "for lr schedule")
-DEFINE_string("child_skip_pattern", None, "Must be ['dense', None]")
-DEFINE_string("child_fixed_arc", None, "")
-DEFINE_boolean("child_use_aux_heads", False, "Should we use an aux head")
-DEFINE_boolean("child_sync_replicas", False, "To sync or not to sync.")
-DEFINE_boolean("child_lr_cosine", False, "Use cosine lr schedule")
-
-DEFINE_float("controller_lr", 1e-3, "")
-DEFINE_float("controller_lr_dec_rate", 1.0, "")
-DEFINE_float("controller_keep_prob", 0.5, "")
-DEFINE_float("controller_l2_reg", 0.0, "")
-DEFINE_float("controller_bl_dec", 0.99, "")
-DEFINE_float("controller_tanh_constant", None, "")
-DEFINE_float("controller_op_tanh_reduce", 1.0, "")
-DEFINE_float("controller_temperature", None, "")
-DEFINE_float("controller_entropy_weight", None, "")
-DEFINE_float("controller_skip_target", 0.8, "")
-DEFINE_float("controller_skip_weight", 0.0, "")
-DEFINE_integer("controller_num_aggregate", 1, "")
-DEFINE_integer("controller_num_replicas", 1, "")
 DEFINE_integer("controller_train_steps", 50, "")
-DEFINE_integer("controller_forwards_limit", 2, "")
 DEFINE_integer("controller_train_every", 2,
                "train the controller after this number of epochs")
-DEFINE_boolean("controller_search_whole_channels", False, "")
-DEFINE_boolean("controller_sync_replicas", False, "To sync or not to sync.")
 DEFINE_boolean("controller_training", True, "")
-DEFINE_boolean("controller_use_critic", False, "")
 
 DEFINE_integer("log_every", 50, "How many steps to log")
 DEFINE_integer("eval_every_epochs", 1, "How many epochs to eval")
@@ -91,7 +40,7 @@ def get_ops(images, labels):
     images: dict with keys {"train", "valid", "test"}.
     labels: dict with keys {"train", "valid", "test"}.
   """
-
+  FLAGS = fw.FLAGS
   assert FLAGS.search_for is not None, "Please specify --search_for"
 
   if FLAGS.search_for == "micro":
@@ -104,64 +53,17 @@ def get_ops(images, labels):
   child_model = ChildClass(
     images,
     labels,
-    use_aux_heads=FLAGS.child_use_aux_heads,
-    cutout_size=FLAGS.child_cutout_size,
-    whole_channels=FLAGS.controller_search_whole_channels,
-    num_layers=FLAGS.child_num_layers,
-    num_cells=FLAGS.child_num_cells,
-    num_branches=FLAGS.child_num_branches,
-    fixed_arc=FLAGS.child_fixed_arc,
-    out_filters_scale=FLAGS.child_out_filters_scale,
-    out_filters=FLAGS.child_out_filters,
-    keep_prob=FLAGS.child_keep_prob,
-    drop_path_keep_prob=FLAGS.child_drop_path_keep_prob,
-    num_epochs=FLAGS.num_epochs,
-    l2_reg=FLAGS.child_l2_reg,
-    data_format=FLAGS.data_format,
-    batch_size=FLAGS.batch_size,
     clip_mode="norm",
-    grad_bound=FLAGS.child_grad_bound,
-    lr_init=FLAGS.child_lr,
-    lr_dec_every=FLAGS.child_lr_dec_every,
-    lr_dec_rate=FLAGS.child_lr_dec_rate,
-    lr_cosine=FLAGS.child_lr_cosine,
-    lr_max=FLAGS.child_lr_max,
-    lr_min=FLAGS.child_lr_min,
-    lr_T_0=FLAGS.child_lr_T_0,
-    lr_T_mul=FLAGS.child_lr_T_mul,
-    optim_algo="momentum",
-    sync_replicas=FLAGS.child_sync_replicas,
-    num_aggregate=FLAGS.child_num_aggregate,
-    num_replicas=FLAGS.child_num_replicas,
-  )
+    optim_algo="momentum")
 
   if FLAGS.child_fixed_arc is None:
     controller_model = ControllerClass(
-      search_for=FLAGS.search_for,
-      search_whole_channels=FLAGS.controller_search_whole_channels,
-      skip_target=FLAGS.controller_skip_target,
-      skip_weight=FLAGS.controller_skip_weight,
-      num_cells=FLAGS.child_num_cells,
-      num_layers=FLAGS.child_num_layers,
-      num_branches=FLAGS.child_num_branches,
-      out_filters=FLAGS.child_out_filters,
       lstm_size=64,
       lstm_num_layers=1,
       lstm_keep_prob=1.0,
-      tanh_constant=FLAGS.controller_tanh_constant,
-      op_tanh_reduce=FLAGS.controller_op_tanh_reduce,
-      temperature=FLAGS.controller_temperature,
-      lr_init=FLAGS.controller_lr,
       lr_dec_start=0,
       lr_dec_every=1000000,  # never decrease learning rate
-      l2_reg=FLAGS.controller_l2_reg,
-      entropy_weight=FLAGS.controller_entropy_weight,
-      bl_dec=FLAGS.controller_bl_dec,
-      use_critic=FLAGS.controller_use_critic,
-      optim_algo="adam",
-      sync_replicas=FLAGS.controller_sync_replicas,
-      num_aggregate=FLAGS.controller_num_aggregate,
-      num_replicas=FLAGS.controller_num_replicas)
+      optim_algo="adam")
 
     child_model.connect_controller(controller_model)
     controller_model.build_trainer(child_model)
@@ -204,6 +106,7 @@ def get_ops(images, labels):
 
 
 def train():
+  FLAGS = fw.FLAGS
   if FLAGS.child_fixed_arc is None:
     images, labels = read_data(FLAGS.data_path)
   else:
@@ -320,6 +223,7 @@ def train():
 
 
 def main(_):
+  FLAGS = fw.FLAGS
   print(("-" * 80))
   if not os.path.isdir(FLAGS.output_dir):
     print(("Path {} does not exist. Creating.".format(FLAGS.output_dir)))

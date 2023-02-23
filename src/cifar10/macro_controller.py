@@ -9,71 +9,49 @@ from src.controller import Controller
 from src.utils import get_train_ops
 from src.common_ops import stack_lstm
 
+from src.utils import DEFINE_boolean, DEFINE_float
+
+DEFINE_boolean("controller_search_whole_channels", False, "")
+DEFINE_float("controller_skip_target", 0.8, "")
+DEFINE_float("controller_skip_weight", 0.0, "")
 
 class MacroController(Controller):
   def __init__(self,
-               search_for="both",
-               search_whole_channels=False,
-               num_layers=4,
-               num_branches=6,
-               out_filters=48,
                lstm_size=32,
                lstm_num_layers=2,
                lstm_keep_prob=1.0,
-               tanh_constant=None,
-               temperature=None,
-               lr_init=1e-3,
                lr_dec_start=0,
                lr_dec_every=100,
                lr_dec_rate=0.9,
-               l2_reg=0,
-               entropy_weight=None,
                clip_mode=None,
                grad_bound=None,
-               use_critic=False,
-               bl_dec=0.999,
                optim_algo="adam",
-               sync_replicas=False,
-               num_aggregate=None,
-               num_replicas=None,
-               skip_target=0.8,
-               skip_weight=0.5,
                name="controller",
                *args,
                **kwargs):
-
+    super(MacroController, self).__init__()
+    FLAGS = fw.FLAGS
     print("-" * 80)
     print("Building ConvController")
 
-    self.search_for = search_for
-    self.search_whole_channels = search_whole_channels
-    self.num_layers = num_layers
-    self.num_branches = num_branches
-    self.out_filters = out_filters
+    self.search_whole_channels = FLAGS.controller_search_whole_channels
+    self.num_layers = FLAGS.child_num_layers # 4
+    self.num_branches = FLAGS.child_num_branches # 6
+    self.out_filters = FLAGS.child_out_filters # 48
 
     self.lstm_size = lstm_size
     self.lstm_num_layers = lstm_num_layers
     self.lstm_keep_prob = lstm_keep_prob
-    self.tanh_constant = tanh_constant
-    self.temperature = temperature
-    self.lr_init = lr_init
     self.lr_dec_start = lr_dec_start
     self.lr_dec_every = lr_dec_every
     self.lr_dec_rate = lr_dec_rate
-    self.l2_reg = l2_reg
-    self.entropy_weight = entropy_weight
     self.clip_mode = clip_mode
     self.grad_bound = grad_bound
-    self.use_critic = use_critic
-    self.bl_dec = bl_dec
 
-    self.skip_target = skip_target
-    self.skip_weight = skip_weight
+    self.skip_target = FLAGS.controller_skip_target
+    self.skip_weight = FLAGS.controller_skip_weight
 
     self.optim_algo = optim_algo
-    self.sync_replicas = sync_replicas
-    self.num_aggregate = num_aggregate
-    self.num_replicas = num_replicas
     self.name = name
 
     self._create_params()

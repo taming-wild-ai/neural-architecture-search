@@ -6,28 +6,36 @@ import src.framework as fw
 
 from src.utils import count_model_params
 from src.utils import get_train_ops
+from src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer, DEFINE_string
 
+DEFINE_integer("batch_size", 32, "")
+DEFINE_integer("child_cutout_size", None, "CutOut size")
+DEFINE_integer("child_num_layers", 5, "")
+DEFINE_string("child_fixed_arc", None, "")
+DEFINE_float("child_grad_bound", 5.0, "Gradient clipping")
+DEFINE_float("child_keep_prob", 1.0, "")
+DEFINE_float("child_lr", 0.1, "")
+DEFINE_integer("child_lr_dec_every", 100, "")
+DEFINE_boolean("child_lr_cosine", False, "Use cosine lr schedule")
+DEFINE_float("child_lr_dec_rate", 0.1, "")
+DEFINE_float("child_lr_max", None, "for lr schedule")
+DEFINE_float("child_lr_min", None, "for lr schedule")
+DEFINE_integer("child_lr_T_0", None, "for lr schedule")
+DEFINE_integer("child_lr_T_mul", None, "for lr schedule")
+DEFINE_integer("child_num_aggregate", None, "")
+DEFINE_integer("child_num_replicas", 1, "")
+DEFINE_integer("child_out_filters", 24, "")
+DEFINE_boolean("child_sync_replicas", False, "To sync or not to sync.")
+DEFINE_string("data_format", "NHWC", "'NHWC' or 'NCWH'")
 
-class Model(object):
+class Child(object):
   def __init__(self,
                images,
                labels,
-               cutout_size=None,
-               batch_size=32,
                eval_batch_size=100,
                clip_mode=None,
-               grad_bound=None,
-               l2_reg=1e-4,
-               lr_init=0.1,
                lr_dec_start=0,
-               lr_dec_every=100,
-               lr_dec_rate=0.1,
-               keep_prob=1.0,
                optim_algo=None,
-               sync_replicas=False,
-               num_aggregate=None,
-               num_replicas=None,
-               data_format="NHWC",
                name="generic_model",
                seed=None,
               ):
@@ -35,24 +43,33 @@ class Model(object):
     Args:
       lr_dec_every: number of epochs to decay
     """
+    FLAGS = fw.FLAGS
     print("-" * 80)
     print("Build model {}".format(name))
 
-    self.cutout_size = cutout_size
-    self.batch_size = batch_size
+    self.num_layers = FLAGS.child_num_layers
+    self.cutout_size = FLAGS.child_cutout_size
+    self.fixed_arc = FLAGS.child_fixed_arc
+    self.out_filters = FLAGS.child_out_filters
+    self.batch_size = FLAGS.batch_size
+    self.lr_cosine = FLAGS.child_lr_cosine
+    self.lr_max = FLAGS.child_lr_max
+    self.lr_min = FLAGS.child_lr_min
+    self.lr_T_0 = FLAGS.child_lr_T_0
+    self.lr_T_mul = FLAGS.child_lr_T_mul
     self.eval_batch_size = eval_batch_size
     self.clip_mode = clip_mode
-    self.grad_bound = grad_bound
-    self.l2_reg = l2_reg
-    self.lr_init = lr_init
+    self.grad_bound = FLAGS.child_grad_bound
+    self.l2_reg = FLAGS.child_l2_reg
+    self.lr_init = FLAGS.child_lr
     self.lr_dec_start = lr_dec_start
-    self.lr_dec_rate = lr_dec_rate
-    self.keep_prob = keep_prob
+    self.lr_dec_rate = FLAGS.child_lr_dec_rate
+    self.keep_prob = FLAGS.child_keep_prob
     self.optim_algo = optim_algo
-    self.sync_replicas = sync_replicas
-    self.num_aggregate = num_aggregate
-    self.num_replicas = num_replicas
-    self.data_format = data_format
+    self.sync_replicas = FLAGS.child_sync_replicas
+    self.num_aggregate = FLAGS.child_num_aggregate
+    self.num_replicas = FLAGS.child_num_replicas
+    self.data_format = FLAGS.data_format
     self.name = name
     self.seed = seed
 
@@ -71,7 +88,7 @@ class Model(object):
         self.seed,
         50000
       )
-      self.lr_dec_every = lr_dec_every * self.num_train_batches
+      self.lr_dec_every = FLAGS.child_lr_dec_every * self.num_train_batches
 
       def _pre_process(x):
         x = fw.random_flip_left_right(fw.random_crop(fw.pad(x, [[4, 4], [4, 4], [0, 0]]), [32, 32, 3], seed=self.seed), seed=self.seed)
