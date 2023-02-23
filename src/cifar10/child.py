@@ -14,6 +14,7 @@ DEFINE_integer("child_num_layers", 5, "")
 DEFINE_string("child_fixed_arc", None, "")
 DEFINE_float("child_grad_bound", 5.0, "Gradient clipping")
 DEFINE_float("child_keep_prob", 1.0, "")
+DEFINE_float("child_l2_reg", 1e-4, "")
 DEFINE_float("child_lr", 0.1, "")
 DEFINE_integer("child_lr_dec_every", 100, "")
 DEFINE_boolean("child_lr_cosine", False, "Use cosine lr schedule")
@@ -27,6 +28,127 @@ DEFINE_integer("child_num_replicas", 1, "")
 DEFINE_integer("child_out_filters", 24, "")
 DEFINE_boolean("child_sync_replicas", False, "To sync or not to sync.")
 DEFINE_string("data_format", "NHWC", "'NHWC' or 'NCWH'")
+
+
+class DataFormat(object):
+  class NCHW(object):
+    name = 'NCHW'
+    actual = "channels_first"
+
+    @staticmethod
+    def child_init(input): return fw.transpose(input, [0, 3, 1, 2])
+
+    @staticmethod
+    def child_init_preprocess(input): return fw.transpose(input, [2, 0, 1])
+
+    @staticmethod
+    def get_strides(stride): return [1, 1, stride, stride]
+
+    @staticmethod
+    def factorized_reduction(input):
+      return (
+        fw.pad(input, [[0, 0], [0, 0], [0, 1], [0, 1]])[:, :, 1:, 1:],
+        1)
+
+    @staticmethod
+    def get_N(input): return input.get_shape()[0]
+
+    @staticmethod
+    def get_C(input): return input.get_shape()[1]
+
+    @staticmethod
+    def get_HW(input): return input.get_shape()[2], input.get_shape()[3]
+
+    @staticmethod
+    def set_shape(tensor, h, w, filters) -> None:
+      tensor.set_shape([None, filters, h, w])
+
+    @staticmethod
+    def enas_layer(inp, branches):
+      return fw.reshape(
+        fw.concat(branches, axis=1),
+        [fw.shape(inp)[0], -1, inp.get_shape()[2], inp.get_shape()[3]])
+
+    @staticmethod
+    def fixed_layer(branches): return fw.concat(branches, axis=1)
+
+    @staticmethod
+    def pool_branch(input, start, count): return input[:, :, :, start : start + count]
+
+    @staticmethod
+    def global_avg_pool(input): return fw.reduce_mean(input, [2, 3])
+
+    @staticmethod
+    def micro_enas(input, inp, outputs, filters):
+      n = fw.shape(inp)[0]
+      h = fw.shape(inp)[2]
+      w = fw.shape(inp)[3]
+      return fw.reshape(fw.transpose(input, [1, 0, 2, 3, 4]), [n, outputs * filters, h, w])
+
+
+  class NHWC(object):
+    name = 'NHWC'
+    actual = "channels_last"
+
+    @staticmethod
+    def child_init_preprocess(input): return input
+
+    @staticmethod
+    def child_init(input): return input
+
+    @staticmethod
+    def get_strides(stride): return [1, stride, stride, 1]
+
+    @staticmethod
+    def factorized_reduction(input):
+      return (
+        fw.pad(input, [[0, 0], [0, 1], [0, 1], [0, 0]])[:, 1:, 1:, :],
+        3)
+
+    @staticmethod
+    def get_N(input): return input.get_shape()[0]
+
+    @staticmethod
+    def get_C(input): return input.get_shape()[3]
+
+    @staticmethod
+    def get_HW(input): return input.get_shape()[1], input.get_shape()[2]
+
+    @staticmethod
+    def set_shape(tensor, h, w, filters):
+      tensor.set_shape([None, h, w, filters])
+
+    @staticmethod
+    def enas_layer(_, branches):
+      return fw.concat(branches, axis=3)
+
+    @staticmethod
+    def fixed_layer(branches):
+      return fw.concat(branches, axis=3)
+
+    @staticmethod
+    def pool_branch(input, start, count): return input[:, start : start + count, :, :]
+
+    @staticmethod
+    def global_avg_pool(input): return fw.reduce_mean(input, [1, 2])
+
+    @staticmethod
+    def micro_enas(input, inp, outputs, filters):
+      n = fw.shape(inp)[0]
+      h = fw.shape(inp)[1]
+      w = fw.shape(inp)[2]
+      return fw.reshape(fw.transpose(input, [1, 2, 3, 0, 4]), [n, h, w, outputs * filters])
+
+
+  def __init__(self):
+    raise AttributeError("Use factory method `new` instead.")
+
+  @staticmethod
+  def new(format_str):
+    return {
+      "NCHW": DataFormat.NCHW(),
+      "NHWC": DataFormat.NHWC()
+    }[format_str]
 
 class Child(object):
   def __init__(self,
@@ -69,7 +191,7 @@ class Child(object):
     self.sync_replicas = FLAGS.child_sync_replicas
     self.num_aggregate = FLAGS.child_num_aggregate
     self.num_replicas = FLAGS.child_num_replicas
-    self.data_format = FLAGS.data_format
+    self.data_format = DataFormat.new(FLAGS.data_format)
     self.name = name
     self.seed = seed
 
@@ -107,8 +229,7 @@ class Child(object):
               0),
               x=x,
               y=fw.zeros_like(x))
-        if self.data_format == "NCHW":
-          x = fw.transpose(x, [2, 0, 1])
+        x = self.data_format.child_init_preprocess(x)
 
         return x
       self.x_train = fw.map_fn(_pre_process, x_train, back_prop=False)
@@ -119,8 +240,7 @@ class Child(object):
       if images["valid"] is not None:
         images["valid_original"] = np.copy(images["valid"])
         labels["valid_original"] = np.copy(labels["valid"])
-        if self.data_format == "NCHW":
-          images["valid"] = fw.transpose(images["valid"], [0, 3, 1, 2])
+        images["valid"] = self.data_format.child_init(images["valid"])
         self.num_valid_examples = np.shape(images["valid"])[0]
         self.num_valid_batches = (
           (self.num_valid_examples + self.eval_batch_size - 1)
@@ -131,8 +251,7 @@ class Child(object):
           capacity=5000)
 
       # test data
-      if self.data_format == "NCHW":
-        images["test"] = fw.transpose(images["test"], [0, 3, 1, 2])
+      images["test"] = self.data_format.child_init(images["test"])
       self.num_test_examples = np.shape(images["test"])[0]
       self.num_test_batches = (
         (self.num_test_examples + self.eval_batch_size - 1)
@@ -249,9 +368,8 @@ class Child(object):
     print("Build valid graph on shuffled data")
     with fw.device("/gpu:0"):
       # shuffled valid data: for choosing validation model
-      if not shuffle and self.data_format == "NCHW":
-        self.images["valid_original"] = np.transpose(
-          self.images["valid_original"], [0, 3, 1, 2])
+      if not shuffle:
+        self.images["valid_original"] = self.data_format.child_init(self.images["valid_original"])
       x_valid_shuffle, y_valid_shuffle = fw.shuffle_batch(
         [self.images["valid_original"], self.labels["valid_original"]],
         batch_size=self.batch_size,
@@ -267,8 +385,7 @@ class Child(object):
         x = fw.pad(x, [[4, 4], [4, 4], [0, 0]])
         x = fw.image.random_crop(x, [32, 32, 3], seed=self.seed)
         x = fw.image.random_flip_left_right(x, seed=self.seed)
-        if self.data_format == "NCHW":
-          x = fw.transpose(x, [2, 0, 1])
+        x = self.data_format.child_init_preprocess(x)
 
         return x
 

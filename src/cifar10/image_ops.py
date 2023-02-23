@@ -9,22 +9,8 @@ def drop_path(x, keep_prob):
     [fw.shape(x)[0], 1, 1, 1],
     dtype=fw.float32))
 
-def global_avg_pool(x, data_format="NHWC"):
-  if data_format == "NHWC":
-    return fw.reduce_mean(x, [1, 2])
-  elif data_format == "NCHW":
-    return fw.reduce_mean(x, [2, 3])
-  else:
-    raise NotImplementedError("Unknown data_format {}".format(data_format))
-
-def batch_norm(x, is_training, name="bn", decay=0.9, epsilon=1e-5,
-               data_format="NHWC"):
-  if data_format == "NHWC":
-    shape = [x.get_shape()[3]]
-  elif data_format == "NCHW":
-    shape = [x.get_shape()[1]]
-  else:
-    raise NotImplementedError("Unknown data_format {}".format(data_format))
+def batch_norm(x, is_training, data_format, name="bn", decay=0.9, epsilon=1e-5):
+  shape = [data_format.get_C(x)]
 
   with fw.variable_scope(name, reuse=None if is_training else True):
     offset = fw.create_weight(
@@ -42,7 +28,7 @@ def batch_norm(x, is_training, name="bn", decay=0.9, epsilon=1e-5,
 
     if is_training:
       x, mean, variance = fw.fused_batch_norm(
-        x, scale, offset, epsilon=epsilon, data_format=data_format,
+        x, scale, offset, epsilon=epsilon, data_format=data_format.name,
         is_training=True)
       update_mean = moving_averages.assign_moving_average(
         moving_mean, mean, decay)
@@ -53,7 +39,7 @@ def batch_norm(x, is_training, name="bn", decay=0.9, epsilon=1e-5,
     else:
       x, _, _ = fw.fused_batch_norm(x, scale, offset, mean=moving_mean,
                                        variance=moving_variance,
-                                       epsilon=epsilon, data_format=data_format,
+                                       epsilon=epsilon, data_format=data_format.name,
                                        is_training=False)
   return x
 

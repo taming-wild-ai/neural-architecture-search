@@ -11,7 +11,6 @@ import src.framework as fw
 from src.cifar10.child import Child
 from src.cifar10.image_ops import batch_norm
 from src.cifar10.image_ops import drop_path
-from src.cifar10.image_ops import global_avg_pool
 
 from src.utils import count_model_params
 from src.utils import get_train_ops
@@ -44,12 +43,6 @@ class MicroChild(Child):
       optim_algo=optim_algo,
       name=name)
     FLAGS = fw.FLAGS
-    if self.data_format == "NHWC":
-      self.actual_data_format = "channels_last"
-    elif self.data_format == "NCHW":
-      self.actual_data_format = "channels_first"
-    else:
-      raise ValueError("Unknown data_format '{0}'".format(self.data_format))
 
     self.use_aux_heads = FLAGS.child_use_aux_heads
     self.num_epochs = FLAGS.num_epochs
@@ -75,61 +68,52 @@ class MicroChild(Child):
         "Need even number of filters when using this factorized reduction.")
     if stride == 1:
       with fw.variable_scope("path_conv"):
-        inp_c = self._get_C(x)
-        w = fw.create_weight("w", [1, 1, inp_c, out_filters])
-        x = fw.conv2d(x, w, [1, 1, 1, 1], "SAME",
-                         data_format=self.data_format)
-        x = batch_norm(x, is_training, data_format=self.data_format)
-        return x
+        return batch_norm(
+          fw.conv2d(
+            x,
+            fw.create_weight("w", [1, 1, self.data_format.get_C(x), out_filters]),
+            [1, 1, 1, 1],
+            "SAME",
+            data_format=self.data_format.name),
+          is_training,
+          self.data_format)
 
-    stride_spec = self._get_strides(stride)
+    stride_spec = self.data_format.get_strides(stride)
     # Skip path 1
     path1 = fw.avg_pool(
-        x, [1, 1, 1, 1], stride_spec, "VALID", data_format=self.data_format)
+        x, [1, 1, 1, 1], stride_spec, "VALID", data_format=self.data_format.name)
     with fw.variable_scope("path1_conv"):
-      inp_c = self._get_C(path1)
-      w = fw.create_weight("w", [1, 1, inp_c, out_filters // 2])
-      path1 = fw.conv2d(path1, w, [1, 1, 1, 1], "VALID",
-                           data_format=self.data_format)
+      inp_c = self.data_format.get_C(path1)
+      path1 = fw.conv2d(
+        path1,
+        fw.create_weight("w", [1, 1, inp_c, out_filters // 2]),
+        [1, 1, 1, 1],
+        "VALID",
+        data_format=self.data_format.name)
 
     # Skip path 2
     # First pad with 0"s on the right and bottom, then shift the filter to
     # include those 0"s that were added.
-    if self.data_format == "NHWC":
-      pad_arr = [[0, 0], [0, 1], [0, 1], [0, 0]]
-      path2 = fw.pad(x, pad_arr)[:, 1:, 1:, :]
-      concat_axis = 3
-    else:
-      pad_arr = [[0, 0], [0, 0], [0, 1], [0, 1]]
-      path2 = fw.pad(x, pad_arr)[:, :, 1:, 1:]
-      concat_axis = 1
+    path2, concat_axis = self.data_format.factorized_reduction(x)
 
     path2 = fw.avg_pool(
-        path2, [1, 1, 1, 1], stride_spec, "VALID", data_format=self.data_format)
+        path2, [1, 1, 1, 1], stride_spec, "VALID", data_format=self.data_format.name)
     with fw.variable_scope("path2_conv"):
-      inp_c = self._get_C(path2)
-      w = fw.create_weight("w", [1, 1, inp_c, out_filters // 2])
-      path2 = fw.conv2d(path2, w, [1, 1, 1, 1], "VALID",
-                           data_format=self.data_format)
+      inp_c = self.data_format.get_C(path2)
+      path2 = fw.conv2d(
+        path2,
+        fw.create_weight("w", [1, 1, inp_c, out_filters // 2]),
+        [1, 1, 1, 1],
+        "VALID",
+        data_format=self.data_format.name)
 
     # Concat and apply BN
-    final_path = fw.concat(values=[path1, path2], axis=concat_axis)
-    final_path = batch_norm(final_path, is_training,
-                            data_format=self.data_format)
+    final_path = batch_norm(
+      fw.concat(values=[path1, path2], axis=concat_axis),
+      is_training,
+      self.data_format)
 
     return final_path
-
-  def _get_C(self, x):
-    """
-    Args:
-      x: tensor of shape [N, H, W, C] or [N, C, H, W]
-    """
-    if self.data_format == "NHWC":
-      return x.get_shape()[3]
-    elif self.data_format == "NCHW":
-      return x.get_shape()[1]
-    else:
-      raise ValueError("Unknown data_format '{0}'".format(self.data_format))
 
   def _get_HW(self, x):
     """
@@ -137,18 +121,6 @@ class MicroChild(Child):
       x: tensor of shape [N, H, W, C] or [N, C, H, W]
     """
     return x.get_shape()[2]
-
-  def _get_strides(self, stride):
-    """
-    Args:
-      x: tensor of shape [N, H, W, C] or [N, C, H, W]
-    """
-    if self.data_format == "NHWC":
-      return [1, stride, stride, 1]
-    elif self.data_format == "NCHW":
-      return [1, 1, stride, stride]
-    else:
-      raise ValueError("Unknown data_format '{0}'".format(self.data_format))
 
   def _apply_drop_path(self, x, layer_id):
     drop_path_keep_prob = self.drop_path_keep_prob
@@ -167,7 +139,7 @@ class MicroChild(Child):
     """Makes sure layers[0] and layers[1] have the same shapes."""
 
     hw = [self._get_HW(layer) for layer in layers]
-    c = [self._get_C(layer) for layer in layers]
+    c = [self.data_format.get_C(layer) for layer in layers]
 
     with fw.variable_scope("calibrate"):
       x = layers[0]
@@ -181,8 +153,8 @@ class MicroChild(Child):
           w = fw.create_weight("w", [1, 1, c[0], out_filters])
           x = fw.relu(x)
           x = fw.conv2d(x, w, [1, 1, 1, 1], "SAME",
-                           data_format=self.data_format)
-          x = batch_norm(x, is_training, data_format=self.data_format)
+                           data_format=self.data_format.name)
+          x = batch_norm(x, is_training, self.data_format)
 
       y = layers[1]
       if c[1] != out_filters:
@@ -190,8 +162,8 @@ class MicroChild(Child):
           w = fw.create_weight("w", [1, 1, c[1], out_filters])
           y = fw.relu(y)
           y = fw.conv2d(y, w, [1, 1, 1, 1], "SAME",
-                           data_format=self.data_format)
-          y = batch_norm(y, is_training, data_format=self.data_format)
+                           data_format=self.data_format.name)
+          y = batch_norm(y, is_training, self.data_format)
     return [x, y]
 
   def _model(self, images, is_training, reuse=False):
@@ -205,14 +177,8 @@ class MicroChild(Child):
       with fw.variable_scope("stem_conv"):
         w = fw.create_weight("w", [3, 3, 3, self.out_filters * 3])
         x = fw.conv2d(
-          images, w, [1, 1, 1, 1], "SAME", data_format=self.data_format)
-        x = batch_norm(x, is_training, data_format=self.data_format)
-      if self.data_format == "NHCW":
-        split_axis = 3
-      elif self.data_format == "NCHW":
-        split_axis = 1
-      else:
-        raise ValueError("Unknown data_format '{0}'".format(self.data_format))
+          images, w, [1, 1, 1, 1], "SAME", data_format=self.data_format.name)
+        x = batch_norm(x, is_training, self.data_format)
       layers = [x, x]
 
       # building layers in the micro space
@@ -251,29 +217,26 @@ class MicroChild(Child):
             aux_logits = fw.relu(x)
             aux_logits = fw.avg_pool2d(
               aux_logits, [5, 5], [3, 3], "VALID",
-              data_format=self.actual_data_format)
+              data_format=self.data_format.actual)
             with fw.variable_scope("proj"):
-              inp_c = self._get_C(aux_logits)
+              inp_c = self.data_format.get_C(aux_logits)
               w = fw.create_weight("w", [1, 1, inp_c, 128])
               aux_logits = fw.conv2d(aux_logits, w, [1, 1, 1, 1], "SAME",
-                                        data_format=self.data_format)
-              aux_logits = batch_norm(aux_logits, is_training=True,
-                                      data_format=self.data_format)
+                                        data_format=self.data_format.name)
+              aux_logits = batch_norm(aux_logits, True, self.data_format)
               aux_logits = fw.relu(aux_logits)
 
             with fw.variable_scope("avg_pool"):
-              inp_c = self._get_C(aux_logits)
+              inp_c = self.data_format.get_C(aux_logits)
               hw = self._get_HW(aux_logits)
               w = fw.create_weight("w", [hw, hw, inp_c, 768])
               aux_logits = fw.conv2d(aux_logits, w, [1, 1, 1, 1], "SAME",
-                                        data_format=self.data_format)
-              aux_logits = batch_norm(aux_logits, is_training=True,
-                                      data_format=self.data_format)
+                                        data_format=self.data_format.name)
+              aux_logits = batch_norm(aux_logits, True, self.data_format)
               aux_logits = fw.relu(aux_logits)
 
             with fw.variable_scope("fc"):
-              aux_logits = global_avg_pool(aux_logits,
-                                           data_format=self.data_format)
+              aux_logits = self.data_format.global_avg_pool(aux_logits)
               inp_c = aux_logits.get_shape()[1]
               w = fw.create_weight("w", [inp_c, 10])
               aux_logits = fw.matmul(aux_logits, w)
@@ -285,12 +248,11 @@ class MicroChild(Child):
           self.num_aux_vars = count_model_params(aux_head_variables)
           print("Aux head uses {0} params".format(self.num_aux_vars))
 
-      x = fw.relu(x)
-      x = global_avg_pool(x, data_format=self.data_format)
+      x = self.data_format.global_avg_pool(fw.relu(x))
       if is_training and self.keep_prob is not None and self.keep_prob < 1.0:
         x = fw.dropout(x, self.keep_prob)
       with fw.variable_scope("fc"):
-        inp_c = self._get_C(x)
+        inp_c = self.data_format.get_C(x)
         w = fw.create_weight("w", [inp_c, 10])
         x = fw.matmul(x, w)
     return x
@@ -304,9 +266,9 @@ class MicroChild(Child):
     """
 
     for conv_id in range(stack_convs):
-      inp_c = self._get_C(x)
+      inp_c = self.data_format.get_C(x)
       if conv_id == 0:
-        strides = self._get_strides(stride)
+        strides = self.data_format.get_strides(stride)
       else:
         strides = [1, 1, 1, 1]
 
@@ -318,8 +280,10 @@ class MicroChild(Child):
           x,
           depthwise_filter=w_depthwise,
           pointwise_filter=w_pointwise,
-          strides=strides, padding="SAME", data_format=self.data_format)
-        x = batch_norm(x, is_training, data_format=self.data_format)
+          strides=strides,
+          padding="SAME",
+          data_format=self.data_format.name)
+        x = batch_norm(x, is_training, self.data_format)
 
     return x
 
@@ -348,13 +312,7 @@ class MicroChild(Child):
           else:
             x = layer
           out.append(x)
-
-      if self.data_format == "NHWC":
-        out = fw.concat(out, axis=3)
-      elif self.data_format == "NCHW":
-        out = fw.concat(out, axis=1)
-      else:
-        raise ValueError("Unknown data_format '{0}'".format(self.data_format))
+      out = self.data_format.fixed_layer(out)
 
     return out
 
@@ -373,12 +331,12 @@ class MicroChild(Child):
 
     with fw.variable_scope("layer_base"):
       x = layers[1]
-      inp_c = self._get_C(x)
+      inp_c = self.data_format.get_C(x)
       w = fw.create_weight("w", [1, 1, inp_c, out_filters])
       x = fw.relu(x)
       x = fw.conv2d(x, w, [1, 1, 1, 1], "SAME",
-                       data_format=self.data_format)
-      x = batch_norm(x, is_training, data_format=self.data_format)
+                       data_format=self.data_format.name)
+      x = batch_norm(x, is_training, self.data_format)
       layers[1] = x
 
     used = np.zeros([self.num_cells + 2], dtype=np.int32)
@@ -395,30 +353,30 @@ class MicroChild(Child):
             f_size = f_sizes[x_op]
             x = self._fixed_conv(x, f_size, out_filters, x_stride, is_training)
           elif x_op in [2, 3]:
-            inp_c = self._get_C(x)
+            inp_c = self.data_format.get_C(x)
             if x_op == 2:
               x = fw.avg_pool2d(
                 x, [3, 3], [x_stride, x_stride], "SAME",
-                data_format=self.actual_data_format)
+                data_format=self.data_format.actual)
             else:
               x = fw.max_pool2d(
                 x, [3, 3], [x_stride, x_stride], "SAME",
-                data_format=self.actual_data_format)
+                data_format=self.data_format.actual)
             if inp_c != out_filters:
               w = fw.create_weight("w", [1, 1, inp_c, out_filters])
               x = fw.relu(x)
               x = fw.conv2d(x, w, [1, 1, 1, 1], "SAME",
-                               data_format=self.data_format)
+                               data_format=self.data_format.name)
               x = batch_norm(x, is_training, data_format=self.data_format)
           else:
-            inp_c = self._get_C(x)
+            inp_c = self.data_format.get_C(x)
             if x_stride > 1:
               assert x_stride == 2
               x = self._factorized_reduction(x, out_filters, 2, is_training)
             if inp_c != out_filters:
               w = fw.create_weight("w", [1, 1, inp_c, out_filters])
               x = fw.relu(x)
-              x = fw.conv2d(x, w, [1, 1, 1, 1], "SAME", data_format=self.data_format)
+              x = fw.conv2d(x, w, [1, 1, 1, 1], "SAME", data_format=self.data_format.name)
               x = batch_norm(x, is_training, data_format=self.data_format)
           if (x_op in [0, 1, 2, 3] and
               self.drop_path_keep_prob is not None and
@@ -435,23 +393,23 @@ class MicroChild(Child):
             f_size = f_sizes[y_op]
             y = self._fixed_conv(y, f_size, out_filters, y_stride, is_training)
           elif y_op in [2, 3]:
-            inp_c = self._get_C(y)
+            inp_c = self.data_format.get_C(y)
             if y_op == 2:
               y = fw.avg_pool2d(
                 y, [3, 3], [y_stride, y_stride], "SAME",
-                data_format=self.actual_data_format)
+                data_format=self.data_format.actual)
             else:
               y = fw.max_pool2d(
                 y, [3, 3], [y_stride, y_stride], "SAME",
-                data_format=self.actual_data_format)
+                data_format=self.data_format.actual)
             if inp_c != out_filters:
               w = fw.create_weight("w", [1, 1, inp_c, out_filters])
               y = fw.relu(y)
               y = fw.conv2d(y, w, [1, 1, 1, 1], "SAME",
-                               data_format=self.data_format)
-              y = batch_norm(y, is_training, data_format=self.data_format)
+                               data_format=self.data_format.name)
+              y = batch_norm(y, is_training, self.data_format)
           else:
-            inp_c = self._get_C(y)
+            inp_c = self.data_format.get_C(y)
             if y_stride > 1:
               assert y_stride == 2
               y = self._factorized_reduction(y, out_filters, 2, is_training)
@@ -459,8 +417,8 @@ class MicroChild(Child):
               w = fw.create_weight("w", [1, 1, inp_c, out_filters])
               y = fw.relu(y)
               y = fw.conv2d(y, w, [1, 1, 1, 1], "SAME",
-                               data_format=self.data_format)
-              y = batch_norm(y, is_training, data_format=self.data_format)
+                               data_format=self.data_format.name)
+              y = batch_norm(y, is_training, self.data_format)
 
           if (y_op in [0, 1, 2, 3] and
               self.drop_path_keep_prob is not None and
@@ -481,8 +439,8 @@ class MicroChild(Child):
 
     with fw.variable_scope("avg_pool"):
       avg_pool = fw.avg_pool2d(
-        x, [3, 3], [1, 1], "SAME", data_format=self.actual_data_format)
-      avg_pool_c = self._get_C(avg_pool)
+        x, [3, 3], [1, 1], "SAME", data_format=self.data_format.actual)
+      avg_pool_c = self.data_format.get_C(avg_pool)
       if avg_pool_c != out_filters:
         with fw.variable_scope("conv"):
           w = fw.create_weight(
@@ -491,14 +449,13 @@ class MicroChild(Child):
           w = fw.reshape(w, [1, 1, avg_pool_c, out_filters])
           avg_pool = fw.relu(avg_pool)
           avg_pool = fw.conv2d(avg_pool, w, strides=[1, 1, 1, 1],
-                                  padding="SAME", data_format=self.data_format)
-          avg_pool = batch_norm(avg_pool, is_training=True,
-                                data_format=self.data_format)
+                                  padding="SAME", data_format=self.data_format.name)
+          avg_pool = batch_norm(avg_pool, True, self.data_format)
 
     with fw.variable_scope("max_pool"):
       max_pool = fw.max_pool2d(
-        x, [3, 3], [1, 1], "SAME", data_format=self.actual_data_format)
-      max_pool_c = self._get_C(max_pool)
+        x, [3, 3], [1, 1], "SAME", data_format=self.data_format.actual)
+      max_pool_c = self.data_format.get_C(max_pool)
       if max_pool_c != out_filters:
         with fw.variable_scope("conv"):
           w = fw.create_weight(
@@ -507,20 +464,22 @@ class MicroChild(Child):
           w = fw.reshape(w, [1, 1, max_pool_c, out_filters])
           max_pool = fw.relu(max_pool)
           max_pool = fw.conv2d(max_pool, w, strides=[1, 1, 1, 1],
-                                  padding="SAME", data_format=self.data_format)
-          max_pool = batch_norm(max_pool, is_training=True,
-                                data_format=self.data_format)
+                                  padding="SAME", data_format=self.data_format.name)
+          max_pool = batch_norm(max_pool, True, self.data_format)
 
-    x_c = self._get_C(x)
+    x_c = self.data_format.get_C(x)
     if x_c != out_filters:
       with fw.variable_scope("x_conv"):
-        w = fw.create_weight("w", [num_possible_inputs, x_c * out_filters])
-        w = w[prev_cell]
-        w = fw.reshape(w, [1, 1, x_c, out_filters])
-        x = fw.relu(x)
-        x = fw.conv2d(x, w, strides=[1, 1, 1, 1], padding="SAME",
-                         data_format=self.data_format)
-        x = batch_norm(x, is_training=True, data_format=self.data_format)
+        x = batch_norm(
+          fw.conv2d(
+            fw.relu(x),
+            fw.reshape(fw.create_weight("w", [num_possible_inputs, x_c * out_filters])[prev_cell],
+            [1, 1, x_c, out_filters]),
+          strides=[1, 1, 1, 1],
+          padding="SAME",
+          data_format=self.data_format.name),
+        True,
+        self.data_format)
 
     out = [
       self._enas_conv(x, curr_cell, prev_cell, 3, out_filters),
@@ -543,7 +502,7 @@ class MicroChild(Child):
       for conv_id in range(stack_conv):
         with fw.variable_scope("stack_{0}".format(conv_id)):
           # create params and pick the correct path
-          inp_c = self._get_C(x)
+          inp_c = self.data_format.get_C(x)
           w_depthwise = fw.create_weight(
             "w_depth", [num_possible_inputs, filter_size * filter_size * inp_c])
           w_depthwise = w_depthwise[prev_cell, :]
@@ -573,10 +532,11 @@ class MicroChild(Child):
             x,
             depthwise_filter=w_depthwise,
             pointwise_filter=w_pointwise,
-            strides=[1, 1, 1, 1], padding="SAME",
-            data_format=self.data_format)
+            strides=[1, 1, 1, 1],
+            padding="SAME",
+            data_format=self.data_format.name)
           x, _, _ = fw.fused_batch_norm(
-            x, scale, offset, epsilon=1e-5, data_format=self.data_format,
+            x, scale, offset, epsilon=1e-5, data_format=self.data_format.name,
             is_training=True)
     return x
 
@@ -623,22 +583,7 @@ class MicroChild(Child):
     out = fw.gather(out, indices, axis=0)
 
     inp = prev_layers[0]
-    if self.data_format == "NHWC":
-      N = fw.shape(inp)[0]
-      H = fw.shape(inp)[1]
-      W = fw.shape(inp)[2]
-      C = fw.shape(inp)[3]
-      out = fw.transpose(out, [1, 2, 3, 0, 4])
-      out = fw.reshape(out, [N, H, W, num_outs * out_filters])
-    elif self.data_format == "NCHW":
-      N = fw.shape(inp)[0]
-      C = fw.shape(inp)[1]
-      H = fw.shape(inp)[2]
-      W = fw.shape(inp)[3]
-      out = fw.transpose(out, [1, 0, 2, 3, 4])
-      out = fw.reshape(out, [N, num_outs * out_filters, H, W])
-    else:
-      raise ValueError("Unknown data_format '{0}'".format(self.data_format))
+    out = self.data_format.micro_enas(out, inp, num_outs, out_filters)
 
     with fw.variable_scope("final_conv"):
       w = fw.create_weight("w", [self.num_cells + 2, out_filters * out_filters])
@@ -646,8 +591,8 @@ class MicroChild(Child):
       w = fw.reshape(w, [1, 1, num_outs * out_filters, out_filters])
       out = fw.relu(out)
       out = fw.conv2d(out, w, strides=[1, 1, 1, 1], padding="SAME",
-                         data_format=self.data_format)
-      out = batch_norm(out, is_training=True, data_format=self.data_format)
+                         data_format=self.data_format.name)
+      out = batch_norm(out, True, self.data_format)
 
     out = fw.reshape(out, fw.shape(prev_layers[0]))
 
@@ -733,9 +678,8 @@ class MicroChild(Child):
     print("Build valid graph on shuffled data")
     with fw.device("/gpu:0"):
       # shuffled valid data: for choosing validation model
-      if not shuffle and self.data_format == "NCHW":
-        self.images["valid_original"] = np.transpose(
-          self.images["valid_original"], [0, 3, 1, 2])
+      if not shuffle:
+        self.images["valid_original"] = self.data_format.child_init(self.images['valid_original'])
       x_valid_shuffle, y_valid_shuffle = fw.shuffle_batch(
         [self.images["valid_original"], self.labels["valid_original"]],
         self.batch_size,
@@ -743,12 +687,13 @@ class MicroChild(Child):
         25000)
 
       def _pre_process(x):
-        x = fw.pad(x, [[4, 4], [4, 4], [0, 0]])
-        x = fw.image.random_crop(x, [32, 32, 3], seed=self.seed)
-        x = fw.image.random_flip_left_right(x, seed=self.seed)
-        if self.data_format == "NCHW":
-          x = fw.transpose(x, [2, 0, 1])
-        return x
+        return self.data_format.child_init_preprocess(
+          fw.image.random_flip_left_right(
+            fw.image.random_crop(
+              fw.pad(x, [[4, 4], [4, 4], [0, 0]]),
+              [32, 32, 3],
+              seed=self.seed),
+            seed=self.seed))
 
       if shuffle:
         x_valid_shuffle = fw.map_fn(
