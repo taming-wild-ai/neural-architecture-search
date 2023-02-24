@@ -165,25 +165,29 @@ class TestMacroChild(unittest.TestCase):
         with tf.Graph().as_default():
             self.assertRaises(KeyError, MacroChild, {}, {})
 
-    @patch('src.cifar10.child.Child.__init__', new=mock_init)
+    @patch('src.cifar10.child.Child.__init__', new=mock_init_nhwc)
     @patch('src.cifar10.macro_child.print')
+    @patch('src.cifar10.macro_child.fw.matmul', return_value="matmul")
     @patch('src.cifar10.macro_child.fw.create_weight', return_value="w")
     @patch('src.cifar10.macro_child.fw.conv2d', return_value="conv2d")
     @patch('src.cifar10.macro_child.batch_norm', return_value="final_path")
-    @patch('src.cifar10.macro_child.fw.dropout')
-    def test_model_nhwc_KNOWN_TO_FAIL(self, dropout, batch_norm, conv2d, create_weight, _print):
+    @patch('src.cifar10.macro_child.fw.dropout', return_value="dropout")
+    def test_model_nhwc(self, dropout, batch_norm, conv2d, create_weight, matmul, _print):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
         mc.name = "generic_model"
         mc.keep_prob = 0.9
-        with patch.object(mc.data_format, 'global_avg_pool') as global_avg_pool:
-            with patch.object(mc, '_enas_layer') as enas_layer:
-                mc._model({}, True)
-                create_weight.assert_called_with("w", [3, 3, 3, 4])
-                conv2d.assert_called()
-                enas_layer.assert_called_with(0, 0, 0, 0, True)
-                global_avg_pool.assert_called_with(None, data_format="NHWC")
-                dropout.assert_called_with(None, 0.9)
+        with patch.object(mc.data_format, 'global_avg_pool', return_value='gap') as global_avg_pool:
+            with patch.object(mc.data_format, 'get_C', return_value=3):
+                with patch.object(mc, '_enas_layer', return_value="enas_layer") as enas_layer:
+                    mc._model({}, True)
+                    create_weight.assert_any_call("w", [3, 3, 3, 24])
+                    conv2d.assert_called()
+                    enas_layer.assert_called_with(1, ['final_path', 'enas_layer', 'enas_layer'], 18, 24, True)
+                    global_avg_pool.assert_called_with('enas_layer')
+                    dropout.assert_called_with('gap', 0.9)
+                    create_weight.assert_called_with("w", [3, 10])
+                    matmul.assert_called_with("dropout", "w")
 
     @patch('src.cifar10.macro_child.print')
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
