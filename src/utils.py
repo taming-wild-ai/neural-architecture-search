@@ -77,7 +77,6 @@ def get_train_ops(
     tf_variables,
     train_step,
     clip_mode=None,
-    grad_bound=None,
     l2_reg=1e-4,
     lr_warmup_val=None,
     lr_warmup_steps=100,
@@ -122,21 +121,7 @@ def get_train_ops(
     else:
       grad_norms[v.name] = fw.sqrt(fw.reduce_sum(g ** 2))
 
-  if clip_mode is not None:
-    assert grad_bound is not None, "Need grad_bound to clip gradients."
-    if clip_mode == "global":
-      grads, _ = fw.clip_by_global_norm(grads, grad_bound)
-    elif clip_mode == "norm":
-      clipped = []
-      for g in grads:
-        if isinstance(g, fw.IndexedSlices):
-          c_g = fw.IndexedSlices(g.indices, fw.clip_by_norm(g.values, grad_bound))
-        else:
-          c_g = fw.clip_by_norm(g, grad_bound)
-        clipped.append(g)
-      grads = clipped
-    else:
-      raise NotImplementedError("Unknown clip_mode {}".format(clip_mode))
+  grads = clip_mode.clip(grads)
 
   if lr_cosine:
     assert lr_max is not None, "Need lr_max to use lr_cosine"

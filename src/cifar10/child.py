@@ -30,6 +30,52 @@ DEFINE_boolean("child_sync_replicas", False, "To sync or not to sync.")
 DEFINE_string("data_format", "NHWC", "'NHWC' or 'NCWH'")
 
 
+class ClipMode(object):
+  class Null:
+    def __init__(self, _):
+      pass
+
+    def clip(self, grads):
+      return grads
+
+
+  class Global:
+    def __init__(self, bound):
+      self.bound = bound
+
+    def clip(self, grads):
+      grads, _ = fw.clip_by_global_norm(grads, self.bound)
+      return grads
+
+
+  class Norm:
+    def __init__(self, bound):
+      self.bound = bound
+
+    def clip(self, grads):
+      clipped = []
+      for g in grads:
+        if isinstance(g, fw.IndexedSlices):
+          c_g = fw.IndexedSlices(g.indices, fw.clip_by_norm(g.values, self.bound))
+        else:
+          c_g = fw.clip_by_norm(g, self.bound)
+        clipped.append(c_g)
+      return clipped
+
+
+  def __init__(self):
+    raise AttributeError("Use factory method `new` instead.")
+
+  @staticmethod
+  def new(mode, bound):
+    assert bound is not None, "Need grad_bound to clip gradients."
+    return {
+      "global": ClipMode.Global(bound),
+      "norm": ClipMode.Norm(bound),
+      None: ClipMode.Null(bound)
+    }[mode]
+
+
 class DataFormat(object):
   class NCHW(object):
     name = 'NCHW'
@@ -180,8 +226,7 @@ class Child(object):
     self.lr_T_0 = FLAGS.child_lr_T_0
     self.lr_T_mul = FLAGS.child_lr_T_mul
     self.eval_batch_size = eval_batch_size
-    self.clip_mode = clip_mode
-    self.grad_bound = FLAGS.child_grad_bound
+    self.clip_mode = ClipMode.new(clip_mode, FLAGS.child_grad_bound)
     self.l2_reg = FLAGS.child_l2_reg
     self.lr_init = FLAGS.child_lr
     self.lr_dec_start = lr_dec_start
@@ -312,11 +357,7 @@ class Child(object):
       logits=logits, labels=self.y_train)
     self.loss = fw.reduce_mean(log_probs)
 
-    self.train_preds = fw.argmax(logits, axis=1)
-    self.train_preds = fw.to_int32(self.train_preds)
-    self.train_acc = fw.equal(self.train_preds, self.y_train)
-    self.train_acc = fw.to_int32(self.train_acc)
-    self.train_acc = fw.reduce_sum(self.train_acc)
+    self.train_acc = fw.reduce_sum(fw.to_int32(fw.equal(fw.to_int32(fw.argmax(logits, axis=1)), self.y_train)))
 
     tf_variables = [var
         for var in fw.trainable_variables() if var.name.startswith(self.name)]
@@ -331,7 +372,6 @@ class Child(object):
       tf_variables,
       self.global_step,
       clip_mode=self.clip_mode,
-      grad_bound=self.grad_bound,
       l2_reg=self.l2_reg,
       lr_init=self.lr_init,
       lr_dec_start=self.lr_dec_start,

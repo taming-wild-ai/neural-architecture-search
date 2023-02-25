@@ -603,23 +603,17 @@ class MicroChild(Child):
     print("-" * 80)
     print("Build train graph")
     logits = self._model(self.x_train, is_training=True)
-    log_probs = fw.sparse_softmax_cross_entropy_with_logits(
-      logits=logits, labels=self.y_train)
-    self.loss = fw.reduce_mean(log_probs)
+    self.loss = fw.reduce_mean(fw.sparse_softmax_cross_entropy_with_logits(
+      logits=logits, labels=self.y_train))
 
     if self.use_aux_heads:
-      log_probs = fw.sparse_softmax_cross_entropy_with_logits(
-        logits=self.aux_logits, labels=self.y_train)
-      self.aux_loss = fw.reduce_mean(log_probs)
+      self.aux_loss = fw.reduce_mean(fw.sparse_softmax_cross_entropy_with_logits(
+        logits=self.aux_logits, labels=self.y_train))
       train_loss = self.loss + 0.4 * self.aux_loss
     else:
       train_loss = self.loss
 
-    self.train_preds = fw.argmax(logits, axis=1)
-    self.train_preds = fw.to_int32(self.train_preds)
-    self.train_acc = fw.equal(self.train_preds, self.y_train)
-    self.train_acc = fw.to_int32(self.train_acc)
-    self.train_acc = fw.reduce_sum(self.train_acc)
+    self.train_acc = fw.reduce_sum(fw.to_int32(fw.equal(fw.to_int32(fw.argmax(logits, axis=1)), self.y_train)))
 
     tf_variables = [
       var for var in fw.trainable_variables() if (
@@ -632,7 +626,6 @@ class MicroChild(Child):
       tf_variables,
       self.global_step,
       clip_mode=self.clip_mode,
-      grad_bound=self.grad_bound,
       l2_reg=self.l2_reg,
       lr_init=self.lr_init,
       lr_dec_start=self.lr_dec_start,

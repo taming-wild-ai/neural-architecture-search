@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import sys
 
 import numpy as np
@@ -28,12 +27,7 @@ class MacroChild(Child):
                lr_min=None,
                optim_algo=None,
                name="child",
-               *args,
-               **kwargs
               ):
-    """
-    """
-
     super(self.__class__, self).__init__(
       images,
       labels,
@@ -532,9 +526,8 @@ class MacroChild(Child):
         logits=logits,
         labels=self.y_train))
 
-    self.train_preds = fw.to_int32(fw.argmax(logits, axis=1))
     self.train_acc = fw.reduce_sum(
-      fw.to_int32(fw.equal(self.train_preds, self.y_train)))
+      fw.to_int32(fw.equal(fw.to_int32(fw.argmax(logits, axis=1)), self.y_train)))
 
     tf_variables = [var
         for var in fw.trainable_variables() if var.name.startswith(self.name)]
@@ -547,7 +540,6 @@ class MacroChild(Child):
       tf_variables,
       self.global_step,
       clip_mode=self.clip_mode,
-      grad_bound=self.grad_bound,
       l2_reg=self.l2_reg,
       lr_init=self.lr_init,
       lr_dec_start=self.lr_dec_start,
@@ -569,21 +561,21 @@ class MacroChild(Child):
     if self.x_valid is not None:
       print("-" * 80)
       print("Build valid graph")
-      self.valid_preds = fw.argmax(self._model(self.x_valid, False, reuse=True), axis=1)
-      self.valid_preds = fw.to_int32(self.valid_preds)
-      self.valid_acc = fw.equal(self.valid_preds, self.y_valid)
-      self.valid_acc = fw.to_int32(self.valid_acc)
-      self.valid_acc = fw.reduce_sum(self.valid_acc)
+      self.valid_preds = fw.to_int32(
+        fw.argmax(
+          self._model(self.x_valid, False, reuse=True),
+          axis=1))
+      self.valid_acc = fw.reduce_sum(
+        fw.to_int32(
+          fw.equal(self.valid_preds, self.y_valid)))
 
   # override
   def _build_test(self):
     print("-" * 80)
     print("Build test graph")
-    self.test_preds = fw.argmax(self._model(self.x_test, False, reuse=True), axis=1)
-    self.test_preds = fw.to_int32(self.test_preds)
-    self.test_acc = fw.equal(self.test_preds, self.y_test)
-    self.test_acc = fw.to_int32(self.test_acc)
-    self.test_acc = fw.reduce_sum(self.test_acc)
+    self.test_preds = fw.to_int32(
+      fw.argmax(self._model(self.x_test, False, reuse=True), axis=1))
+    self.test_acc = fw.reduce_sum(fw.to_int32(fw.equal(self.test_preds, self.y_test)))
 
   # override
   def build_valid_rl(self, shuffle=False):
