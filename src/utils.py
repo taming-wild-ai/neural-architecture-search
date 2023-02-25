@@ -76,20 +76,11 @@ def get_train_ops(
     loss,
     tf_variables,
     train_step,
+    updater,
     clip_mode=None,
     l2_reg=1e-4,
     lr_warmup_val=None,
     lr_warmup_steps=100,
-    lr_init=0.1,
-    lr_dec_start=0,
-    lr_dec_every=10000,
-    lr_dec_rate=0.1,
-    lr_dec_min=None,
-    lr_cosine=False,
-    lr_max=None,
-    lr_min=None,
-    lr_T_0=None,
-    lr_T_mul=None,
     num_train_batches=None,
     optim_algo=None,
     moving_average=None,
@@ -120,37 +111,7 @@ def get_train_ops(
 
   grads = clip_mode.clip(grads)
 
-  if lr_cosine:
-    assert lr_max is not None, "Need lr_max to use lr_cosine"
-    assert lr_min is not None, "Need lr_min to use lr_cosine"
-    assert lr_T_0 is not None, "Need lr_T_0 to use lr_cosine"
-    assert lr_T_mul is not None, "Need lr_T_mul to use lr_cosine"
-    assert num_train_batches is not None, ("Need num_train_batches to use"
-                                           " lr_cosine")
-
-    curr_epoch = train_step // num_train_batches
-
-    last_reset = fw.Variable(0, dtype=fw.int64, name="last_reset")
-    T_i = fw.Variable(lr_T_0, dtype=fw.int64, name="T_i")
-    T_curr = curr_epoch - last_reset
-
-    def _update():
-      with fw.control_dependencies([
-        fw.assign(last_reset, curr_epoch),
-        fw.assign(T_i, T_i * lr_T_mul)]):
-        return lr_min + 0.5 * (lr_max - lr_min) * (1.0 + fw.cos(fw.to_float(T_curr) / fw.to_float(T_i) * 3.1415926))
-
-    def _no_update():
-      return lr_min + 0.5 * (lr_max - lr_min) * (1.0 + fw.cos(fw.to_float(T_curr) / fw.to_float(T_i) * 3.1415926))
-
-    learning_rate = fw.cond(
-      fw.greater_equal(T_curr, T_i), _update, _no_update)
-  else:
-    learning_rate = fw.exp_decay(
-      lr_init, fw.maximum(train_step - lr_dec_start, 0), lr_dec_every,
-      lr_dec_rate, staircase=True)
-    if lr_dec_min is not None:
-      learning_rate = fw.maximum(learning_rate, lr_dec_min)
+  learning_rate = updater.update(num_train_batches, train_step)
 
   if lr_warmup_val is not None:
     learning_rate = fw.cond(fw.less(train_step, lr_warmup_steps),

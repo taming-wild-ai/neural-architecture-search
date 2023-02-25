@@ -625,17 +625,9 @@ class MicroChild(Child):
       train_loss,
       tf_variables,
       self.global_step,
+      self.learning_rate,
       clip_mode=self.clip_mode,
       l2_reg=self.l2_reg,
-      lr_init=self.lr_init,
-      lr_dec_start=self.lr_dec_start,
-      lr_dec_every=self.lr_dec_every,
-      lr_dec_rate=self.lr_dec_rate,
-      lr_cosine=self.lr_cosine,
-      lr_max=self.lr_max,
-      lr_min=self.lr_min,
-      lr_T_0=self.lr_T_0,
-      lr_T_mul=self.lr_T_mul,
       num_train_batches=self.num_train_batches,
       optim_algo=self.optim_algo)
 

@@ -30,6 +30,69 @@ DEFINE_boolean("child_sync_replicas", False, "To sync or not to sync.")
 DEFINE_string("data_format", "NHWC", "'NHWC' or 'NCWH'")
 
 
+class LearningRate(object):
+  class Cosine(object):
+    def __init__(self, max, min, T_0, mul):
+      assert max is not None, "Need lr_max to use lr_cosine"
+      assert min is not None, "Need lr_min to use lr_cosine"
+      assert T_0 is not None, "Need lr_T_0 to use lr_cosine"
+      assert mul is not None, "Need lr_T_mul to use lr_cosine"
+      self.max = max
+      self.min = min
+      self.T_0 = T_0
+      self.mul = mul
+
+    def update(self, num_train_batches, train_step):
+      assert num_train_batches is not None, ("Need num_train_batches to use"
+                                           " lr_cosine")
+
+      curr_epoch = train_step // num_train_batches
+
+      last_reset = fw.Variable(0, dtype=fw.int64, name="last_reset")
+      T_i = fw.Variable(self.T_0, dtype=fw.int64, name="T_i")
+      T_curr = curr_epoch - last_reset
+
+      def _update():
+        with fw.control_dependencies([
+          fw.assign(last_reset, curr_epoch),
+          fw.assign(T_i, T_i * self.mul)]):
+          return self.min + 0.5 * (self.max - self.min) * (1.0 + fw.cos(fw.to_float(T_curr) / fw.to_float(T_i) * 3.1415926))
+
+      def _no_update():
+        return self.min + 0.5 * (self.max - self.min) * (1.0 + fw.cos(fw.to_float(T_curr) / fw.to_float(T_i) * 3.1415926))
+
+      return fw.cond(
+        fw.greater_equal(T_curr, T_i), _update, _no_update)
+
+  class Regular(object):
+    def __init__(self, init, start, every, rate, dec_min):
+      self.init = init
+      self.start = start
+      self.every = every
+      self.rate = rate
+      self.dec_min = dec_min
+
+    def update(self, _, train_step):
+      learning_rate = fw.exp_decay(
+        self.init, fw.maximum(train_step - self.start, 0), self.every,
+        self.rate, staircase=True)
+      if self.dec_min is not None:
+        learning_rate = fw.maximum(learning_rate, self.dec_min)
+      return learning_rate
+
+  def __init__(self):
+    raise AttributeError("Use factory method `new` instead.")
+
+  @staticmethod
+  def new(cosine, init, start, every, rate, dec_min, max, min, T_0, mul):
+    if True == cosine:
+      return LearningRate.Cosine(max, min, T_0, mul)
+    elif False == cosine:
+      return LearningRate.Regular(init, start, every, rate, dec_min)
+    else:
+      raise KeyError("cosine must be True or False")
+
+
 class Optimizer(object):
   class Momentum:
     def __init__(self, sync, aggregates, replicas):
@@ -256,6 +319,7 @@ class DataFormat(object):
       "NHWC": DataFormat.NHWC()
     }[format_str]
 
+
 class Child(object):
   def __init__(self,
                images,
@@ -280,17 +344,10 @@ class Child(object):
     self.fixed_arc = FLAGS.child_fixed_arc
     self.out_filters = FLAGS.child_out_filters
     self.batch_size = FLAGS.batch_size
-    self.lr_cosine = FLAGS.child_lr_cosine
-    self.lr_max = FLAGS.child_lr_max
-    self.lr_min = FLAGS.child_lr_min
-    self.lr_T_0 = FLAGS.child_lr_T_0
-    self.lr_T_mul = FLAGS.child_lr_T_mul
+
     self.eval_batch_size = eval_batch_size
     self.clip_mode = ClipMode.new(clip_mode, FLAGS.child_grad_bound)
     self.l2_reg = FLAGS.child_l2_reg
-    self.lr_init = FLAGS.child_lr
-    self.lr_dec_start = lr_dec_start
-    self.lr_dec_rate = FLAGS.child_lr_dec_rate
     self.keep_prob = FLAGS.child_keep_prob
     self.optim_algo = Optimizer.new(optim_algo, FLAGS.child_sync_replicas, FLAGS.child_num_aggregate, FLAGS.child_num_replicas)
     self.data_format = DataFormat.new(FLAGS.data_format)
@@ -312,7 +369,18 @@ class Child(object):
         self.seed,
         50000
       )
-      self.lr_dec_every = FLAGS.child_lr_dec_every * self.num_train_batches
+
+      self.learning_rate = LearningRate.new(
+        FLAGS.child_lr_cosine,
+        FLAGS.child_lr,
+        lr_dec_start,
+        FLAGS.child_lr_dec_every * self.num_train_batches,
+        FLAGS.child_lr_dec_rate,
+        None,
+        FLAGS.child_lr_max,
+        FLAGS.child_lr_min,
+        FLAGS.child_lr_T_0,
+        FLAGS.child_lr_T_mul)
 
       def _pre_process(x):
         x = fw.random_flip_left_right(fw.random_crop(fw.pad(x, [[4, 4], [4, 4], [0, 0]]), [32, 32, 3], seed=self.seed), seed=self.seed)
@@ -428,12 +496,9 @@ class Child(object):
       self.loss,
       tf_variables,
       self.global_step,
+      self.learning_rate,
       clip_mode=self.clip_mode,
       l2_reg=self.l2_reg,
-      lr_init=self.lr_init,
-      lr_dec_start=self.lr_dec_start,
-      lr_dec_every=self.lr_dec_every,
-      lr_dec_rate=self.lr_dec_rate,
       optim_algo=self.optim_algo)
 
   def _build_valid(self):

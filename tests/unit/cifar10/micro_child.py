@@ -17,11 +17,7 @@ def mock_init_nhwc(self, images, labels, **kwargs):
     self.num_epochs = 310
     self.fixed_arc = None
     self.out_filters = 24
-    self.lr_cosine = False
-    self.lr_max = None
-    self.lr_min = None
-    self.lr_T_0 = None
-    self.lr_T_mul = None
+    self.learning_rate = mock.MagicMock()
 
 def mock_init_nchw(self, images, labels, **kwargs):
     self.data_format = DataFormat.new("NCHW")
@@ -32,11 +28,7 @@ def mock_init_nchw(self, images, labels, **kwargs):
     self.num_epochs = 310
     self.fixed_arc = None
     self.out_filters = 24
-    self.lr_cosine = False
-    self.lr_max = None
-    self.lr_min = None
-    self.lr_T_0 = None
-    self.lr_T_mul = None
+    self.learning_rate = mock.MagicMock()
 
 def mock_init_invalid_data_format(self, images, labels, **kwargs):
     self.data_format = DataFormat.new("INVALID")

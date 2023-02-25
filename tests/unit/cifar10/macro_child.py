@@ -20,11 +20,7 @@ def mock_init(self, images, labels, **kwargs):
     self.num_train_batches = 1
     self.fixed_arc = None
     self.out_filters = 24
-    self.lr_cosine = False
-    self.lr_max = None
-    self.lr_min = None
-    self.lr_T_0 = None
-    self.lr_T_mul = None
+    self.learning_rate = mock.MagicMock()
 
 def mock_init_nhwc(self, images, labels, **kwargs):
     self.whole_channels = False
@@ -35,11 +31,7 @@ def mock_init_nhwc(self, images, labels, **kwargs):
     self.num_train_batches = 1
     self.fixed_arc = None
     self.out_filters = 24
-    self.lr_cosine = False
-    self.lr_max = None
-    self.lr_min = None
-    self.lr_T_0 = None
-    self.lr_T_mul = None
+    self.learning_rate = mock.MagicMock()
 
 def mock_init_invalid(self, images, labels, **kwargs):
     self.whole_channels = False
