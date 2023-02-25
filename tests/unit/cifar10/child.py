@@ -19,7 +19,7 @@ class TestChild(unittest.TestCase):
         with patch('src.cifar10.child.fw.shuffle_batch', return_value=(x_train, y_train)) as sb:
             with patch('src.cifar10.child.fw.batch', return_value=(x_train, y_train)) as batch:
                 with patch('src.cifar10.child.fw.map_fn', return_value=x_train) as map_fn:
-                    m = Child(x_train, y_train)
+                    m = Child(x_train, y_train, optim_algo="sgd")
                     print.assert_any_call('-' * 80)
                     print.assert_any_call("Build model generic_model")
                     print.assert_any_call("Build data ops")
@@ -37,7 +37,7 @@ class TestChild(unittest.TestCase):
                 with patch('src.cifar10.child.fw.map_fn', return_value=x_train) as map_fn:
                     from src.cifar10.child import fw
                     fw.FLAGS.data_format = "NCHW"
-                    m = Child(x_train, y_train)
+                    m = Child(x_train, y_train, optim_algo="sgd")
                     print.assert_any_call('-' * 80)
                     print.assert_any_call("Build model generic_model")
                     print.assert_any_call("Build data ops")
@@ -53,7 +53,7 @@ class TestChild(unittest.TestCase):
         with patch('src.cifar10.child.fw.shuffle_batch', return_value=(x_train, y_train)) as sb:
             with patch('src.cifar10.child.fw.batch', return_value=(x_train, y_train)) as batch:
                 with patch('src.cifar10.child.fw.map_fn', return_value=x_train) as map_fn:
-                    m = Child(x_train, y_train)
+                    m = Child(x_train, y_train, optim_algo="sgd")
                     print.assert_any_call('-' * 80)
                     print.assert_any_call("Build model generic_model")
                     print.assert_any_call("Build data ops")
@@ -75,7 +75,7 @@ class TestChild(unittest.TestCase):
         with patch('src.cifar10.child.fw.shuffle_batch', return_value=(x_train, y_train)) as sb:
             with patch('src.cifar10.child.fw.batch', return_value=(x_train, y_train)) as batch:
                 with patch('src.cifar10.child.fw.map_fn', return_value=x_train) as map_fn:
-                    m = Child(x_train, y_train)
+                    m = Child(x_train, y_train, optim_algo="sgd")
                     print.assert_any_call('-' * 80)
                     print.assert_any_call("Build model generic_model")
                     print.assert_any_call("Build data ops")
@@ -104,7 +104,7 @@ class TestChild(unittest.TestCase):
         with patch('src.cifar10.child.fw.shuffle_batch', return_value=(x_train, y_train)) as sb:
             with patch('src.cifar10.child.fw.batch', return_value=(x_train, y_train)) as batch:
                 with patch('src.cifar10.child.fw.map_fn', return_value=x_train) as map_fn:
-                    m = Child(x_train, y_train)
+                    m = Child(x_train, y_train, optim_algo="sgd")
                     with patch.object(m, '_model', return_value="model") as model:
                         print.assert_any_call('-' * 80)
                         print.assert_any_call("Build model generic_model")
@@ -134,7 +134,7 @@ class TestChild(unittest.TestCase):
         with patch('src.cifar10.child.fw.shuffle_batch', return_value=(x_train, y_train)) as sb:
             with patch('src.cifar10.child.fw.batch', return_value=(x_train, y_train)) as batch:
                 with patch('src.cifar10.child.fw.map_fn', return_value=x_train) as map_fn:
-                    m = Child(x_train, y_train)
+                    m = Child(x_train, y_train, optim_algo="sgd")
                     with patch.object(m, '_model', return_value="model") as model:
                         print.assert_any_call('-' * 80)
                         print.assert_any_call("Build model generic_model")
@@ -161,7 +161,7 @@ class TestChild(unittest.TestCase):
         with patch('src.cifar10.child.fw.shuffle_batch', return_value=(x_train, y_train)) as sb:
             with patch('src.cifar10.child.fw.batch', return_value=(x_train, y_train)) as batch:
                 with patch('src.cifar10.child.fw.map_fn', return_value=x_train) as map_fn:
-                    m = Child(x_train, y_train)
+                    m = Child(x_train, y_train, optim_algo="sgd")
                     with patch.object(m, '_model', return_value="model") as model:
                         print.assert_any_call('-' * 80)
                         print.assert_any_call("Build model generic_model")
@@ -188,7 +188,7 @@ class TestChild(unittest.TestCase):
         with patch('src.cifar10.child.fw.shuffle_batch', return_value=(x_train, y_train)) as sb:
             with patch('src.cifar10.child.fw.batch', return_value=(x_train, y_train)) as batch:
                 with patch('src.cifar10.child.fw.map_fn', return_value=x_train) as map_fn:
-                    m = Child(x_train, y_train)
+                    m = Child(x_train, y_train, optim_algo="sgd")
                     with patch.object(m, '_model', return_value="model") as model:
                         print.assert_any_call('-' * 80)
                         print.assert_any_call("Build model generic_model")

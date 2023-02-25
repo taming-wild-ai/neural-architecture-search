@@ -637,10 +637,7 @@ class MicroChild(Child):
       lr_T_0=self.lr_T_0,
       lr_T_mul=self.lr_T_mul,
       num_train_batches=self.num_train_batches,
-      optim_algo=self.optim_algo,
-      sync_replicas=self.sync_replicas,
-      num_aggregate=self.num_aggregate,
-      num_replicas=self.num_replicas)
+      optim_algo=self.optim_algo)
 
   # override
   def _build_valid(self):

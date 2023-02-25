@@ -92,11 +92,8 @@ def get_train_ops(
     lr_T_mul=None,
     num_train_batches=None,
     optim_algo=None,
-    sync_replicas=False,
-    num_aggregate=None,
-    num_replicas=None,
-    get_grad_norms=False,
-    moving_average=None):
+    moving_average=None,
+    get_grad_norms=False):
   """
   Args:
     clip_mode: "global", "norm", or None.
@@ -175,25 +172,7 @@ def get_train_ops(
   #         g_2 += g_n
   #   learning_rate = fw.Print(learning_rate, [g_1, g_2, fw.sqrt(g_1 / g_2)],
   #                            message="g_1, g_2, g_1/g_2: ", summarize=5)
-
-  if optim_algo == "momentum":
-    opt = fw.Optimizer.Momentum(learning_rate)
-  elif optim_algo == "sgd":
-    opt = fw.Optimizer.SGD(learning_rate)
-  elif optim_algo == "adam":
-    opt = fw.Optimizer.Adam(learning_rate)
-  else:
-    raise ValueError("Unknown optim_algo {}".format(optim_algo))
-
-  if sync_replicas:
-    assert num_aggregate is not None, "Need num_aggregate to sync."
-    assert num_replicas is not None, "Need num_replicas to sync."
-
-    opt = fw.Optimizer.SyncReplicas(opt, num_aggregate, num_replicas)
-
-  if moving_average is not None:
-    opt = fw.Optimizer.MovingAverage(opt, moving_average)
-
+  opt = optim_algo.get(learning_rate, moving_average)
   train_op = opt.apply_gradients(
     zip(grads, tf_variables), global_step=train_step)
 

@@ -30,6 +30,66 @@ DEFINE_boolean("child_sync_replicas", False, "To sync or not to sync.")
 DEFINE_string("data_format", "NHWC", "'NHWC' or 'NCWH'")
 
 
+class Optimizer(object):
+  class Momentum:
+    def __init__(self, sync, aggregates, replicas):
+      if sync:
+        assert aggregates is not None, "Need num_aggregate to sync."
+        assert replicas is not None, "Need num_replicas to sync."
+      self.sync = sync
+      self.aggregates = aggregates
+      self.replicas = replicas
+
+    def get(self, lr, moving_average):
+      opt = fw.Optimizer.Momentum(lr)
+      if self.sync:
+        opt = fw.Optimizer.SyncReplicas(opt, self.aggregates, self.replicas)
+      if moving_average is not None:
+        opt = fw.Optimizer.MovingAverage(opt, moving_average)
+      return opt
+
+  class SGD:
+    def __init__(self, sync, aggregates, replicas):
+      self.sync = sync
+      self.aggregates = aggregates
+      self.replicas = replicas
+
+    def get(self, lr, moving_average):
+      opt = fw.Optimizer.SGD(lr)
+      if self.sync:
+        opt = fw.Optimizer.SyncReplicas(opt, self.aggregates, self.replicas)
+      if moving_average is not None:
+        opt = fw.Optimizer.MovingAverage(opt, moving_average)
+      return opt
+
+
+  class Adam:
+    def __init__(self, sync, aggregates, replicas):
+      self.sync = sync
+      self.aggregates = aggregates
+      self.replicas = replicas
+
+    def get(self, lr, moving_average):
+      opt = fw.Optimizer.Adam(lr)
+      if self.sync:
+        opt = fw.Optimizer.SyncReplicas(opt, self.aggregates, self.replicas)
+      if moving_average is not None:
+        opt = fw.Optimizer.MovingAverage(opt, moving_average)
+      return opt
+
+
+  def __init__(self):
+    raise AttributeError('Use factory method `new` instead.')
+
+  @staticmethod
+  def new(algo, sync_replicas, num_aggregate, num_replicas):
+    return {
+      "momentum": Optimizer.Momentum(sync_replicas, num_aggregate, num_replicas),
+      "sgd": Optimizer.SGD(sync_replicas, num_aggregate, num_replicas),
+      "adam": Optimizer.Adam(sync_replicas, num_aggregate, num_replicas)
+    }[algo]
+
+
 class ClipMode(object):
   class Null:
     def __init__(self, _):
@@ -232,10 +292,7 @@ class Child(object):
     self.lr_dec_start = lr_dec_start
     self.lr_dec_rate = FLAGS.child_lr_dec_rate
     self.keep_prob = FLAGS.child_keep_prob
-    self.optim_algo = optim_algo
-    self.sync_replicas = FLAGS.child_sync_replicas
-    self.num_aggregate = FLAGS.child_num_aggregate
-    self.num_replicas = FLAGS.child_num_replicas
+    self.optim_algo = Optimizer.new(optim_algo, FLAGS.child_sync_replicas, FLAGS.child_num_aggregate, FLAGS.child_num_replicas)
     self.data_format = DataFormat.new(FLAGS.data_format)
     self.name = name
     self.seed = seed
@@ -377,10 +434,7 @@ class Child(object):
       lr_dec_start=self.lr_dec_start,
       lr_dec_every=self.lr_dec_every,
       lr_dec_rate=self.lr_dec_rate,
-      optim_algo=self.optim_algo,
-      sync_replicas=self.sync_replicas,
-      num_aggregate=self.num_aggregate,
-      num_replicas=self.num_replicas)
+      optim_algo=self.optim_algo)
 
   def _build_valid(self):
     if self.x_valid is not None:

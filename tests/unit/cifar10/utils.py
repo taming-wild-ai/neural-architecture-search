@@ -7,7 +7,7 @@ import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
 
 from src.utils import print_user_flags, Logger, user_flags, get_train_ops
-from src.cifar10.child import ClipMode
+from src.cifar10.child import ClipMode, Optimizer
 
 class TestUtils(unittest.TestCase):
     @patch('src.utils.print')
@@ -19,19 +19,6 @@ class TestUtils(unittest.TestCase):
 
     @patch('src.utils.fw.exp_decay', return_value="exp_decay")
     @patch('src.utils.fw.maximum', return_value="maximum")
-    @patch('src.utils.fw.global_norm', return_value="global_norm")
-    @patch('src.utils.fw.gradients', return_value="gradients")
-    @patch('src.utils.fw.add_n', return_value=1.0)
-    def test_get_train_ops_raises(self, add_n, gradients, global_norm, max, exp_decay):
-        self.assertRaises(ValueError, get_train_ops, 0.0, [], 0, clip_mode=ClipMode.new(None, 0.0), get_grad_norms=True)
-        add_n.assert_called_with([])
-        gradients.assert_called_with(1e-4, [])
-        global_norm.assert_called_with('gradients')
-        max.assert_called_with(0, 0)
-        exp_decay.assert_called_with(0.1, 'maximum', 10000, 0.1, staircase=True)
-
-    @patch('src.utils.fw.exp_decay', return_value="exp_decay")
-    @patch('src.utils.fw.maximum', return_value="maximum")
     @patch('src.utils.fw.sqrt', return_value=0.0)
     @patch('src.utils.fw.global_norm', return_value="global_norm")
     @patch('src.utils.fw.gradients', return_value=[0.0])
@@ -40,7 +27,7 @@ class TestUtils(unittest.TestCase):
         mock_momentum = mock.MagicMock()
         with patch('src.utils.fw.Optimizer.Momentum', return_value=mock_momentum) as mom:
             var = tf.ones((1))
-            get_train_ops(0.0, [var], 0, get_grad_norms=True, optim_algo="momentum", clip_mode=ClipMode.new("global", 0.0))
+            get_train_ops(0.0, [var], 0, get_grad_norms=True, optim_algo=Optimizer.new("momentum", False, 1, 1), clip_mode=ClipMode.new("global", 0.0))
             add_n.assert_called()
             gradients.assert_called_with(1e-4, [var])
             global_norm.assert_called_with([0.0])
@@ -60,7 +47,7 @@ class TestUtils(unittest.TestCase):
         mock_adam = mock.MagicMock()
         with patch('src.utils.fw.Optimizer.Adam', return_value=mock_adam) as mom:
             var = tf.ones((1))
-            get_train_ops(0.0, [var], 0, get_grad_norms=True, optim_algo="adam", clip_mode=ClipMode.new("global", 0.0))
+            get_train_ops(0.0, [var], 0, get_grad_norms=True, optim_algo=Optimizer.new("adam", False, 1, 1), clip_mode=ClipMode.new("global", 0.0))
             add_n.assert_called()
             gradients.assert_called_with(1e-4, [var])
             global_norm.assert_called_with([0.0])
@@ -83,7 +70,7 @@ class TestUtils(unittest.TestCase):
         with patch('src.utils.fw.Optimizer.SGD', return_value=mock_sgd) as sgd:
             with patch('src.utils.fw.Optimizer.SyncReplicas', return_value=mock_sro) as sro:
                 var = tf.ones((1))
-                get_train_ops(0.0, [var], 0, optim_algo="sgd", clip_mode=ClipMode.new("norm", 0.0), lr_cosine=True, lr_max=1.0, lr_min=0.0, lr_T_0=0, lr_T_mul=1, num_train_batches=1, sync_replicas=True, num_aggregate=1, num_replicas=1)
+                get_train_ops(0.0, [var], 0, optim_algo=Optimizer.new("sgd", True, 1, 1), clip_mode=ClipMode.new("norm", 0.0), lr_cosine=True, lr_max=1.0, lr_min=0.0, lr_T_0=0, lr_T_mul=1, num_train_batches=1)
                 add_n.assert_called()
                 gradients.assert_called_with(1e-4, [var])
                 global_norm.assert_called_with([0.0])
