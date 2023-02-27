@@ -538,7 +538,6 @@ class MacroChild(Child):
     self.train_op, self.lr, self.grad_norm, self.optimizer = get_train_ops(
       self.loss,
       tf_variables,
-      self.learning_rate,
       self.global_step,
       self.learning_rate,
       clip_mode=self.clip_mode,

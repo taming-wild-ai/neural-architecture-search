@@ -186,11 +186,12 @@ class TestCIFAR10Main(unittest.TestCase):
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
     @patch('src.cifar10.main.print')
-    def test_train_KNOWN_TO_FAIL(self, print, saver, _rd):
+    def test_train(self, print, saver, _rd):
         with RestoreFLAGS(
             child_sync_replicas=True,
-            num_aggregate=1,
-            controller_training=False,
+            child_num_aggregate=1,
+            controller_training=True,
+            controller_sync_replicas=True,
             child_fixed_arc=None):
             child_optimizer = mock.MagicMock()
             controller_optimizer = mock.MagicMock()
@@ -199,15 +200,14 @@ class TestCIFAR10Main(unittest.TestCase):
             mock_session.run = self.mock_session_run
             mock_session_context_mgr = mock.MagicMock()
             mock_session_context_mgr.__enter__ = mock.MagicMock(return_value=mock_session)
-            with patch('src.cifar10.main.fw.Session', return_value=mock.MagicMock(return_value=mock_session_context_mgr)) as sess:
+            with patch('src.cifar10.main.fw.Session', return_value=mock_session_context_mgr) as sess:
                 main.train()
                 print.assert_any_call(("-" * 80))
                 print.assert_any_call("Starting session")
-                sess.assert_called_with()
-                controller_optimizer.make_session_run_hooks.assert_called()
-                saver.assert_any_call(max_to_keep=2)
-                controller_optimizer.make_session_run_hooks.assert_called()
-                child_optimizer.make_session_run_hooks.assert_called()
+                sess.assert_called()
+                child_optimizer.make_session_run_hook.assert_called_with(True)
+                saver.assert_called_with()
+                controller_optimizer.make_session_run_hook.assert_called_with(True)
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
@@ -230,8 +230,8 @@ class TestCIFAR10Main(unittest.TestCase):
             with patch('src.cifar10.main.fw.Session', return_value=mock_session_context_mgr) as sess:
                 main.train()
                 saver.assert_any_call()
-                child_optimizer.make_session_run_hooks.assert_not_called()
-                controller_optimizer.make_session_run_hooks.assert_not_called()
+                child_optimizer.make_session_run_hook.assert_not_called()
+                controller_optimizer.make_session_run_hook.assert_not_called()
                 print.assert_any_call(("-" * 80))
                 print.assert_any_call("Starting session")
                 sess.assert_called()

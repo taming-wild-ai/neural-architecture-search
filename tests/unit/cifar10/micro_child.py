@@ -198,18 +198,33 @@ class TestMicroChild(unittest.TestCase):
                 conv2d.assert_called_with('relu', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format="NHWC")
                 batch_norm.assert_called()
 
+    @patch('src.cifar10.micro_child.fw.matmul', return_value="matmul")
+    @patch('src.cifar10.micro_child.fw.relu', return_value="relu")
     @patch('src.cifar10.micro_child.batch_norm', return_value="batch_norm")
     @patch('src.cifar10.micro_child.fw.conv2d', return_value="conv2d")
     @patch('src.cifar10.micro_child.fw.create_weight', return_value="fw.create_weight")
-    def test_model_nhwc_KNOWN_TO_FAIL(self, create_weight, conv2d, batch_norm):
+    @patch('src.cifar10.micro_child.print')
+    def test_model_nhwc(self, print, create_weight, conv2d, batch_norm, relu, matmul):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
             mc.name = "MicroChild"
-            mc._model({}, True)
-            create_weight.assert_called_with("w", [3, 3, 3, 72])
-            conv2d.assert_called_with({}, "fw.create_weight", [1, 1, 1, 1], 'SAME', data_format="NHWC")
-            batch_norm.assert_called_with("conv2d", True, data_format="NHWC")
+            mc.reduce_arc = None
+            mc.normal_arc = None
+            mc.keep_prob = None
+            with patch.object(mc, '_factorized_reduction', return_value="fr") as fr:
+                with patch.object(mc, '_enas_layer', return_value="el") as el:
+                    with patch.object(mc, 'data_format') as data_format:
+                        mc._model({}, True)
+                        create_weight.assert_called_with("w", [data_format.get_C(), 10])
+                        conv2d.assert_called_with({}, "fw.create_weight", [1, 1, 1, 1], 'SAME', data_format=data_format.name)
+                        batch_norm.assert_called_with("conv2d", True, data_format)
+                        fr.assert_called_with('el', 96, 2, True)
+                        el.assert_called_with(3, ['el', 'el'], None, 96)
+                        data_format.global_avg_pool.assert_called_with('relu')
+                        relu.assert_called_with('el')
+                        data_format.get_C.assert_called_with()
+                        matmul.assert_called_with(data_format.global_avg_pool(), 'fw.create_weight')
 
     @patch('src.cifar10.micro_child.fw.matmul', return_value="matmul")
     @patch('src.cifar10.micro_child.fw.dropout', return_value="dropout")
