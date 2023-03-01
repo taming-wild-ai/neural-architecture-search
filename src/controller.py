@@ -1,6 +1,6 @@
 import src.framework as fw
 
-from src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer, DEFINE_string
+from src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer, DEFINE_string, LearningRate
 
 DEFINE_float("controller_bl_dec", 0.99, "")
 DEFINE_float("controller_entropy_weight", None, "")
@@ -21,6 +21,17 @@ class Controller(object):
     self.search_for = FLAGS.search_for
     self.tanh_constant = FLAGS.controller_tanh_constant
     self.temperature = FLAGS.controller_temperature
+    self.learning_rate = LearningRate.new(
+      False,
+      FLAGS.controller_lr,
+      0,
+      100,
+      0.9,
+      None,
+      None,
+      None,
+      None,
+      None)
     self.lr_init = FLAGS.controller_lr
     self.l2_reg = FLAGS.controller_l2_reg
     self.entropy_weight = FLAGS.controller_entropy_weight

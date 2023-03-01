@@ -7,6 +7,176 @@ import numpy as np
 
 import src.framework as fw
 
+
+class Optimizer(object):
+  class Momentum:
+    def __init__(self, sync, aggregates, replicas):
+      if sync:
+        assert aggregates is not None, "Need num_aggregate to sync."
+        assert replicas is not None, "Need num_replicas to sync."
+      self.sync = sync
+      self.aggregates = aggregates
+      self.replicas = replicas
+
+    def get(self, lr, moving_average):
+      opt = fw.Optimizer.Momentum(lr)
+      if self.sync:
+        opt = fw.Optimizer.SyncReplicas(opt, self.aggregates, self.replicas)
+      if moving_average is not None:
+        opt = fw.Optimizer.MovingAverage(opt, moving_average)
+      return opt
+
+  class SGD:
+    def __init__(self, sync, aggregates, replicas):
+      self.sync = sync
+      self.aggregates = aggregates
+      self.replicas = replicas
+
+    def get(self, lr, moving_average):
+      opt = fw.Optimizer.SGD(lr)
+      if self.sync:
+        opt = fw.Optimizer.SyncReplicas(opt, self.aggregates, self.replicas)
+      if moving_average is not None:
+        opt = fw.Optimizer.MovingAverage(opt, moving_average)
+      return opt
+
+
+  class Adam:
+    def __init__(self, sync, aggregates, replicas):
+      self.sync = sync
+      self.aggregates = aggregates
+      self.replicas = replicas
+
+    def get(self, lr, moving_average):
+      opt = fw.Optimizer.Adam(lr)
+      if self.sync:
+        opt = fw.Optimizer.SyncReplicas(opt, self.aggregates, self.replicas)
+      if moving_average is not None:
+        opt = fw.Optimizer.MovingAverage(opt, moving_average)
+      return opt
+
+
+  def __init__(self):
+    raise AttributeError('Use factory method `new` instead.')
+
+  @staticmethod
+  def new(algo, sync_replicas, num_aggregate, num_replicas):
+    return {
+      "momentum": Optimizer.Momentum(sync_replicas, num_aggregate, num_replicas),
+      "sgd": Optimizer.SGD(sync_replicas, num_aggregate, num_replicas),
+      "adam": Optimizer.Adam(sync_replicas, num_aggregate, num_replicas)
+    }[algo]
+
+
+class ClipMode(object):
+  class Null:
+    def __init__(self, _):
+      pass
+
+    def clip(self, grads):
+      return grads
+
+
+  class Global:
+    def __init__(self, bound):
+      assert bound is not None, "Need grad_bound to clip gradients."
+      self.bound = bound
+
+    def clip(self, grads):
+      grads, _ = fw.clip_by_global_norm(grads, self.bound)
+      return grads
+
+
+  class Norm:
+    def __init__(self, bound):
+      assert bound is not None, "Need grad_bound to clip gradients."
+      self.bound = bound
+
+    def clip(self, grads):
+      clipped = []
+      for g in grads:
+        if isinstance(g, fw.IndexedSlices):
+          c_g = fw.IndexedSlices(g.indices, fw.clip_by_norm(g.values, self.bound))
+        else:
+          c_g = fw.clip_by_norm(g, self.bound)
+        clipped.append(c_g)
+      return clipped
+
+
+  def __init__(self):
+    raise AttributeError("Use factory method `new` instead.")
+
+  @staticmethod
+  def new(mode, bound):
+    return {
+      "global": lambda: ClipMode.Global(bound),
+      "norm": lambda: ClipMode.Norm(bound),
+      None: lambda: ClipMode.Null(bound)
+    }[mode]() # to prevent premature instantiation
+
+
+class LearningRate(object):
+  class Cosine(object):
+    def __init__(self, max, min, T_0, mul):
+      assert max is not None, "Need lr_max to use lr_cosine"
+      assert min is not None, "Need lr_min to use lr_cosine"
+      assert T_0 is not None, "Need lr_T_0 to use lr_cosine"
+      assert mul is not None, "Need lr_T_mul to use lr_cosine"
+      self.max = max
+      self.min = min
+      self.T_0 = T_0
+      self.mul = mul
+
+    def update(self, num_train_batches, train_step):
+      assert num_train_batches is not None, ("Need num_train_batches to use"
+                                           " lr_cosine")
+
+      curr_epoch = train_step // num_train_batches
+
+      last_reset = fw.Variable(0, dtype=fw.int64, name="last_reset")
+      T_i = fw.Variable(self.T_0, dtype=fw.int64, name="T_i")
+      T_curr = curr_epoch - last_reset
+
+      def _update():
+        with fw.control_dependencies([
+          fw.assign(last_reset, curr_epoch),
+          fw.assign(T_i, T_i * self.mul)]):
+          return self.min + 0.5 * (self.max - self.min) * (1.0 + fw.cos(fw.to_float(T_curr) / fw.to_float(T_i) * 3.1415926))
+
+      def _no_update():
+        return self.min + 0.5 * (self.max - self.min) * (1.0 + fw.cos(fw.to_float(T_curr) / fw.to_float(T_i) * 3.1415926))
+
+      return fw.cond(
+        fw.greater_equal(T_curr, T_i), _update, _no_update)
+
+  class Regular(object):
+    def __init__(self, init, start, every, rate, dec_min):
+      self.init = init
+      self.start = start
+      self.every = every
+      self.rate = rate
+      self.dec_min = dec_min
+
+    def update(self, _, train_step):
+      learning_rate = fw.exp_decay(
+        self.init, fw.maximum(train_step - self.start, 0), self.every,
+        self.rate, staircase=True)
+      if self.dec_min is not None:
+        learning_rate = fw.maximum(learning_rate, self.dec_min)
+      return learning_rate
+
+  def __init__(self):
+    raise AttributeError("Use factory method `new` instead.")
+
+  @staticmethod
+  def new(cosine, init, start, every, rate, dec_min, max, min, T_0, mul):
+    if True == cosine:
+      return LearningRate.Cosine(max, min, T_0, mul)
+    elif False == cosine:
+      return LearningRate.Regular(init, start, every, rate, dec_min)
+    else:
+      raise KeyError("cosine must be True or False")
+
 user_flags = []
 
 

@@ -6,10 +6,10 @@ import numpy as np
 import src.framework as fw
 
 from src.controller import Controller
-from src.utils import get_train_ops
+from src.utils import get_train_ops, Optimizer, ClipMode
 from src.common_ops import stack_lstm
 
-from src.utils import DEFINE_boolean, DEFINE_float
+from src.utils import DEFINE_boolean, DEFINE_float, ClipMode
 
 DEFINE_boolean("controller_search_whole_channels", False, "")
 DEFINE_float("controller_skip_target", 0.8, "")
@@ -45,13 +45,12 @@ class MacroController(Controller):
     self.lr_dec_start = lr_dec_start
     self.lr_dec_every = lr_dec_every
     self.lr_dec_rate = lr_dec_rate
-    self.clip_mode = clip_mode
-    self.grad_bound = grad_bound
+    self.clip_mode = ClipMode.new(clip_mode, grad_bound)
 
     self.skip_target = FLAGS.controller_skip_target
     self.skip_weight = FLAGS.controller_skip_weight
 
-    self.optim_algo = optim_algo
+    self.optim_algo = Optimizer.new(optim_algo, FLAGS.controller_sync_replicas, FLAGS.controller_num_aggregate, FLAGS.controller_num_replicas)
     self.name = name
 
     self._create_params()
@@ -259,15 +258,8 @@ class MacroController(Controller):
       self.loss,
       tf_variables,
       self.train_step,
+      self.learning_rate,
       clip_mode=self.clip_mode,
-      grad_bound=self.grad_bound,
       l2_reg=self.l2_reg,
-      lr_init=self.lr_init,
-      lr_dec_start=self.lr_dec_start,
-      lr_dec_every=self.lr_dec_every,
-      lr_dec_rate=self.lr_dec_rate,
-      optim_algo=self.optim_algo,
-      sync_replicas=self.sync_replicas,
-      num_aggregate=self.num_aggregate,
-      num_replicas=self.num_replicas)
+      optim_algo=self.optim_algo)
 
