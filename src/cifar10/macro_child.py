@@ -18,6 +18,7 @@ from src.utils import DEFINE_integer
 DEFINE_integer("child_num_branches", 6, "")
 DEFINE_integer("child_out_filters_scale", 1, "")
 
+
 class MacroChild(Child):
   def __init__(self,
                images,
@@ -60,16 +61,17 @@ class MacroChild(Child):
     """
     return self.data_format.get_strides(stride)
 
-  def _factorized_reduction(self, x, out_filters, stride, is_training):
+  def _factorized_reduction(self, x, out_filters, stride, is_training, weights, reuse):
     """Reduces the shape of x without information loss due to striding."""
     assert out_filters % 2 == 0, (
         "Need even number of filters when using this factorized reduction.")
     if stride == 1:
       with fw.variable_scope("path_conv"):
+        v = weights.get("w", [1, 1, self.data_format.get_C(x), out_filters], None, reuse)
         return batch_norm(
           fw.conv2d(
             x,
-            fw.create_weight("w", [1, 1, self.data_format.get_C(x), out_filters]),
+            v,
             [1, 1, 1, 1],
             "SAME",
             data_format=self.data_format.name),
@@ -81,9 +83,10 @@ class MacroChild(Child):
     path1 = fw.avg_pool(
         x, [1, 1, 1, 1], stride_spec, "VALID", data_format=self.data_format.name)
     with fw.variable_scope("path1_conv"):
+      v = weights.get("w", [1, 1, self.data_format.get_C(path1), out_filters // 2], None, reuse)
       path1 = fw.conv2d(
         path1,
-        fw.create_weight("w", [1, 1, self.data_format.get_C(path1), out_filters // 2]),
+        v,
         [1, 1, 1, 1],
         "SAME",
         data_format=self.data_format.name)
@@ -96,9 +99,10 @@ class MacroChild(Child):
     path2 = fw.avg_pool(
         path2, [1, 1, 1, 1], stride_spec, "VALID", data_format=self.data_format.name)
     with fw.variable_scope("path2_conv"):
+      v = weights.get("w", [1, 1, self.data_format.get_C(path2), out_filters // 2], None, reuse)
       path2 = fw.conv2d(
         path2,
-        fw.create_weight("w", [1, 1, self.data_format.get_C(path2), out_filters // 2]),
+        v,
         [1, 1, 1, 1],
         "SAME",
         data_format=self.data_format.name)
@@ -109,17 +113,18 @@ class MacroChild(Child):
       is_training,
       self.data_format)
 
-  def _model(self, images, is_training, reuse=False):
+  def _model(self, images, is_training, weights, reuse=False):
     with fw.variable_scope(self.name, reuse=reuse):
       layers = []
 
       out_filters = self.out_filters
       with fw.variable_scope("stem_conv"):
+        v = weights.get("w", [3, 3, 3, out_filters], None, reuse)
         layers.append(
           batch_norm(
             fw.conv2d(
               images,
-              fw.create_weight("w", [3, 3, 3, out_filters]),
+              v,
               [1, 1, 1, 1],
               "SAME",
               data_format=self.data_format.name),
@@ -133,9 +138,9 @@ class MacroChild(Child):
       for layer_id in range(self.num_layers):
         with fw.variable_scope("layer_{0}".format(layer_id)):
           if self.fixed_arc is None:
-            x = self._enas_layer(layer_id, layers, start_idx, out_filters, is_training)
+            x = self._enas_layer(layer_id, layers, start_idx, out_filters, is_training, weights, reuse)
           else:
-            x = self._fixed_layer(layer_id, layers, start_idx, out_filters, is_training)
+            x = self._fixed_layer(layer_id, layers, start_idx, out_filters, is_training, weights, reuse)
           layers.append(x)
           if layer_id in self.pool_layers:
             if self.fixed_arc is not None:
@@ -145,7 +150,7 @@ class MacroChild(Child):
               for i, layer in enumerate(layers):
                 with fw.variable_scope("from_{0}".format(i)):
                   x = self._factorized_reduction(
-                    layer, out_filters, 2, is_training)
+                    layer, out_filters, 2, is_training, weights, reuse)
                 pooled_layers.append(x)
               layers = pooled_layers
         if self.whole_channels:
@@ -158,10 +163,11 @@ class MacroChild(Child):
       if is_training:
         x = fw.dropout(x, self.keep_prob)
       with fw.variable_scope("fc"):
-        x = fw.matmul(x, fw.create_weight("w", [self.data_format.get_C(x), 10]))
+        v = weights.get("w", [self.data_format.get_C(x), 10], None, reuse)
+        x = fw.matmul(x, v)
     return x
 
-  def _enas_layer(self, layer_id, prev_layers, start_idx, out_filters, is_training):
+  def _enas_layer(self, layer_id, prev_layers, start_idx, out_filters, is_training: bool, weights, reuse: bool):
     """
     Args:
       layer_id: current layer
@@ -179,29 +185,29 @@ class MacroChild(Child):
       branches = {}
       with fw.variable_scope("branch_0"):
         y = self._conv_branch(inputs, 3, is_training, out_filters, out_filters,
-                              start_idx=0)
+                              weights, reuse, start_idx=0)
         branches[fw.equal(count, 0)] = lambda: y
       with fw.variable_scope("branch_1"):
         y = self._conv_branch(inputs, 3, is_training, out_filters, out_filters,
-                              start_idx=0, separable=True)
+                              weights, reuse, start_idx=0, separable=True)
         branches[fw.equal(count, 1)] = lambda: y
       with fw.variable_scope("branch_2"):
         y = self._conv_branch(inputs, 5, is_training, out_filters, out_filters,
-                              start_idx=0)
+                              weights, reuse, start_idx=0)
         branches[fw.equal(count, 2)] = lambda: y
       with fw.variable_scope("branch_3"):
         y = self._conv_branch(inputs, 5, is_training, out_filters, out_filters,
-                              start_idx=0, separable=True)
+                              weights, reuse, start_idx=0, separable=True)
         branches[fw.equal(count, 3)] = lambda: y
       if self.num_branches >= 5:
         with fw.variable_scope("branch_4"):
           y = self._pool_branch(inputs, is_training, out_filters, "avg",
-                                start_idx=0)
+                                weights, reuse, start_idx=0)
         branches[fw.equal(count, 4)] = lambda: y
       if self.num_branches >= 6:
         with fw.variable_scope("branch_5"):
           y = self._pool_branch(inputs, is_training, out_filters, "max",
-                                start_idx=0)
+                                weights, reuse, start_idx=0)
         branches[fw.equal(count, 5)] = lambda: y
       out = fw.case(branches, default=lambda: fw.constant(0, fw.float32),
                     exclusive=True)
@@ -227,11 +233,11 @@ class MacroChild(Child):
       if self.num_branches >= 5:
         with fw.variable_scope("branch_4"):
           branches.append(self._pool_branch(inputs, is_training, count[9],
-                                            "avg", start_idx=count[8]))
+                                            "avg", weights, reuse, start_idx=count[8]))
       if self.num_branches >= 6:
         with fw.variable_scope("branch_5"):
           branches.append(self._pool_branch(inputs, is_training, count[11],
-                                            "max", start_idx=count[10]))
+                                            "max", weights, reuse, start_idx=count[10]))
 
       with fw.variable_scope("final_conv"):
         w_mask = fw.constant([False] * (self.num_branches * out_filters), fw.bool)
@@ -240,9 +246,10 @@ class MacroChild(Child):
           start = out_filters * i + count[2 * i]
           w_mask = fw.logical_or(w_mask, fw.logical_and(
             start <= new_range, new_range < start + count[2 * i + 1]))
+        v = weights.get("w", [self.num_branches * out_filters, out_filters], None, reuse)
         w = fw.reshape(
           fw.boolean_mask(
-            fw.create_weight("w", [self.num_branches * out_filters, out_filters]),
+            v,
             w_mask),
             [1, 1, -1,
             out_filters])
@@ -278,7 +285,7 @@ class MacroChild(Child):
     return out
 
   def _fixed_layer(
-      self, layer_id, prev_layers, start_idx, out_filters, is_training):
+      self, layer_id, prev_layers, start_idx, out_filters, is_training: bool, weights, reuse: bool):
     """
     Args:
       layer_id: current layer
@@ -296,10 +303,11 @@ class MacroChild(Child):
       if count in [0, 1, 2, 3]:
         filter_size = [3, 3, 5, 5][count]
         with fw.variable_scope("conv_1x1"):
+          v = weights.get("w", [1, 1, inp_c, out_filters], None, reuse)
           out = batch_norm(
             fw.conv2d(
               fw.relu(inputs),
-              fw.create_weight("w", [1, 1, inp_c, out_filters]),
+              v,
               [1, 1, 1, 1],
               "SAME",
               data_format=self.data_format.name),
@@ -307,10 +315,11 @@ class MacroChild(Child):
             self.data_format)
 
         with fw.variable_scope("conv_{0}x{0}".format(filter_size)):
+          v = weights.get("w", [filter_size, filter_size, out_filters, out_filters], None, reuse)
           out = batch_norm(
             fw.conv2d(
               fw.relu(out),
-              fw.create_weight("w", [filter_size, filter_size, out_filters, out_filters]),
+              v,
               [1, 1, 1, 1],
               "SAME",
               data_format=self.data_format.name),
@@ -354,10 +363,11 @@ class MacroChild(Child):
 
       with fw.variable_scope("final_conv"):
         branches = self.data_format.fixed_layer(branches)
+        v = weights.get("w", [1, 1, total_out_channels, out_filters], None, reuse)
         out = batch_norm(
           fw.conv2d(
             fw.relu(branches),
-            fw.create_weight("w", [1, 1, total_out_channels, out_filters]),
+            v,
             [1, 1, 1, 1],
             "SAME",
             data_format=self.data_format.name),
@@ -381,10 +391,11 @@ class MacroChild(Child):
       prev = self.data_format.fixed_layer(prev)
 
       with fw.variable_scope("skip"):
+        v = weights.get("w", [1, 1, total_skip_channels * out_filters, out_filters], None, reuse)
         out = batch_norm(
           fw.conv2d(
             fw.relu(prev),
-            fw.create_weight("w", [1, 1, total_skip_channels * out_filters, out_filters]),
+            v,
             [1, 1, 1, 1],
             "SAME",
             data_format=self.data_format.name),
@@ -393,8 +404,8 @@ class MacroChild(Child):
 
     return out
 
-  def _conv_branch(self, inputs, filter_size, is_training, count, out_filters,
-                   ch_mul=1, start_idx=None, separable=False):
+  def _conv_branch(self, inputs, filter_size, is_training: bool, count, out_filters,
+                   weights, reuse: bool, ch_mul=1, start_idx=None, separable=False):
     """
     Args:
       start_idx: where to start taking the output channels. if None, assuming
@@ -408,11 +419,12 @@ class MacroChild(Child):
     inp_c = self.data_format.get_C(inputs)
 
     with fw.variable_scope("inp_conv_1"):
+      v = weights.get("w", [1, 1, inp_c, out_filters], None, reuse)
       x = fw.relu(
         batch_norm(
           fw.conv2d(
             inputs,
-            fw.create_weight("w", [1, 1, inp_c, out_filters]),
+            v,
             [1, 1, 1, 1],
             "SAME",
             data_format=self.data_format.name),
@@ -422,11 +434,13 @@ class MacroChild(Child):
     with fw.variable_scope("out_conv_{}".format(filter_size)):
       if start_idx is None:
         if separable:
+          v_depth = weights.get("w_depth", [self.filter_size, self.filter_size, out_filters, ch_mul], None, reuse)
+          v_point = weights.get("w_point", [1, 1, out_filters * ch_mul, count], None, reuse)
           x = batch_norm(
             fw.separable_conv2d(
               x,
-              fw.create_weight("w_depth", [self.filter_size, self.filter_size, out_filters, ch_mul]),
-              fw.create_weight("w_point", [1, 1, out_filters * ch_mul, count]),
+              v_depth,
+              v_point,
               strides=[1, 1, 1, 1],
               padding="SAME",
               data_format=self.data_format.name),
@@ -445,23 +459,26 @@ class MacroChild(Child):
       else:
         mask = fw.range(0, out_filters, dtype=fw.int32)
         if separable:
+          v_depth = weights.get("w_depth", [filter_size, filter_size, out_filters, ch_mul], None, reuse)
+          v_point = weights.get("w_point", [out_filters, out_filters * ch_mul], None, reuse)
           x = fw.separable_conv2d(
             x,
-            fw.create_weight("w_depth", [filter_size, filter_size, out_filters, ch_mul]),
+            v_depth,
             fw.reshape(
               fw.transpose(
-                fw.create_weight("w_point", [out_filters, out_filters * ch_mul])[start_idx:start_idx+count, :],
+                v_point[start_idx:start_idx+count, :],
                 [1, 0]),
               [1, 1, out_filters * ch_mul, count]),
             strides=[1, 1, 1, 1],
             padding="SAME",
             data_format=self.data_format.name)
         else:
+          v = weights.get("w", [filter_size, filter_size, out_filters, out_filters], None, reuse)
           x = fw.conv2d(
             x,
             fw.transpose(
               fw.transpose(
-                fw.create_weight("w", [filter_size, filter_size, out_filters, out_filters]),
+                v,
                 [3, 0, 1, 2])[start_idx:start_idx+count, :, :, :],
               [1, 2, 3, 0]),
             [1, 1, 1, 1],
@@ -476,7 +493,7 @@ class MacroChild(Child):
       x = fw.relu(x)
     return x
 
-  def _pool_branch(self, inputs, is_training, count, avg_or_max, start_idx=None):
+  def _pool_branch(self, inputs, is_training: bool, count, avg_or_max: str, weights, reuse: bool, start_idx=None):
     """
     Args:
       start_idx: where to start taking the output channels. if None, assuming
@@ -490,11 +507,12 @@ class MacroChild(Child):
     inp_c = self.data_format.get_C(inputs)
 
     with fw.variable_scope("conv_1"):
+      v = weights.get("w", [1, 1, inp_c, self.out_filters], None, reuse)
       x = fw.relu(
         batch_norm(
           fw.conv2d(
             inputs,
-            fw.create_weight("w", [1, 1, inp_c, self.out_filters]),
+            v,
             [1, 1, 1, 1],
             "SAME",
             data_format=self.data_format.name),
@@ -520,7 +538,7 @@ class MacroChild(Child):
   def _build_train(self):
     print("-" * 80)
     print("Build train graph")
-    logits = self._model(self.x_train, is_training=True)
+    logits = self._model(self.x_train, True, self.weights)
     self.loss = fw.reduce_mean(
       fw.sparse_softmax_cross_entropy_with_logits(
         logits=logits,
@@ -552,7 +570,7 @@ class MacroChild(Child):
       print("Build valid graph")
       self.valid_preds = fw.to_int32(
         fw.argmax(
-          self._model(self.x_valid, False, reuse=True),
+          self._model(self.x_valid, False, self.weights, reuse=True),
           axis=1))
       self.valid_acc = fw.reduce_sum(
         fw.to_int32(
@@ -563,7 +581,7 @@ class MacroChild(Child):
     print("-" * 80)
     print("Build test graph")
     self.test_preds = fw.to_int32(
-      fw.argmax(self._model(self.x_test, False, reuse=True), axis=1))
+      fw.argmax(self._model(self.x_test, False, self.weights, reuse=True), axis=1))
     self.test_acc = fw.reduce_sum(fw.to_int32(fw.equal(self.test_preds, self.y_test)))
 
   # override
@@ -593,7 +611,7 @@ class MacroChild(Child):
 
     self.valid_shuffle_acc = fw.equal(
       fw.to_int32(
-        fw.argmax(self._model(x_valid_shuffle, False, reuse=True), axis=1)),
+        fw.argmax(self._model(x_valid_shuffle, False, self.weights, reuse=True), axis=1)),
         y_valid_shuffle)
     self.valid_shuffle_acc = fw.to_int32(self.valid_shuffle_acc)
     self.valid_shuffle_acc = fw.reduce_sum(self.valid_shuffle_acc)

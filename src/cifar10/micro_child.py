@@ -62,16 +62,17 @@ class MicroChild(Child):
     if self.use_aux_heads:
       self.aux_head_indices = [self.pool_layers[-1] + 1]
 
-  def _factorized_reduction(self, x, out_filters, stride, is_training):
+  def _factorized_reduction(self, x, out_filters, stride, is_training, weights, reuse):
     """Reduces the shape of x without information loss due to striding."""
     assert out_filters % 2 == 0, (
         "Need even number of filters when using this factorized reduction.")
     if stride == 1:
       with fw.variable_scope("path_conv"):
+        v = weights.get("w", [1, 1, self.data_format.get_C(x), out_filters], None, reuse)
         return batch_norm(
           fw.conv2d(
             x,
-            fw.create_weight("w", [1, 1, self.data_format.get_C(x), out_filters]),
+            v,
             [1, 1, 1, 1],
             "SAME",
             data_format=self.data_format.name),
@@ -84,9 +85,10 @@ class MicroChild(Child):
         x, [1, 1, 1, 1], stride_spec, "VALID", data_format=self.data_format.name)
     with fw.variable_scope("path1_conv"):
       inp_c = self.data_format.get_C(path1)
+      v = weights.get("w", [1, 1, inp_c, out_filters // 2], None, reuse)
       path1 = fw.conv2d(
         path1,
-        fw.create_weight("w", [1, 1, inp_c, out_filters // 2]),
+        v,
         [1, 1, 1, 1],
         "VALID",
         data_format=self.data_format.name)
@@ -100,9 +102,10 @@ class MicroChild(Child):
         path2, [1, 1, 1, 1], stride_spec, "VALID", data_format=self.data_format.name)
     with fw.variable_scope("path2_conv"):
       inp_c = self.data_format.get_C(path2)
+      v = weights.get("w", [1, 1, inp_c, out_filters // 2], None, reuse)
       path2 = fw.conv2d(
         path2,
-        fw.create_weight("w", [1, 1, inp_c, out_filters // 2]),
+        v,
         [1, 1, 1, 1],
         "VALID",
         data_format=self.data_format.name)
@@ -135,7 +138,7 @@ class MicroChild(Child):
     x = drop_path(x, drop_path_keep_prob)
     return x
 
-  def _maybe_calibrate_size(self, layers, out_filters, is_training):
+  def _maybe_calibrate_size(self, layers, out_filters, is_training, weights, reuse):
     """Makes sure layers[0] and layers[1] have the same shapes."""
 
     hw = [self._get_HW(layer) for layer in layers]
@@ -147,10 +150,10 @@ class MicroChild(Child):
         assert hw[0] == 2 * hw[1]
         with fw.variable_scope("pool_x"):
           x = fw.relu(x)
-          x = self._factorized_reduction(x, out_filters, 2, is_training)
+          x = self._factorized_reduction(x, out_filters, 2, is_training, weights, reuse)
       elif c[0] != out_filters:
         with fw.variable_scope("pool_x"):
-          w = fw.create_weight("w", [1, 1, c[0], out_filters])
+          w = weights.get("w", [1, 1, c[0], out_filters], None, reuse)
           x = fw.relu(x)
           x = fw.conv2d(x, w, [1, 1, 1, 1], "SAME",
                            data_format=self.data_format.name)
@@ -159,7 +162,7 @@ class MicroChild(Child):
       y = layers[1]
       if c[1] != out_filters:
         with fw.variable_scope("pool_y"):
-          w = fw.create_weight("w", [1, 1, c[1], out_filters])
+          w = weights.get("w", [1, 1, c[1], out_filters], None, reuse)
           y = fw.relu(y)
           y = fw.conv2d(y, w, [1, 1, 1, 1], "SAME",
                            data_format=self.data_format.name)
@@ -175,7 +178,7 @@ class MicroChild(Child):
     with fw.variable_scope(self.name, reuse=reuse):
       # the first two inputs
       with fw.variable_scope("stem_conv"):
-        w = fw.create_weight("w", [3, 3, 3, self.out_filters * 3])
+        w = self.weights.get("w", [3, 3, 3, self.out_filters * 3], None, reuse)
         x = fw.conv2d(
           images, w, [1, 1, 1, 1], "SAME", data_format=self.data_format.name)
         x = batch_norm(x, is_training, self.data_format)
@@ -188,22 +191,22 @@ class MicroChild(Child):
           if layer_id not in self.pool_layers:
             if self.fixed_arc is None:
               x = self._enas_layer(
-                layer_id, layers, self.normal_arc, out_filters)
+                layer_id, layers, self.normal_arc, out_filters, self.weights, reuse)
             else:
               x = self._fixed_layer(
                 layer_id, layers, self.normal_arc, out_filters, 1, is_training,
-                normal_or_reduction_cell="normal")
+                self.weights, reuse, normal_or_reduction_cell="normal")
           else:
             out_filters *= 2
             if self.fixed_arc is None:
-              x = self._factorized_reduction(x, out_filters, 2, is_training)
+              x = self._factorized_reduction(x, out_filters, 2, is_training, self.weights, reuse)
               layers = [layers[-1], x]
               x = self._enas_layer(
-                layer_id, layers, self.reduce_arc, out_filters)
+                layer_id, layers, self.reduce_arc, out_filters, self.weights, reuse)
             else:
               x = self._fixed_layer(
                 layer_id, layers, self.reduce_arc, out_filters, 2, is_training,
-                normal_or_reduction_cell="reduction")
+                self.weights, reuse, normal_or_reduction_cell="reduction")
           print("Layer {0:>2d}: {1}".format(layer_id, x))
           layers = [layers[-1], x]
 
@@ -220,7 +223,7 @@ class MicroChild(Child):
               data_format=self.data_format.actual)
             with fw.variable_scope("proj"):
               inp_c = self.data_format.get_C(aux_logits)
-              w = fw.create_weight("w", [1, 1, inp_c, 128])
+              w = self.weights.get("w", [1, 1, inp_c, 128], None, reuse)
               aux_logits = fw.conv2d(aux_logits, w, [1, 1, 1, 1], "SAME",
                                         data_format=self.data_format.name)
               aux_logits = batch_norm(aux_logits, True, self.data_format)
@@ -229,7 +232,7 @@ class MicroChild(Child):
             with fw.variable_scope("avg_pool"):
               inp_c = self.data_format.get_C(aux_logits)
               hw = self._get_HW(aux_logits)
-              w = fw.create_weight("w", [hw, hw, inp_c, 768])
+              w = self.weights.get("w", [hw, hw, inp_c, 768], None, reuse)
               aux_logits = fw.conv2d(aux_logits, w, [1, 1, 1, 1], "SAME",
                                         data_format=self.data_format.name)
               aux_logits = batch_norm(aux_logits, True, self.data_format)
@@ -238,7 +241,7 @@ class MicroChild(Child):
             with fw.variable_scope("fc"):
               aux_logits = self.data_format.global_avg_pool(aux_logits)
               inp_c = aux_logits.get_shape()[1]
-              w = fw.create_weight("w", [inp_c, 10])
+              w = self.weights.get("w", [inp_c, 10], None, reuse)
               aux_logits = fw.matmul(aux_logits, w)
               self.aux_logits = aux_logits
 
@@ -253,11 +256,11 @@ class MicroChild(Child):
         x = fw.dropout(x, self.keep_prob)
       with fw.variable_scope("fc"):
         inp_c = self.data_format.get_C(x)
-        w = fw.create_weight("w", [inp_c, 10])
+        w = self.weights.get("w", [inp_c, 10], None, reuse)
         x = fw.matmul(x, w)
     return x
 
-  def _fixed_conv(self, x, f_size, out_filters, stride, is_training,
+  def _fixed_conv(self, x, f_size, out_filters, stride, is_training, weights, reuse,
                   stack_convs=2):
     """Apply fixed convolution.
 
@@ -273,8 +276,8 @@ class MicroChild(Child):
         strides = [1, 1, 1, 1]
 
       with fw.variable_scope("sep_conv_{}".format(conv_id)):
-        w_depthwise = fw.create_weight("w_depth", [f_size, f_size, inp_c, 1])
-        w_pointwise = fw.create_weight("w_point", [1, 1, inp_c, out_filters])
+        w_depthwise = weights.get("w_depth", [f_size, f_size, inp_c, 1], None, reuse)
+        w_pointwise = weights.get("w_point", [1, 1, inp_c, out_filters], None, reuse)
         x = fw.relu(x)
         x = fw.separable_conv2d(
           x,
@@ -317,7 +320,7 @@ class MicroChild(Child):
     return out
 
   def _fixed_layer(self, layer_id, prev_layers, arc, out_filters, stride,
-                   is_training, normal_or_reduction_cell="normal"):
+                   is_training, weights, reuse, normal_or_reduction_cell="normal"):
     """
     Args:
       prev_layers: cache of previous layers. for skip connections
@@ -327,12 +330,12 @@ class MicroChild(Child):
     assert len(prev_layers) == 2
     layers = [prev_layers[0], prev_layers[1]]
     layers = self._maybe_calibrate_size(layers, out_filters,
-                                        is_training=is_training)
+                                        is_training, weights, reuse)
 
     with fw.variable_scope("layer_base"):
       x = layers[1]
       inp_c = self.data_format.get_C(x)
-      w = fw.create_weight("w", [1, 1, inp_c, out_filters])
+      w = weights.get("w", [1, 1, inp_c, out_filters], None, reuse)
       x = fw.relu(x)
       x = fw.conv2d(x, w, [1, 1, 1, 1], "SAME",
                        data_format=self.data_format.name)
@@ -351,7 +354,7 @@ class MicroChild(Child):
         with fw.variable_scope("x_conv"):
           if x_op in [0, 1]:
             f_size = f_sizes[x_op]
-            x = self._fixed_conv(x, f_size, out_filters, x_stride, is_training)
+            x = self._fixed_conv(x, f_size, out_filters, x_stride, is_training, weights, reuse)
           elif x_op in [2, 3]:
             inp_c = self.data_format.get_C(x)
             if x_op == 2:
@@ -363,7 +366,7 @@ class MicroChild(Child):
                 x, [3, 3], [x_stride, x_stride], "SAME",
                 data_format=self.data_format.actual)
             if inp_c != out_filters:
-              w = fw.create_weight("w", [1, 1, inp_c, out_filters])
+              w = weights.get("w", [1, 1, inp_c, out_filters], None, reuse)
               x = fw.relu(x)
               x = fw.conv2d(x, w, [1, 1, 1, 1], "SAME",
                                data_format=self.data_format.name)
@@ -374,7 +377,7 @@ class MicroChild(Child):
               assert x_stride == 2
               x = self._factorized_reduction(x, out_filters, 2, is_training)
             if inp_c != out_filters:
-              w = fw.create_weight("w", [1, 1, inp_c, out_filters])
+              w = weights.get("w", [1, 1, inp_c, out_filters], None, reuse)
               x = fw.relu(x)
               x = fw.conv2d(x, w, [1, 1, 1, 1], "SAME", data_format=self.data_format.name)
               x = batch_norm(x, is_training, data_format=self.data_format)
@@ -391,7 +394,7 @@ class MicroChild(Child):
         with fw.variable_scope("y_conv"):
           if y_op in [0, 1]:
             f_size = f_sizes[y_op]
-            y = self._fixed_conv(y, f_size, out_filters, y_stride, is_training)
+            y = self._fixed_conv(y, f_size, out_filters, y_stride, is_training, weights, reuse)
           elif y_op in [2, 3]:
             inp_c = self.data_format.get_C(y)
             if y_op == 2:
@@ -403,7 +406,7 @@ class MicroChild(Child):
                 y, [3, 3], [y_stride, y_stride], "SAME",
                 data_format=self.data_format.actual)
             if inp_c != out_filters:
-              w = fw.create_weight("w", [1, 1, inp_c, out_filters])
+              w = weights.get("w", [1, 1, inp_c, out_filters], None, reuse)
               y = fw.relu(y)
               y = fw.conv2d(y, w, [1, 1, 1, 1], "SAME",
                                data_format=self.data_format.name)
@@ -412,9 +415,9 @@ class MicroChild(Child):
             inp_c = self.data_format.get_C(y)
             if y_stride > 1:
               assert y_stride == 2
-              y = self._factorized_reduction(y, out_filters, 2, is_training)
+              y = self._factorized_reduction(y, out_filters, 2, is_training, weights, reuse)
             if inp_c != out_filters:
-              w = fw.create_weight("w", [1, 1, inp_c, out_filters])
+              w = weights.get("w", [1, 1, inp_c, out_filters], None, reuse)
               y = fw.relu(y)
               y = fw.conv2d(y, w, [1, 1, 1, 1], "SAME",
                                data_format=self.data_format.name)
@@ -432,7 +435,7 @@ class MicroChild(Child):
 
     return out
 
-  def _enas_cell(self, x, curr_cell, prev_cell, op_id, out_filters):
+  def _enas_cell(self, x, curr_cell, prev_cell, op_id, out_filters, weights, reuse: bool):
     """Performs an enas operation specified by op_id."""
 
     num_possible_inputs = curr_cell + 1
@@ -443,8 +446,8 @@ class MicroChild(Child):
       avg_pool_c = self.data_format.get_C(avg_pool)
       if avg_pool_c != out_filters:
         with fw.variable_scope("conv"):
-          w = fw.create_weight(
-            "w", [num_possible_inputs, avg_pool_c * out_filters])
+          w = weights.get(
+            "w", [num_possible_inputs, avg_pool_c * out_filters], None, reuse)
           w = w[prev_cell]
           w = fw.reshape(w, [1, 1, avg_pool_c, out_filters])
           avg_pool = fw.relu(avg_pool)
@@ -458,8 +461,8 @@ class MicroChild(Child):
       max_pool_c = self.data_format.get_C(max_pool)
       if max_pool_c != out_filters:
         with fw.variable_scope("conv"):
-          w = fw.create_weight(
-            "w", [num_possible_inputs, max_pool_c * out_filters])
+          w = weights.get(
+            "w", [num_possible_inputs, max_pool_c * out_filters], None, reuse)
           w = w[prev_cell]
           w = fw.reshape(w, [1, 1, max_pool_c, out_filters])
           max_pool = fw.relu(max_pool)
@@ -473,7 +476,7 @@ class MicroChild(Child):
         x = batch_norm(
           fw.conv2d(
             fw.relu(x),
-            fw.reshape(fw.create_weight("w", [num_possible_inputs, x_c * out_filters])[prev_cell],
+            fw.reshape(weights.get("w", [num_possible_inputs, x_c * out_filters], None, reuse)[prev_cell],
             [1, 1, x_c, out_filters]),
           strides=[1, 1, 1, 1],
           padding="SAME",
@@ -482,8 +485,8 @@ class MicroChild(Child):
         self.data_format)
 
     out = [
-      self._enas_conv(x, curr_cell, prev_cell, 3, out_filters),
-      self._enas_conv(x, curr_cell, prev_cell, 5, out_filters),
+      self._enas_conv(x, curr_cell, prev_cell, 3, out_filters, weights, reuse),
+      self._enas_conv(x, curr_cell, prev_cell, 5, out_filters, weights, reuse),
       avg_pool,
       max_pool,
       x,
@@ -493,7 +496,7 @@ class MicroChild(Child):
     out = out[op_id, :, :, :, :]
     return out
 
-  def _enas_conv(self, x, curr_cell, prev_cell, filter_size, out_filters,
+  def _enas_conv(self, x, curr_cell, prev_cell, filter_size, out_filters, weights, reuse: bool,
                  stack_conv=2):
     """Performs an enas convolution specified by the relevant parameters."""
 
@@ -503,26 +506,28 @@ class MicroChild(Child):
         with fw.variable_scope("stack_{0}".format(conv_id)):
           # create params and pick the correct path
           inp_c = self.data_format.get_C(x)
-          w_depthwise = fw.create_weight(
-            "w_depth", [num_possible_inputs, filter_size * filter_size * inp_c])
+          w_depthwise = weights.get(
+            "w_depth", [num_possible_inputs, filter_size * filter_size * inp_c], None, reuse)
           w_depthwise = w_depthwise[prev_cell, :]
           w_depthwise = fw.reshape(
             w_depthwise, [filter_size, filter_size, inp_c, 1])
 
-          w_pointwise = fw.create_weight(
-            "w_point", [num_possible_inputs, inp_c * out_filters])
+          w_pointwise = weights.get(
+            "w_point", [num_possible_inputs, inp_c * out_filters], None, reuse)
           w_pointwise = w_pointwise[prev_cell, :]
           w_pointwise = fw.reshape(w_pointwise, [1, 1, inp_c, out_filters])
 
           with fw.variable_scope("bn"):
             zero_init = fw.zeros_init()
             one_init = fw.ones_init()
-            offset = fw.create_weight(
+            offset = weights.get(
               "offset", [num_possible_inputs, out_filters],
-              initializer=zero_init)
-            scale = fw.create_weight(
+              zero_init,
+              reuse)
+            scale = weights.get(
               "scale", [num_possible_inputs, out_filters],
-              initializer=one_init)
+              one_init,
+              reuse)
             offset = offset[prev_cell]
             scale = scale[prev_cell]
 
@@ -540,7 +545,7 @@ class MicroChild(Child):
             is_training=True)
     return x
 
-  def _enas_layer(self, layer_id, prev_layers, arc, out_filters):
+  def _enas_layer(self, layer_id, prev_layers, arc, out_filters, weights, reuse):
     """
     Args:
       layer_id: current layer
@@ -551,7 +556,7 @@ class MicroChild(Child):
 
     assert len(prev_layers) == 2, "need exactly 2 inputs"
     layers = [prev_layers[0], prev_layers[1]]
-    layers = self._maybe_calibrate_size(layers, out_filters, is_training=True)
+    layers = self._maybe_calibrate_size(layers, out_filters, True, weights, reuse)
     used = []
     for cell_id in range(self.num_cells):
       prev_layers = fw.stack(layers, axis=0)
@@ -560,14 +565,14 @@ class MicroChild(Child):
           x_id = arc[4 * cell_id]
           x_op = arc[4 * cell_id + 1]
           x = prev_layers[x_id, :, :, :, :]
-          x = self._enas_cell(x, cell_id, x_id, x_op, out_filters)
+          x = self._enas_cell(x, cell_id, x_id, x_op, out_filters, weights, reuse)
           x_used = fw.one_hot(x_id, depth=self.num_cells + 2, dtype=fw.int32)
 
         with fw.variable_scope("y"):
           y_id = arc[4 * cell_id + 2]
           y_op = arc[4 * cell_id + 3]
           y = prev_layers[y_id, :, :, :, :]
-          y = self._enas_cell(y, cell_id, y_id, y_op, out_filters)
+          y = self._enas_cell(y, cell_id, y_id, y_op, out_filters, weights, reuse)
           y_used = fw.one_hot(y_id, depth=self.num_cells + 2, dtype=fw.int32)
 
         out = x + y
@@ -586,7 +591,7 @@ class MicroChild(Child):
     out = self.data_format.micro_enas(out, inp, num_outs, out_filters)
 
     with fw.variable_scope("final_conv"):
-      w = fw.create_weight("w", [self.num_cells + 2, out_filters * out_filters])
+      w = weights.get("w", [self.num_cells + 2, out_filters * out_filters], None, reuse)
       w = fw.gather(w, indices, axis=0)
       w = fw.reshape(w, [1, 1, num_outs * out_filters, out_filters])
       out = fw.relu(out)

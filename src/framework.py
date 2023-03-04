@@ -123,6 +123,7 @@ def shuffle_batch(data, batch_size, seed, capacity=25000):
 to_float = tf.compat.v1.to_float
 to_int32 = tf.compat.v1.to_int32
 trainable_variables = tf.compat.v1.trainable_variables
+get_variable_scope = tf.compat.v1.get_variable_scope
 variable_scope = tf.compat.v1.variable_scope
 
 

@@ -1,6 +1,8 @@
 import os
 import sys
 
+from collections import defaultdict
+
 import numpy as np
 import src.framework as fw
 
@@ -28,6 +30,21 @@ DEFINE_integer("child_num_replicas", 1, "")
 DEFINE_integer("child_out_filters", 24, "")
 DEFINE_boolean("child_sync_replicas", False, "To sync or not to sync.")
 DEFINE_string("data_format", "NHWC", "'NHWC' or 'NCWH'")
+
+
+class WeightRegistry(object):
+  def __init__(self):
+    self.weight_map = defaultdict(WeightRegistry.factory)
+
+  @staticmethod
+  def factory():
+    return defaultdict(WeightRegistry.factory)
+
+  def get(self, name, shape, initializer, reuse: bool):
+    v = fw.create_weight(name, shape, initializer=initializer)
+    assert not reuse or v == self.weight_map[fw.get_variable_scope().name + name], f"Expected {v} for {fw.get_variable_scope().name + name} but got {self.weight_map[fw.get_variable_scope().name + name]}."
+    self.weight_map[fw.get_variable_scope().name + name] = v
+    return v
 
 
 class DataFormat(object):
@@ -170,6 +187,7 @@ class Child(object):
     print("-" * 80)
     print("Build model {}".format(name))
 
+    self.weights = WeightRegistry()
     self.num_layers = FLAGS.child_num_layers
     self.cutout_size = FLAGS.child_cutout_size
     self.fixed_arc = FLAGS.child_fixed_arc
