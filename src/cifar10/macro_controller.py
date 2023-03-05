@@ -63,40 +63,59 @@ class MacroController(Controller):
         self.w_lstm = []
         for layer_id in range(self.lstm_num_layers):
           with fw.variable_scope("layer_{}".format(layer_id)):
-            self.w_lstm.append(fw.get_variable(
-              "w", [2 * self.lstm_size, 4 * self.lstm_size]))
+            self.w_lstm.append(
+              fw.get_variable(
+                "w",
+                [2 * self.lstm_size, 4 * self.lstm_size],
+                initializer))
 
-      self.g_emb = fw.get_variable("g_emb", [1, self.lstm_size])
+      self.g_emb = fw.get_variable("g_emb", [1, self.lstm_size], initializer)
       if self.search_whole_channels:
         with fw.variable_scope("emb"):
           self.w_emb = fw.get_variable(
-            "w", [self.num_branches, self.lstm_size])
+            "w",
+            [self.num_branches, self.lstm_size],
+            initializer)
         with fw.variable_scope("softmax"):
           self.w_soft = fw.get_variable(
-            "w", [self.lstm_size, self.num_branches])
+            "w",
+            [self.lstm_size, self.num_branches],
+            initializer)
       else:
         self.w_emb = {"start": [], "count": []}
         with fw.variable_scope("emb"):
           for branch_id in range(self.num_branches):
             with fw.variable_scope("branch_{}".format(branch_id)):
-              self.w_emb["start"].append(fw.get_variable(
-                "w_start", [self.out_filters, self.lstm_size]));
-              self.w_emb["count"].append(fw.get_variable(
-                "w_count", [self.out_filters - 1, self.lstm_size]));
+              self.w_emb["start"].append(
+                fw.get_variable(
+                  "w_start",
+                  [self.out_filters, self.lstm_size],
+                  initializer));
+              self.w_emb["count"].append(
+                fw.get_variable(
+                  "w_count",
+                  [self.out_filters - 1, self.lstm_size],
+                  initializer));
 
         self.w_soft = {"start": [], "count": []}
         with fw.variable_scope("softmax"):
           for branch_id in range(self.num_branches):
             with fw.variable_scope("branch_{}".format(branch_id)):
-              self.w_soft["start"].append(fw.get_variable(
-                "w_start", [self.lstm_size, self.out_filters]));
-              self.w_soft["count"].append(fw.get_variable(
-                "w_count", [self.lstm_size, self.out_filters - 1]));
+              self.w_soft["start"].append(
+                fw.get_variable(
+                  "w_start",
+                  [self.lstm_size, self.out_filters],
+                  initializer));
+              self.w_soft["count"].append(
+                fw.get_variable(
+                  "w_count",
+                  [self.lstm_size, self.out_filters - 1],
+                  initializer));
 
       with fw.variable_scope("attention"):
-        self.w_attn_1 = fw.get_variable("w_1", [self.lstm_size, self.lstm_size])
-        self.w_attn_2 = fw.get_variable("w_2", [self.lstm_size, self.lstm_size])
-        self.v_attn = fw.get_variable("v", [self.lstm_size, 1])
+        self.w_attn_1 = fw.get_variable("w_1", [self.lstm_size, self.lstm_size], initializer)
+        self.w_attn_2 = fw.get_variable("w_2", [self.lstm_size, self.lstm_size], initializer)
+        self.v_attn = fw.get_variable("v", [self.lstm_size, 1], initializer)
 
   def _build_sampler(self):
     """Build the sampler ops and the log_prob ops."""

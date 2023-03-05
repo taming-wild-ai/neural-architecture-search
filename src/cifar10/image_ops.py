@@ -9,22 +9,22 @@ def drop_path(x, keep_prob):
     [fw.shape(x)[0], 1, 1, 1],
     dtype=fw.float32))
 
-def batch_norm(x, is_training, data_format, name="bn", decay=0.9, epsilon=1e-5):
+def batch_norm(x, is_training, data_format, weights, name="bn", decay=0.9, epsilon=1e-5):
   shape = [data_format.get_C(x)]
 
   with fw.variable_scope(name, reuse=None if is_training else True):
-    offset = fw.create_weight(
+    offset = weights.get(
       "offset", shape,
-      initializer=fw.Constant(0.0))
-    scale = fw.create_weight(
+      fw.Constant(0.0), fw.get_variable_scope().reuse)
+    scale = weights.get(
       "scale", shape,
-      initializer=fw.Constant(1.0))
-    moving_mean = fw.create_weight(
-      "moving_mean", shape, trainable=False,
-      initializer=fw.Constant(0.0))
-    moving_variance = fw.create_weight(
-      "moving_variance", shape, trainable=False,
-      initializer=fw.Constant(1.0))
+      fw.Constant(1.0), fw.get_variable_scope().reuse)
+    moving_mean = weights.get(
+      "moving_mean", shape,
+      fw.Constant(0.0), fw.get_variable_scope().reuse, trainable=False)
+    moving_variance = weights.get(
+      "moving_variance", shape,
+      fw.Constant(1.0), fw.get_variable_scope().reuse, trainable=False)
 
     if is_training:
       x, mean, variance = fw.fused_batch_norm(
@@ -44,7 +44,7 @@ def batch_norm(x, is_training, data_format, name="bn", decay=0.9, epsilon=1e-5):
   return x
 
 
-def batch_norm_with_mask(x, is_training, mask, num_channels, name="bn",
+def batch_norm_with_mask(x, is_training: bool, mask, num_channels, weights, name="bn",
                          decay=0.9, epsilon=1e-3, data_format="NHWC"):
 
   shape = [num_channels]
@@ -52,24 +52,32 @@ def batch_norm_with_mask(x, is_training, mask, num_channels, name="bn",
 
   with fw.variable_scope(name, reuse=None if is_training else True):
     offset = fw.boolean_mask(
-      fw.create_weight(
+      weights.get(
         "offset",
         shape,
-        initializer=fw.Constant(0.0)),
+        fw.Constant(0.0),
+        fw.get_variable_scope().reuse),
       mask)
     scale = fw.boolean_mask(
-      fw.create_weight(
+      weights.get(
         "scale",
         shape,
-        initializer=fw.Constant(1.0)),
+        fw.Constant(1.0),
+        fw.get_variable_scope().reuse),
       mask)
 
-    moving_mean = fw.create_weight(
-      "moving_mean", shape, trainable=False,
-      initializer=fw.Constant(0.0))
-    moving_variance = fw.create_weight(
-      "moving_variance", shape, trainable=False,
-      initializer=fw.Constant(1.0))
+    moving_mean = weights.get(
+      "moving_mean",
+      shape,
+      fw.Constant(0.0),
+      fw.get_variable_scope().reuse,
+      trainable=False)
+    moving_variance = weights.get(
+      "moving_variance",
+      shape,
+      fw.Constant(1.0),
+      fw.get_variable_scope().reuse,
+      trainable=False)
 
     if is_training:
       x, mean, variance = fw.fused_batch_norm(

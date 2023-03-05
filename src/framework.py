@@ -1,5 +1,28 @@
 import tensorflow as tf
+
+from collections import defaultdict
 from functools import partial
+
+
+class WeightRegistry(object):
+  def __init__(self):
+    self.weight_map = defaultdict(WeightRegistry.factory)
+    self.default_initializer = tf.initializers.variance_scaling()
+
+  @staticmethod
+  def factory():
+    return defaultdict(WeightRegistry.factory)
+
+  def create_weight(self, name, shape, initializer=None, trainable=True):
+    if initializer is None:
+      initializer = self.default_initializer
+    return tf.Variable(initializer(shape), trainable, name=name)
+
+  def get(self, name, shape, initializer, reuse: bool, trainable=True):
+    if not reuse:
+      self.weight_map[tf.compat.v1.get_variable_scope().name + name] = self.create_weight(name, shape, initializer=initializer, trainable=trainable)
+    return self.weight_map[tf.compat.v1.get_variable_scope().name + name]
+
 
 # TensorFlow 2
 Graph = tf.Graph
@@ -97,11 +120,14 @@ exp_decay = tf.compat.v1.train.exponential_decay
 flags = tf.compat.v1.flags
 fused_batch_norm = tf.compat.v1.nn.fused_batch_norm
 get_or_create_global_step = tf.compat.v1.train.get_or_create_global_step
-get_variable = tf.compat.v1.get_variable
-create_weight = partial(
-    tf.compat.v1.get_variable,
-    initializer=tf.keras.initializers.he_normal(seed=None),
-    trainable=True)
+
+def get_variable(name, shape, initializer=None):
+    assert not tf.compat.v1.get_variable_scope().reuse
+    if initializer is None:
+        return tf.Variable(shape=shape, name=name)
+    else:
+        return tf.Variable(initializer(shape), name=name)
+
 max_pool2d = tf.compat.v1.layers.max_pooling2d
 multinomial = tf.compat.v1.multinomial
 ones_init = partial(tf.compat.v1.keras.initializers.ones, dtype=tf.float32)

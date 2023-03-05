@@ -76,7 +76,8 @@ class MacroChild(Child):
             "SAME",
             data_format=self.data_format.name),
           is_training,
-          self.data_format)
+          self.data_format,
+          weights)
 
     stride_spec = self._get_strides(stride)
     # Skip path 1
@@ -111,7 +112,8 @@ class MacroChild(Child):
     return batch_norm(
       fw.concat(values=[path1, path2], axis=concat_axis),
       is_training,
-      self.data_format)
+      self.data_format,
+      weights)
 
   def _model(self, images, is_training, weights, reuse=False):
     with fw.variable_scope(self.name, reuse=reuse):
@@ -129,7 +131,8 @@ class MacroChild(Child):
               "SAME",
               data_format=self.data_format.name),
             is_training,
-            self.data_format))
+            self.data_format,
+            weights))
 
       if self.whole_channels:
         start_idx = 0
@@ -265,7 +268,8 @@ class MacroChild(Child):
               "SAME",
               data_format=self.data_format.name),
             is_training,
-            self.data_format))
+            self.data_format,
+            weights))
 
     if layer_id > 0:
       if self.whole_channels:
@@ -280,7 +284,7 @@ class MacroChild(Child):
                                     lambda: prev_layers[i],
                                     lambda: fw.zeros_like(prev_layers[i])))
         res_layers.append(out)
-        out = batch_norm(fw.add_n(res_layers), is_training, self.data_format)
+        out = batch_norm(fw.add_n(res_layers), is_training, self.data_format, weights)
 
     return out
 
@@ -312,7 +316,8 @@ class MacroChild(Child):
               "SAME",
               data_format=self.data_format.name),
             is_training,
-            self.data_format)
+            self.data_format,
+            weights)
 
         with fw.variable_scope("conv_{0}x{0}".format(filter_size)):
           v = weights.get("w", [filter_size, filter_size, out_filters, out_filters], None, reuse)
@@ -324,7 +329,8 @@ class MacroChild(Child):
               "SAME",
               data_format=self.data_format.name),
             is_training,
-            self.data_format)
+            self.data_format,
+            weights)
       elif count == 4:
         pass
       elif count == 5:
@@ -372,7 +378,8 @@ class MacroChild(Child):
             "SAME",
             data_format=self.data_format.name),
           is_training,
-          self.data_format)
+          self.data_format,
+          weights)
 
     if layer_id > 0:
       if self.whole_channels:
@@ -400,7 +407,8 @@ class MacroChild(Child):
             "SAME",
             data_format=self.data_format.name),
           is_training,
-          self.data_format)
+          self.data_format,
+          weights)
 
     return out
 
@@ -429,7 +437,8 @@ class MacroChild(Child):
             "SAME",
             data_format=self.data_format.name),
           is_training,
-          self.data_format))
+          self.data_format,
+          weights))
 
     with fw.variable_scope("out_conv_{}".format(filter_size)):
       if start_idx is None:
@@ -445,17 +454,19 @@ class MacroChild(Child):
               padding="SAME",
               data_format=self.data_format.name),
             is_training,
-            self.data_format)
+            self.data_format,
+            weights)
         else:
           x = batch_norm(
             fw.conv2d(
               x,
-              fw.create_weight("w", [filter_size, filter_size, inp_c, count]),
+              weights.get("w", [filter_size, filter_size, inp_c, count], None, reuse),
               [1, 1, 1, 1],
               "SAME",
               data_format=self.data_format.name),
             is_training,
-            self.data_format)
+            self.data_format,
+            weights)
       else:
         mask = fw.range(0, out_filters, dtype=fw.int32)
         if separable:
@@ -489,6 +500,7 @@ class MacroChild(Child):
           is_training,
           fw.logical_and(start_idx <= mask, mask < start_idx + count),
           out_filters,
+          weights,
           data_format=self.data_format.name)
       x = fw.relu(x)
     return x
@@ -517,7 +529,8 @@ class MacroChild(Child):
             "SAME",
             data_format=self.data_format.name),
           is_training,
-          self.data_format))
+          self.data_format,
+          weights))
 
     with fw.variable_scope("pool"):
       if avg_or_max == "avg":
