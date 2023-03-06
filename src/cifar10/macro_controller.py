@@ -58,64 +58,63 @@ class MacroController(Controller):
 
   def _create_params(self):
     initializer = fw.random_uniform_initializer(minval=-0.1, maxval=0.1)
-    with fw.variable_scope(self.name, initializer=initializer):
-      with fw.variable_scope("lstm"):
+    with fw.name_scope(self.name):
+      with fw.name_scope("lstm"):
         self.w_lstm = []
         for layer_id in range(self.lstm_num_layers):
-          with fw.variable_scope("layer_{}".format(layer_id)):
+          with fw.name_scope("layer_{}".format(layer_id)):
             self.w_lstm.append(
-              fw.get_variable(
-                "w",
-                [2 * self.lstm_size, 4 * self.lstm_size],
-                initializer))
-
-      self.g_emb = fw.get_variable("g_emb", [1, self.lstm_size], initializer)
+              fw.Variable(
+                initializer([2 * self.lstm_size, 4 * self.lstm_size]),
+                name="w",
+                trainable=True))
+      self.g_emb = fw.Variable(initializer([1, self.lstm_size]), name="g_emb", trainable=True)
       if self.search_whole_channels:
-        with fw.variable_scope("emb"):
-          self.w_emb = fw.get_variable(
+        with fw.name_scope("emb"):
+          self.w_emb = fw.Variable(
+            initializer([self.num_branches, self.lstm_size]),
             "w",
-            [self.num_branches, self.lstm_size],
-            initializer)
-        with fw.variable_scope("softmax"):
-          self.w_soft = fw.get_variable(
-            "w",
-            [self.lstm_size, self.num_branches],
-            initializer)
+            trainable=True)
+        with fw.name_scope("softmax"):
+          self.w_soft = fw.Variable(
+            initializer([self.lstm_size, self.num_branches]),
+            name="w",
+            trainable=True)
       else:
         self.w_emb = {"start": [], "count": []}
-        with fw.variable_scope("emb"):
+        with fw.name_scope("emb"):
           for branch_id in range(self.num_branches):
-            with fw.variable_scope("branch_{}".format(branch_id)):
+            with fw.name_scope("branch_{}".format(branch_id)):
               self.w_emb["start"].append(
-                fw.get_variable(
-                  "w_start",
-                  [self.out_filters, self.lstm_size],
-                  initializer));
+                fw.Variable(
+                  initializer([self.out_filters, self.lstm_size]),
+                  name="w_start",
+                  trainable=True));
               self.w_emb["count"].append(
-                fw.get_variable(
-                  "w_count",
-                  [self.out_filters - 1, self.lstm_size],
-                  initializer));
+                fw.Variable(
+                  initializer([self.out_filters - 1, self.lstm_size]),
+                  name="w_count",
+                  trainable=True));
 
         self.w_soft = {"start": [], "count": []}
-        with fw.variable_scope("softmax"):
+        with fw.name_scope("softmax"):
           for branch_id in range(self.num_branches):
-            with fw.variable_scope("branch_{}".format(branch_id)):
+            with fw.name_scope("branch_{}".format(branch_id)):
               self.w_soft["start"].append(
-                fw.get_variable(
-                  "w_start",
-                  [self.lstm_size, self.out_filters],
-                  initializer));
+                fw.Variable(
+                  initializer([self.lstm_size, self.out_filters]),
+                  name="w_start",
+                  trainable=True));
               self.w_soft["count"].append(
-                fw.get_variable(
-                  "w_count",
-                  [self.lstm_size, self.out_filters - 1],
-                  initializer));
+                fw.Variable(
+                  initializer([self.lstm_size, self.out_filters - 1]),
+                  name="w_count",
+                  trainable=True));
 
-      with fw.variable_scope("attention"):
-        self.w_attn_1 = fw.get_variable("w_1", [self.lstm_size, self.lstm_size], initializer)
-        self.w_attn_2 = fw.get_variable("w_2", [self.lstm_size, self.lstm_size], initializer)
-        self.v_attn = fw.get_variable("v", [self.lstm_size, 1], initializer)
+      with fw.name_scope("attention"):
+        self.w_attn_1 = fw.Variable(initializer([self.lstm_size, self.lstm_size]), name="w_1", trainable=True)
+        self.w_attn_2 = fw.Variable(initializer([self.lstm_size, self.lstm_size]), name="w_2", trainable=True)
+        self.v_attn = fw.Variable(initializer([self.lstm_size, 1]), name="v", trainable=True)
 
   def _build_sampler(self):
     """Build the sampler ops and the log_prob ops."""

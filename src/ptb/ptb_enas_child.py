@@ -275,7 +275,7 @@ class PTBEnasChild(object):
       ht = tf.matmul(tf.concat([x * x_mask, prev_s * s_mask], axis=1), w_prev)
     else:
       ht = tf.matmul(tf.concat([x, prev_s], axis=1), w_prev)
-    # with fw.variable_scope("rhn_layer_0"):
+    # with fw.name_scope("rhn_layer_0"):
     #   ht = layer_norm(ht, is_training)
     h, t = tf.split(ht, 2, axis=1)
 
@@ -296,7 +296,7 @@ class PTBEnasChild(object):
     start_idx = 1
     used = np.zeros([self.rhn_depth], dtype=np.int32)
     for rhn_layer_id in range(1, self.rhn_depth):
-      with fw.variable_scope("rhn_layer_{}".format(rhn_layer_id)):
+      with fw.name_scope("rhn_layer_{}".format(rhn_layer_id)):
         prev_idx = self.sample_arc[start_idx]
         func_idx = self.sample_arc[start_idx + 1]
         used[prev_idx] = 1
@@ -343,7 +343,7 @@ class PTBEnasChild(object):
     else:
       ht = tf.matmul(tf.concat([x, prev_s], axis=1),
                      w_prev[start_idx:end_idx, :])
-    with fw.variable_scope("rhn_layer_0"):
+    with fw.name_scope("rhn_layer_0"):
       ht = batch_norm(ht, is_training)
     h, t = tf.split(ht, 2, axis=1)
     func_idx = self.sample_arc[0]
@@ -362,7 +362,7 @@ class PTBEnasChild(object):
     start_idx = 1
     used = []
     for rhn_layer_id in range(1, self.rhn_depth):
-      with fw.variable_scope("rhn_layer_{}".format(rhn_layer_id)):
+      with fw.name_scope("rhn_layer_{}".format(rhn_layer_id)):
         prev_idx = self.sample_arc[start_idx]
         func_idx = self.sample_arc[start_idx + 1]
         curr_used = tf.one_hot(prev_idx, depth=self.rhn_depth, dtype=tf.int32)
@@ -452,10 +452,10 @@ class PTBEnasChild(object):
       return tf.less(step, num_steps)
 
     def body(step, prev_h, all_h):
-      with fw.variable_scope(self.name):
+      with fw.name_scope(self.name):
         next_h = []
         for layer_id, (p_h, w_prev, w_skip) in enumerate(zip(prev_h, self.w_prev, self.w_skip)):
-          with fw.variable_scope("layer_{}".format(layer_id)):
+          with fw.name_scope("layer_{}".format(layer_id)):
             if layer_id == 0:
               inputs = embedding[:, step, :]
             else:
@@ -513,19 +513,19 @@ class PTBEnasChild(object):
       init_range = 0.04
     initializer = tf.random_uniform_initializer(
       minval=-init_range, maxval=init_range)
-    with fw.variable_scope(self.name, initializer=initializer):
+    with fw.name_scope(self.name, initializer=initializer):
       if self.fixed_arc is None:
-        with fw.variable_scope("rnn"):
+        with fw.name_scope("rnn"):
           self.w_prev, self.w_skip = [], []
           for layer_id in range(self.lstm_num_layers):
-            with fw.variable_scope("layer_{}".format(layer_id)):
+            with fw.name_scope("layer_{}".format(layer_id)):
               w_prev = fw.get_variable(
                 "w_prev",
                 [2 * self.num_funcs * self.lstm_hidden_size,
                  2 * self.lstm_hidden_size])
               w_skip = [None]
               for rhn_layer_id in range(1, self.rhn_depth):
-                with fw.variable_scope("layer_{}".format(rhn_layer_id)):
+                with fw.name_scope("layer_{}".format(rhn_layer_id)):
                   w = fw.get_variable(
                     "w", [self.num_funcs * rhn_layer_id * self.lstm_hidden_size,
                           2 * self.lstm_hidden_size])
@@ -533,26 +533,26 @@ class PTBEnasChild(object):
               self.w_prev.append(w_prev)
               self.w_skip.append(w_skip)
       else:
-        with fw.variable_scope("rnn"):
+        with fw.name_scope("rnn"):
           self.w_prev, self.w_skip = [], []
           for layer_id in range(self.lstm_num_layers):
-            with fw.variable_scope("layer_{}".format(layer_id)):
+            with fw.name_scope("layer_{}".format(layer_id)):
               w_prev = fw.get_variable("w_prev", [2 * self.lstm_hidden_size,
                                                   2 * self.lstm_hidden_size])
               w_skip = [None]
               for rhn_layer_id in range(1, self.rhn_depth):
-                with fw.variable_scope("layer_{}".format(rhn_layer_id)):
+                with fw.name_scope("layer_{}".format(rhn_layer_id)):
                   w = fw.get_variable("w", [self.lstm_hidden_size,
                                             2 * self.lstm_hidden_size])
                   w_skip.append(w)
               self.w_prev.append(w_prev)
               self.w_skip.append(w_skip)
 
-      with fw.variable_scope("embedding"):
+      with fw.name_scope("embedding"):
         self.w_emb = fw.get_variable(
           "w", [self.vocab_size, self.lstm_hidden_size])
 
-      with fw.variable_scope("starting_states"):
+      with fw.name_scope("starting_states"):
         zeros = np.zeros(
           [self.batch_size, self.lstm_hidden_size], dtype=np.float32)
         zeros_one_instance = np.zeros(

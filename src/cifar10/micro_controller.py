@@ -60,24 +60,23 @@ class MicroController(Controller):
     self.sample_log_prob = log_prob_1 + log_prob_2
 
   def _create_params(self):
-    with fw.variable_scope(self.name, initializer=fw.random_uniform_initializer(minval=-0.1, maxval=0.1)):
-      with fw.variable_scope("lstm"):
+    with fw.name_scope(self.name) as scope:
+      initializer = fw.random_uniform_initializer(minval=-0.1, maxval=0.1)
+      with fw.name_scope("lstm") as scope:
         self.w_lstm = []
         for layer_id in range(self.lstm_num_layers):
-          with fw.variable_scope("layer_{}".format(layer_id)):
-            self.w_lstm.append(fw.get_variable("w", [2 * self.lstm_size, 4 * self.lstm_size]))
+          with fw.name_scope("layer_{}".format(layer_id)) as scope:
+            self.w_lstm.append(fw.Variable(initializer(shape=[2 * self.lstm_size, 4 * self.lstm_size]), name="w", import_scope=scope, trainable=True))
 
-      self.g_emb = fw.get_variable("g_emb", [1, self.lstm_size])
-      with fw.variable_scope("emb"):
-        self.w_emb = fw.get_variable("w", [self.num_branches, self.lstm_size])
-      with fw.variable_scope("softmax"):
-        self.w_soft = fw.get_variable("w", [self.lstm_size, self.num_branches])
-        self.b_soft = fw.get_variable(
-          "b",
-          [1, self.num_branches],
-          initializer=fw.Constant(
+      self.g_emb = fw.Variable(initializer(shape=[1, self.lstm_size]), name="g_emb", import_scope=scope, trainable=True)
+      with fw.name_scope("emb") as scope:
+        self.w_emb = fw.Variable(initializer(shape=[self.num_branches, self.lstm_size]), name="w", import_scope=scope, trainable=True)
+      with fw.name_scope("softmax") as scope:
+        self.w_soft = fw.Variable(initializer(shape=[self.lstm_size, self.num_branches]), name="w", import_scope=scope, trainable=True)
+        self.b_soft = fw.Variable(
+          fw.Constant(
             np.array([10.0, 10.0] + [0] * (self.num_branches - 2),
-            dtype=np.float32)))
+            dtype=np.float32))([1, self.num_branches]), import_scope=scope, trainable=True)
 
         self.b_soft_no_learn = fw.constant(
           np.reshape(
@@ -87,10 +86,10 @@ class MicroController(Controller):
             [1, self.num_branches]),
           dtype=fw.float32)
 
-      with fw.variable_scope("attention"):
-        self.w_attn_1 = fw.get_variable("w_1", [self.lstm_size, self.lstm_size])
-        self.w_attn_2 = fw.get_variable("w_2", [self.lstm_size, self.lstm_size])
-        self.v_attn = fw.get_variable("v", [self.lstm_size, 1])
+      with fw.name_scope("attention") as scope:
+        self.w_attn_1 = fw.Variable(initializer([self.lstm_size, self.lstm_size]), "w_1", import_scope=scope, trainable=True)
+        self.w_attn_2 = fw.Variable(initializer([self.lstm_size, self.lstm_size]), "w_2", import_scope=scope, trainable=True)
+        self.v_attn = fw.Variable(initializer([self.lstm_size, 1]), "v", import_scope=scope, trainable=True)
 
   def _build_sampler(self, prev_c=None, prev_h=None, use_bias=False):
     """Build the sampler ops and the log_prob ops."""

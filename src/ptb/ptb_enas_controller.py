@@ -68,23 +68,23 @@ class PTBEnasController(object):
 
   def _create_params(self):
     initializer = tf.random_uniform_initializer(minval=-0.1, maxval=0.1)
-    with fw.variable_scope(self.name, initializer=initializer):
-      with fw.variable_scope("lstm"):
+    with fw.name_scope(self.name, initializer=initializer):
+      with fw.name_scope("lstm"):
         self.w_lstm = []
         for layer_id in xrange(self.lstm_num_layers):
-          with fw.variable_scope("layer_{}".format(layer_id)):
+          with fw.name_scope("layer_{}".format(layer_id)):
             w = fw.get_variable("w", [2 * self.lstm_size, 4 * self.lstm_size])
             self.w_lstm.append(w)
 
       num_funcs = self.num_funcs
-      with fw.variable_scope("embedding"):
+      with fw.name_scope("embedding"):
         self.g_emb = fw.get_variable("g_emb", [1, self.lstm_size])
         self.w_emb = fw.get_variable("w", [num_funcs, self.lstm_size])
 
-      with fw.variable_scope("softmax"):
+      with fw.name_scope("softmax"):
         self.w_soft = fw.get_variable("w", [self.lstm_size, num_funcs])
 
-      with fw.variable_scope("attention"):
+      with fw.name_scope("attention"):
         self.attn_w_1 = fw.get_variable("w_1", [self.lstm_size, self.lstm_size])
         self.attn_w_2 = fw.get_variable("w_2", [self.lstm_size, self.lstm_size])
         self.attn_v = fw.get_variable("v", [self.lstm_size, 1])

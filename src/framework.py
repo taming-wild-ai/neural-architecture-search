@@ -5,23 +5,23 @@ from functools import partial
 
 
 class WeightRegistry(object):
-  def __init__(self):
-    self.weight_map = defaultdict(WeightRegistry.factory)
-    self.default_initializer = tf.initializers.variance_scaling()
-
   @staticmethod
   def factory():
     return defaultdict(WeightRegistry.factory)
 
-  def create_weight(self, name, shape, initializer=None, trainable=True):
+  def __init__(self):
+    self.weight_map = defaultdict(WeightRegistry.factory)
+    self.default_initializer = tf.initializers.variance_scaling()
+
+  def create_weight(self, scope, name, shape, initializer=None, trainable=True):
     if initializer is None:
       initializer = self.default_initializer
-    return tf.Variable(initializer(shape), trainable, name=name)
+    return tf.Variable(initializer(shape), trainable, name=name, import_scope=scope)
 
-  def get(self, name, shape, initializer, reuse: bool, trainable=True):
+  def get(self, reuse: bool, scope, name, shape, initializer, trainable=True):
     if not reuse:
-      self.weight_map[tf.compat.v1.get_variable_scope().name + name] = self.create_weight(name, shape, initializer=initializer, trainable=trainable)
-    return self.weight_map[tf.compat.v1.get_variable_scope().name + name]
+      self.weight_map[scope + name] = self.create_weight(scope, name, shape, initializer=initializer, trainable=trainable)
+    return self.weight_map[scope + name]
 
 
 # TensorFlow 2
@@ -130,6 +130,7 @@ def get_variable(name, shape, initializer=None):
 
 max_pool2d = tf.compat.v1.layers.max_pooling2d
 multinomial = tf.compat.v1.multinomial
+name_scope = tf.name_scope
 ones_init = partial(tf.compat.v1.keras.initializers.ones, dtype=tf.float32)
 run = tf.compat.v1.app.run
 scatter_sub = partial(tf.compat.v1.scatter_sub, use_locking=True)
@@ -149,8 +150,6 @@ def shuffle_batch(data, batch_size, seed, capacity=25000):
 to_float = tf.compat.v1.to_float
 to_int32 = tf.compat.v1.to_int32
 trainable_variables = tf.compat.v1.trainable_variables
-get_variable_scope = tf.compat.v1.get_variable_scope
-variable_scope = tf.compat.v1.variable_scope
 
 
 class Optimizer(object):

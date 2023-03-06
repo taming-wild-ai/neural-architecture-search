@@ -11,7 +11,7 @@ from src.cifar10.macro_controller import MacroController
 from src.cifar10.macro_child import DEFINE_integer # for child_num_layers, child_num_branches, child_out_filters
 
 class TestMacroController(unittest.TestCase):
-    @patch('src.cifar10.macro_controller.fw.random_uniform_initializer', return_value="rui")
+    @patch('src.cifar10.macro_controller.fw.random_uniform_initializer')
     @patch('src.cifar10.macro_controller.fw.to_float', return_value=tf.constant(np.ones((1, 2))))
     @patch('src.cifar10.macro_controller.fw.reduce_sum', return_value=4.0)
     @patch('src.cifar10.macro_controller.fw.tanh', return_value=1.0)
@@ -24,16 +24,18 @@ class TestMacroController(unittest.TestCase):
     @patch('src.cifar10.macro_controller.fw.multinomial', return_value="multinomial")
     @patch('src.cifar10.macro_controller.stack_lstm', return_value=([1.0], [2.0]))
     @patch('src.cifar10.macro_controller.fw.matmul', return_value=np.ones((5)))
-    @patch('src.cifar10.macro_controller.fw.get_variable', return_value="get_variable")
+    @patch('src.cifar10.macro_controller.fw.Variable', return_value="get_variable")
     @patch('src.cifar10.macro_controller.fw.zeros', return_value="zeros")
     @patch('src.cifar10.macro_controller.print')
     def test_constructor_not_whole_channels(self, print, zeros, get_variable, matmul, stack_lstm, multinomial, to_int32, reshape, sscewl, stop_gradient, embedding_lookup, concat, tanh, reduce_sum, to_float, rui):
+        rui.__call__ = mock.MagicMock(return_value='rui')
         with tf.Graph().as_default():
             mc = MacroController(temperature=0.9)
         self.assertEqual(MacroController, type(mc))
         print.assert_any_call('-' * 80)
         zeros.assert_called_with([1, 32], tf.float32)
-        get_variable.assert_called_with('v', [32, 1], 'rui')
+        rui().assert_called_with([32, 1])
+        get_variable.assert_called_with(rui()(), name='v', trainable=True)
         matmul.assert_called_with(2.0, 'get_variable')
         stack_lstm.assert_called_with('embedding_lookup', [1.0], [2.0], ['get_variable', 'get_variable'])
         multinomial.assert_called_with(0.5, 1)
@@ -47,7 +49,7 @@ class TestMacroController(unittest.TestCase):
         reduce_sum.assert_called()
         to_float.assert_called_with(3.0)
 
-    @patch('src.cifar10.macro_controller.fw.random_uniform_initializer', return_value="rui")
+    @patch('src.cifar10.macro_controller.fw.random_uniform_initializer')
     @patch('src.cifar10.macro_controller.fw.to_float', return_value=tf.constant(np.ones((1, 2))))
     @patch('src.cifar10.macro_controller.fw.reduce_sum', return_value=4.0)
     @patch('src.cifar10.macro_controller.fw.tanh', return_value=1.0)
@@ -60,10 +62,11 @@ class TestMacroController(unittest.TestCase):
     @patch('src.cifar10.macro_controller.fw.multinomial', return_value="multinomial")
     @patch('src.cifar10.macro_controller.stack_lstm', return_value=([1.0], [2.0]))
     @patch('src.cifar10.macro_controller.fw.matmul', return_value=np.ones((5)))
-    @patch('src.cifar10.macro_controller.fw.get_variable', return_value="get_variable")
+    @patch('src.cifar10.macro_controller.fw.Variable', return_value="get_variable")
     @patch('src.cifar10.macro_controller.fw.zeros', return_value="zeros")
     @patch('src.cifar10.macro_controller.print')
     def test_constructor_whole_channels(self, print, zeros, get_variable, matmul, stack_lstm, multinomial, to_int32, reshape, sscewl, stop_gradient, embedding_lookup, concat, tanh, reduce_sum, to_float, rui):
+        rui.__call__ = mock.MagicMock(return_value='rui')
         fw.FLAGS.controller_search_whole_channels = True
         fw.FLAGS.child_num_layers = 4
         fw.FLAGS.child_num_branches = 6
@@ -73,7 +76,8 @@ class TestMacroController(unittest.TestCase):
             self.assertEqual(MacroController, type(MacroController(temperature=0.9)))
         print.assert_any_call('-' * 80)
         zeros.assert_called_with([1, 32], tf.float32)
-        get_variable.assert_called_with('v', [32, 1], 'rui')
+        rui().assert_called_with([32, 1])
+        get_variable.assert_called_with(rui()(), name='v', trainable=True)
         matmul.assert_called_with(2.0, 'get_variable')
         stack_lstm.assert_called_with('embedding_lookup', [1.0], [2.0], ['get_variable', 'get_variable'])
         multinomial.assert_called_with(0.5, 1)

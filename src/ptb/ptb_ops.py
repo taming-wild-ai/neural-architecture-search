@@ -12,7 +12,7 @@ def layer_norm(x, is_training, name="layer_norm"):
 
 def batch_norm(x, is_training, name="batch_norm", decay=0.999, epsilon=1.0):
   shape = x.get_shape()[1]
-  with fw.variable_scope(name, reuse=None if is_training else True):
+  with fw.name_scope(name, reuse=None if is_training else True):
     offset = fw.get_variable(
       "offset", shape,
       initializer=fw.Constant(0.0))
