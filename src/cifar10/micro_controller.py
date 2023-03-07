@@ -74,7 +74,7 @@ class MicroController(Controller):
       with fw.name_scope("softmax") as scope:
         self.w_soft = fw.Variable(initializer(shape=[self.lstm_size, self.num_branches]), name="w", import_scope=scope, trainable=True)
         self.b_soft = fw.Variable(
-          fw.Constant(
+          fw.constant_initializer(
             np.array([10.0, 10.0] + [0] * (self.num_branches - 2),
             dtype=np.float32))([1, self.num_branches]), import_scope=scope, trainable=True)
 

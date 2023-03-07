@@ -14,7 +14,7 @@ class TestImageOps(unittest.TestCase):
 
     @patch('src.cifar10.image_ops.fw.control_dependencies')
     @patch('src.cifar10.image_ops.moving_averages', return_value="ama")
-    @patch('src.cifar10.image_ops.fw.Constant', return_value="constant")
+    @patch('src.cifar10.image_ops.fw.constant_initializer', return_value="constant")
     @patch('src.cifar10.image_ops.fw.fused_batch_norm', return_value="fbn")
     @patch('src.cifar10.image_ops.fw.identity', return_value="identity")
     def test_batch_norm_nhwc_training(self, identity, fbn, constant, ama, cd):
@@ -27,7 +27,7 @@ class TestImageOps(unittest.TestCase):
             fbn.assert_called_with(input_tensor, "get_variable", "get_variable", epsilon=1e-5, data_format="NHWC", is_training=True)
             identity.assert_called_with("f")
 
-    @patch('src.cifar10.image_ops.fw.Constant', return_value="constant")
+    @patch('src.cifar10.image_ops.fw.constant_initializer', return_value="constant")
     @patch('src.cifar10.image_ops.fw.fused_batch_norm', return_value="fbn")
     @patch('src.cifar10.image_ops.fw.identity', return_value="identity")
     def test_batch_norm_nchw_not_training(self, identity, fbn, constant):
@@ -45,7 +45,7 @@ class TestImageOps(unittest.TestCase):
     @patch('src.cifar10.image_ops.fw.scatter_sub', return_value="scatter_sub")
     @patch('src.cifar10.image_ops.fw.fused_batch_norm', return_value=("fbn", 1.0, 1.0))
     @patch('src.cifar10.image_ops.fw.boolean_mask', return_value=1.0)
-    @patch('src.cifar10.image_ops.fw.Constant', return_value="constant")
+    @patch('src.cifar10.image_ops.fw.constant_initializer', return_value="constant")
     @patch('src.cifar10.image_ops.fw.reshape')
     @patch('src.cifar10.image_ops.fw.to_int32', return_value="to_int32")
     @patch('src.cifar10.image_ops.fw.where', return_value="where")
@@ -55,7 +55,7 @@ class TestImageOps(unittest.TestCase):
 
     @patch('src.cifar10.image_ops.fw.fused_batch_norm', return_value="fbn")
     @patch('src.cifar10.image_ops.fw.boolean_mask', return_value="boolean_mask")
-    @patch('src.cifar10.image_ops.fw.Constant', return_value="constant")
+    @patch('src.cifar10.image_ops.fw.constant_initializer', return_value="constant")
     @patch('src.cifar10.image_ops.fw.reshape')
     @patch('src.cifar10.image_ops.fw.to_int32', return_value="to_int32")
     @patch('src.cifar10.image_ops.fw.where', return_value="where")

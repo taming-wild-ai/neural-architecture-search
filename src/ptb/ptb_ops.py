@@ -15,16 +15,16 @@ def batch_norm(x, is_training, name="batch_norm", decay=0.999, epsilon=1.0):
   with fw.name_scope(name, reuse=None if is_training else True):
     offset = fw.get_variable(
       "offset", shape,
-      initializer=fw.Constant(0.0))
+      initializer=fw.constant_initializer(0.0))
     scale = fw.get_variable(
       "scale", shape,
-      initializer=fw.Constant(1.0))
+      initializer=fw.constant_initializer(1.0))
     moving_mean = fw.get_variable(
       "moving_mean", shape, trainable=False,
-      initializer=fw.Constant(0.0))
+      initializer=fw.constant_initializer(0.0))
     moving_variance = fw.get_variable(
       "moving_variance", shape, trainable=False,
-      initializer=fw.Constant(1.0))
+      initializer=fw.constant_initializer(1.0))
 
     if is_training:
       mean, variance = tf.nn.moments(x, [0])

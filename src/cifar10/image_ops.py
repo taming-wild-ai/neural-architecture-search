@@ -14,10 +14,10 @@ def batch_norm(x, is_training, data_format, weights, name="bn", decay=0.9, epsil
 
   with fw.name_scope(name) as scope:
     reuse = None if is_training else True
-    offset = weights.get(reuse, scope, "offset", shape, fw.Constant(0.0))
-    scale = weights.get(reuse, scope, "scale", shape, fw.Constant(1.0))
-    moving_mean = weights.get(reuse, scope, "moving_mean", shape, fw.Constant(0.0), trainable=False)
-    moving_variance = weights.get(reuse, scope, "moving_variance", shape, fw.Constant(1.0), trainable=False)
+    offset = weights.get(reuse, scope, "offset", shape, fw.constant_initializer(0.0))
+    scale = weights.get(reuse, scope, "scale", shape, fw.constant_initializer(1.0))
+    moving_mean = weights.get(reuse, scope, "moving_mean", shape, fw.constant_initializer(0.0), trainable=False)
+    moving_variance = weights.get(reuse, scope, "moving_variance", shape, fw.constant_initializer(1.0), trainable=False)
 
     if is_training:
       x, mean, variance = fw.fused_batch_norm(
@@ -46,24 +46,24 @@ def batch_norm_with_mask(x, is_training: bool, mask, num_channels, weights, name
   with fw.name_scope(name) as scope:
     reuse = None if is_training else True
     offset = fw.boolean_mask(
-      weights.get(reuse, scope, "offset", shape, fw.Constant(0.0)),
+      weights.get(reuse, scope, "offset", shape, fw.constant_initializer(0.0)),
       mask)
     scale = fw.boolean_mask(
-      weights.get(reuse, scope, "scale", shape, fw.Constant(1.0)),
+      weights.get(reuse, scope, "scale", shape, fw.constant_initializer(1.0)),
       mask)
 
     moving_mean = weights.get(
       reuse,
       scope,
       "moving_mean",
-      shape, fw.Constant(0.0),
+      shape, fw.constant_initializer(0.0),
       trainable=False)
     moving_variance = weights.get(
       reuse,
       scope,
       "moving_variance",
       shape,
-      fw.Constant(1.0),
+      fw.constant_initializer(1.0),
       trainable=False)
 
     if is_training:

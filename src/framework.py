@@ -99,7 +99,7 @@ zeros_like = tf.zeros_like
 
 # TensorFlow 1 Compatibility
 ConfigProto = partial(tf.compat.v1.ConfigProto, allow_soft_placement=True)
-Constant = partial(tf.compat.v1.keras.initializers.Constant, dtype=tf.float32)
+constant_initializer = tf.constant_initializer
 DEFINE_boolean = tf.compat.v1.app.flags.DEFINE_boolean
 DEFINE_float = tf.compat.v1.app.flags.DEFINE_float
 DEFINE_integer = tf.compat.v1.app.flags.DEFINE_integer
