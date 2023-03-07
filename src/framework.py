@@ -26,6 +26,7 @@ class WeightRegistry(object):
 
 # TensorFlow 2
 Graph = tf.Graph
+Hook = tf.estimator.CheckpointSaverHook
 IndexedSlices = tf.IndexedSlices
 TensorArray = tf.TensorArray
 Variable = partial(tf.Variable, trainable=False)
@@ -105,10 +106,8 @@ DEFINE_float = tf.compat.v1.app.flags.DEFINE_float
 DEFINE_integer = tf.compat.v1.app.flags.DEFINE_integer
 DEFINE_string = tf.compat.v1.app.flags.DEFINE_string
 FLAGS = tf.compat.v1.app.flags.FLAGS
-Hook = tf.compat.v1.train.CheckpointSaverHook
 Saver = partial(tf.compat.v1.train.Saver, max_to_keep=2)
 Session = tf.compat.v1.train.SingularMonitoredSession
-assign = partial(tf.compat.v1.assign, use_locking=True)
 assign_sub = tf.compat.v1.assign_sub
 avg_pool2d = tf.compat.v1.layers.average_pooling2d
 batch = partial(

@@ -139,8 +139,8 @@ class LearningRate(object):
 
       def _update():
         with fw.control_dependencies([
-          fw.assign(last_reset, curr_epoch),
-          fw.assign(T_i, T_i * self.mul)]):
+          last_reset.assign(curr_epoch, use_locking=True),
+          T_i.assign(T_i * self.mul, use_locking=True)]):
           return self.min + 0.5 * (self.max - self.min) * (1.0 + fw.cos(fw.to_float(T_curr) / fw.to_float(T_i) * 3.1415926))
 
       def _no_update():
