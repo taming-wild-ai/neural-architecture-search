@@ -108,7 +108,6 @@ DEFINE_string = tf.compat.v1.app.flags.DEFINE_string
 FLAGS = tf.compat.v1.app.flags.FLAGS
 Saver = partial(tf.compat.v1.train.Saver, max_to_keep=2)
 Session = tf.compat.v1.train.SingularMonitoredSession
-assign_sub = tf.compat.v1.assign_sub
 avg_pool2d = tf.compat.v1.layers.average_pooling2d
 batch = partial(
     tf.compat.v1.train.batch,

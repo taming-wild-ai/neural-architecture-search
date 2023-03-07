@@ -257,8 +257,8 @@ class MacroController(Controller):
     self.baseline = fw.Variable(0.0, dtype=fw.float32)
     print(f"self.baseline = {self.baseline}, self.bl_dec = {self.bl_dec}, self.reward = {self.reward}")
 
-    with fw.control_dependencies([fw.assign_sub(
-      self.baseline, (1 - self.bl_dec) * (self.baseline - self.reward))]):
+    with fw.control_dependencies([
+      self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - self.reward))]):
       self.reward = fw.identity(self.reward)
 
     self.loss = self.sample_log_prob * (self.reward - self.baseline)
