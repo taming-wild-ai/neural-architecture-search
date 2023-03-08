@@ -295,3 +295,9 @@ def get_train_ops(
   else:
     return train_op, learning_rate, grad_norm, opt
 
+
+class LayeredModel(object):      
+  def __call__(self, x):
+    for layer in self.layers:
+      x = layer(x)
+    return x
