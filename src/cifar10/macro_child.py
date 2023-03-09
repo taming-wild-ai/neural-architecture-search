@@ -61,11 +61,11 @@ class MacroChild(Child):
 
 
   class PathConv(LayeredModel):
-    def __init__(self, is_training, data_format, weights, reuse, scope, out_filters):
+    def __init__(self, is_training, data_format, w, weights):
       self.layers = [
         lambda x: fw.conv2d(
           x,
-          weights.get(reuse, scope, "w", [1, 1, data_format.get_C(x), out_filters], None),
+          w,
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name),
@@ -74,7 +74,7 @@ class MacroChild(Child):
 
 
   class SkipPath(LayeredModel):
-    def __init__(self, stride_spec, data_format, weights, reuse: bool, scope: str, out_filters: int):
+    def __init__(self, stride_spec, data_format, w):
       self.layers = [
         lambda x: fw.avg_pool(
           x,
@@ -84,12 +84,7 @@ class MacroChild(Child):
           data_format=data_format.name),
         lambda x: fw.conv2d(
           x,
-          weights.get(
-            reuse,
-            scope,
-            "w",
-            [1, 1, data_format.get_C(x), out_filters // 2],
-            None),
+          w,
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name)
@@ -110,23 +105,55 @@ class MacroChild(Child):
         "Need even number of filters when using this factorized reduction.")
     if stride == 1:
       with fw.name_scope("path_conv") as scope:
-        fr_model = MacroChild.PathConv(is_training, self.data_format, weights, reuse, scope, out_filters)
+        fr_model = MacroChild.PathConv(
+          is_training,
+          self.data_format,
+          weights.get(
+            reuse,
+            scope,
+            "w",
+            [1, 1, self.data_format.get_C(x), out_filters],
+            None),
+          weights)
         return fr_model(x)
 
     stride_spec = self._get_strides(stride)
     # Skip path 1
+    path1 = fw.avg_pool(
+        x, [1, 1, 1, 1], stride_spec, "VALID", data_format=self.data_format.name)
     with fw.name_scope("path1_conv") as scope:
-      fr_model = MacroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, out_filters)
-      path1 = fr_model(x)
+      inp_c = self.data_format.get_C(path1)
+      path1 = fw.conv2d(
+        path1,
+        weights.get(
+          reuse,
+          scope,
+          "w",
+          [1, 1, inp_c, out_filters // 2],
+          None),
+        [1, 1, 1, 1],
+        "SAME",
+        data_format=self.data_format.name)
 
     # Skip path 2
     # First pad with 0s on the right and bottom, then shift the filter to
     # include those 0s that were added.
     path2, concat_axis = self.data_format.factorized_reduction(x)
 
+    path2 = fw.avg_pool(path2, [1, 1, 1, 1], stride_spec, "VALID", data_format=self.data_format.name)
     with fw.name_scope("path2_conv") as scope:
-      fr_model = MacroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, out_filters)
-      path2 = fr_model(path2)
+      inp_c = self.data_format.get_C(path2)
+      path2 = fw.conv2d(
+        path2,
+        weights.get(
+          reuse,
+          scope,
+          "w",
+          [1, 1, inp_c, out_filters // 2],
+          None),
+        [1, 1, 1, 1],
+        "SAME",
+        data_format=self.data_format.name)
 
     # Concat and apply BN
     fr_model = MacroChild.FRModel(concat_axis, is_training, self.data_format, weights)
@@ -144,8 +171,8 @@ class MacroChild(Child):
           data_format=data_format.name),
         lambda x: batch_norm(x, is_training, data_format, weights)
       ]
-    
-  
+
+
   class Dropout(LayeredModel):
     def __init__(self, data_format, is_training, keep_prob, weights, reuse, scope):
       self.layers = [data_format.global_avg_pool]
@@ -153,7 +180,7 @@ class MacroChild(Child):
         self.layers += [lambda x: fw.dropout(x, keep_prob)]
       self.layers += [
         lambda x: fw.matmul(
-          x, 
+          x,
           weights.get(
             reuse,
             scope,
@@ -201,8 +228,8 @@ class MacroChild(Child):
 
       with fw.name_scope("fc") as scope:
         dropout = MacroChild.Dropout(
-          self.data_format, 
-          is_training, 
+          self.data_format,
+          is_training,
           self.keep_prob,
           weights,
           reuse,
@@ -436,12 +463,12 @@ class MacroChild(Child):
 
       with fw.name_scope("skip") as scope:
         conv1x1 = MacroChild.Conv1x1(
-          weights, 
-          reuse, 
-          scope, 
-          total_skip_channels * out_filters, 
-          out_filters, 
-          is_training, 
+          weights,
+          reuse,
+          scope,
+          total_skip_channels * out_filters,
+          out_filters,
+          is_training,
           self.data_format)
         out = conv1x1(prev)
 
@@ -466,7 +493,7 @@ class MacroChild(Child):
     def __init__(self, w, data_format, weights, is_training: bool):
       self.layers = [
         lambda x: fw.conv2d(
-          x, 
+          x,
           w,
           [1, 1, 1, 1],
           "SAME",
@@ -514,7 +541,7 @@ class MacroChild(Child):
           data_format=data_format.name),
         fw.relu
       ]
-  
+
 
   class OutConvMasked(LayeredModel):
     def __init__(self, w, out_filters: int, weights, start_idx: int, count: int, data_format, is_training: bool):
@@ -583,7 +610,7 @@ class MacroChild(Child):
               scope,
               "w_point",
               [1, 1, out_filters * ch_mul, count],
-              None), 
+              None),
             self.data_format,
             weights,
             is_training)
@@ -595,9 +622,9 @@ class MacroChild(Child):
               scope,
               "w",
               [filter_size, filter_size, inp_c, count],
-              None), 
-            self.data_format, 
-            weights, 
+              None),
+            self.data_format,
+            weights,
             is_training)
           x = out_conv(x)
       else:
@@ -614,13 +641,13 @@ class MacroChild(Child):
               scope,
               "w_point",
               [out_filters, out_filters * ch_mul],
-              None), 
-            out_filters, 
-            weights, 
-            ch_mul, 
-            start_idx, 
-            count, 
-            self.data_format, 
+              None),
+            out_filters,
+            weights,
+            ch_mul,
+            start_idx,
+            count,
+            self.data_format,
             is_training)
           x = sep_conv(x)
         else:
@@ -630,12 +657,12 @@ class MacroChild(Child):
               scope,
               "w",
               [filter_size, filter_size, out_filters, out_filters],
-              None), 
-            out_filters, 
+              None),
+            out_filters,
             weights,
-            start_idx, 
-            count, 
-            self.data_format, 
+            start_idx,
+            count,
+            self.data_format,
             is_training)
           x = out_conv(x)
     return x
@@ -658,9 +685,9 @@ class MacroChild(Child):
           scope,
           "w",
           [1, 1, self.data_format.get_C(inputs), self.out_filters],
-          None), 
-        is_training, 
-        self.data_format, 
+          None),
+        is_training,
+        self.data_format,
         weights)
       x = input_conv(inputs)
 

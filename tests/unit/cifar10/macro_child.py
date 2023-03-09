@@ -78,7 +78,7 @@ class TestMacroChild(unittest.TestCase):
         self.assertRaises(AssertionError, mc._factorized_reduction, None, 3, None, None, mc.weights, False)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
-    @patch('src.cifar10.macro_child.fw.conv2d', return_value=None)
+    @patch('src.cifar10.macro_child.fw.conv2d', return_value='conv2d')
     @patch('src.cifar10.macro_child.batch_norm')
     def test_factorized_reduction_stride1(self, batch_norm, conv2d):
         with tf.Graph().as_default():
@@ -89,12 +89,13 @@ class TestMacroChild(unittest.TestCase):
                     mc._factorized_reduction(None, 2, 1, True, mc.weights, False)
                     get_C.assert_called_with(None)
                     create_weight.assert_called_with(False, 'path_conv/', "w", [1, 1, None, 2], None)
-                    batch_norm.assert_called()
+                    batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
 
+    zeros = np.zeros((5, 5, 5, 5))
     @patch('src.cifar10.child.Child.__init__', new=mock_init_nhwc)
     @patch('src.cifar10.macro_child.fw.conv2d', return_value="conv2d")
     @patch('src.cifar10.macro_child.fw.avg_pool', return_value="path1")
-    @patch('src.cifar10.macro_child.fw.pad', return_value=np.ndarray((5, 5, 5, 5)))
+    @patch('src.cifar10.macro_child.fw.pad')
     @patch('src.cifar10.macro_child.fw.concat', return_value="final_path")
     @patch('src.cifar10.macro_child.batch_norm', return_value="final_path")
     def test_factorized_reduction_nhwc(self, batch_norm, concat, pad, avg_pool, conv2d):
@@ -105,22 +106,21 @@ class TestMacroChild(unittest.TestCase):
                     with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
                         self.assertEqual("final_path", mc._factorized_reduction(None, 2, 2, True, mc.weights, False))
                         get_strides.assert_called_with(2)
-                        avg_pool.assert_called()
+                        avg_pool.assert_any_call(None, [1, 1, 1, 1], 'stride spec', 'VALID', data_format='NHWC')
                         get_C.assert_any_call("path1")
                         create_weight.assert_any_call(False, 'path1_conv/', "w", [1, 1, 'inp_c', 1], None)
-                        conv2d.assert_called()
                         pad.assert_called_with(None, [[0, 0], [0, 1], [0, 1], [0, 0]])
-                        avg_pool.assert_called()
+                        avg_pool.assert_called_with(pad().__getitem__(), [1, 1, 1, 1], 'stride spec', 'VALID', data_format='NHWC')
                         get_C.assert_any_call("path1")
                         create_weight.assert_called_with(False, 'path2_conv/', "w", [1, 1, "inp_c", 1], None)
-                        conv2d.assert_called()
+                        conv2d.assert_called_with('path1', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NHWC')
                         concat.assert_called_with(values=["conv2d", "conv2d"], axis=3)
-                        batch_norm.assert_called()
+                        batch_norm.assert_called_with('final_path', True, mc.data_format, mc.weights)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     @patch('src.cifar10.macro_child.fw.conv2d', return_value="conv2d")
     @patch('src.cifar10.macro_child.fw.avg_pool', return_value="path1")
-    @patch('src.cifar10.macro_child.fw.pad', return_value=np.ndarray((5, 5, 5, 5)))
+    @patch('src.cifar10.macro_child.fw.pad')
     @patch('src.cifar10.macro_child.fw.concat', return_value="final_path")
     @patch('src.cifar10.macro_child.batch_norm', return_value="final_path")
     def test_factorized_reduction_nchw(self, batch_norm, concat, pad, avg_pool, conv2d):
@@ -131,17 +131,16 @@ class TestMacroChild(unittest.TestCase):
                     with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
                         self.assertEqual("final_path", mc._factorized_reduction(None, 2, 2, True, mc.weights, False))
                         get_strides.assert_called_with(2)
-                        avg_pool.assert_called()
+                        avg_pool.assert_any_call(None, [1, 1, 1, 1], 'stride spec', 'VALID', data_format=mc.data_format.name)
                         get_C.assert_any_call("path1")
                         create_weight.assert_any_call(False, 'path1_conv/', "w", [1, 1, 'inp_c', 1], None)
-                        conv2d.assert_called()
                         pad.assert_called_with(None, [[0, 0], [0, 0], [0, 1], [0, 1]])
-                        avg_pool.assert_called()
+                        avg_pool.assert_called_with(pad().__getitem__(), [1, 1, 1, 1], 'stride spec', 'VALID', data_format='NCHW')
                         get_C.assert_any_call("path1")
                         create_weight.assert_called_with(False, 'path2_conv/', "w", [1, 1, "inp_c", 1], None)
-                        conv2d.assert_called()
+                        conv2d.assert_called_with('path1', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
                         concat.assert_called_with(values=["conv2d", "conv2d"], axis=1)
-                        batch_norm.assert_called()
+                        batch_norm.assert_called_with('final_path', True, mc.data_format, mc.weights)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     def test_get_c_nchw(self):
@@ -177,7 +176,7 @@ class TestMacroChild(unittest.TestCase):
                         with patch.object(mc.weights, 'get', return_value='w') as create_weight:
                             mc._model({}, True, mc.weights)
                             create_weight.assert_any_call(False, 'generic_model/stem_conv/', "w", [3, 3, 3, 24], None)
-                            conv2d.assert_called()
+                            conv2d.assert_called_with({}, 'w', [1, 1, 1, 1], 'SAME', data_format='NHWC')
                             enas_layer.assert_called_with(1, ['final_path', 'enas_layer', 'enas_layer'], 18, 24, True, mc.weights, False)
                             global_avg_pool.assert_called_with('enas_layer')
                             dropout.assert_called_with('gap', 0.9)
@@ -202,14 +201,14 @@ class TestMacroChild(unittest.TestCase):
                         with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
                             mc._model({}, True, mc.weights)
                             create_weight.assert_any_call(False, 'generic_model/stem_conv/', "w", [3, 3, 3, 24], None)
-                            conv2d.assert_called()
-                            batch_norm.assert_called()
+                            conv2d.assert_called_with({}, 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
+                            batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
                             enas_layer.assert_called_with(1, ['factorized_reduction', 'factorized_reduction', 'enas_layer'], 18, 24, True, mc.weights, False)
                             factorized_reduction.assert_called_with('enas_layer', 24, 2, True, mc.weights, False)
-                            global_avg_pool.assert_called()
+                            global_avg_pool.assert_called_with('enas_layer')
                             dropout.assert_called_with('global_avg_pool', 0.9)
                             create_weight.assert_called_with(False, 'generic_model/fc/', "w", [3, 10], None)
-                            matmul.assert_called()
+                            matmul.assert_called_with(dropout.return_value, 'fw.create_weight')
 
     @patch('src.cifar10.macro_child.print')
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
@@ -231,14 +230,14 @@ class TestMacroChild(unittest.TestCase):
                         with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
                             mc._model({}, True, mc.weights)
                             create_weight.assert_any_call(False, 'generic_model/stem_conv/', "w", [3, 3, 3, 24], None)
-                            conv2d.assert_called()
-                            batch_norm.assert_called()
+                            conv2d.assert_called_with({}, 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
+                            batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
                             fixed_layer.assert_called_with(1, ['factorized_reduction', 'factorized_reduction', 'enas_layer'], 1, 48, True, mc.weights, False)
                             factorized_reduction.assert_called_with('enas_layer', 48, 2, True, mc.weights, False)
-                            global_avg_pool.assert_called()
+                            global_avg_pool.assert_called_with('enas_layer')
                             dropout.assert_called_with('global_avg_pool', 0.9)
                             create_weight.assert_called_with(False, 'generic_model/fc/', "w", [3, 10], None)
-                            matmul.assert_called()
+                            matmul.assert_called_with(dropout.return_value, 'fw.create_weight')
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init_nhwc)
     @patch('src.cifar10.macro_child.fw.case', return_value=tf.constant(np.ndarray((4, 32, 32, 24)), tf.float32))
@@ -247,17 +246,17 @@ class TestMacroChild(unittest.TestCase):
     def test_enas_layer_whole_channels_nhwc(self, batch_norm, add_n, case):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
-        mc.whole_channels = True
-        mc.sample_arc = np.array([int(x) for x in "0 3 0 0 1 0".split(" ") if x])
-        with patch.object(mc, '_conv_branch', return_value="conv_branch") as conv_branch:
-            with patch.object(mc, '_pool_branch', return_value="pool_branch") as pool_branch:
-                with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
-                    input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
-                    mc._enas_layer(1, [input_tensor], 0, 24, True, mc.weights, False)
-                    conv_branch.assert_called_with(input_tensor, 5, True, 24, 24, mc.weights, False, start_idx=0, separable=True)
-                    case.assert_called()
-                    batch_norm.assert_called()
-                    create_weight.assert_not_called()
+            mc.whole_channels = True
+            mc.sample_arc = np.array([int(x) for x in "0 3 0 0 1 0".split(" ") if x])
+            with patch.object(mc, '_conv_branch', return_value="conv_branch") as conv_branch:
+                with patch.object(mc, '_pool_branch', return_value="pool_branch") as pool_branch:
+                    with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
+                        input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
+                        mc._enas_layer(1, [input_tensor], 0, 24, True, mc.weights, False)
+                        conv_branch.assert_called_with(input_tensor, 5, True, 24, 24, mc.weights, False, start_idx=0, separable=True)
+                        case.assert_called()
+                        batch_norm.assert_called_with('add_n', True, mc.data_format, mc.weights)
+                        create_weight.assert_not_called()
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     @patch('src.cifar10.macro_child.fw.case', return_value=tf.constant(np.ndarray((4, 24, 32, 32)), tf.float32))
@@ -275,18 +274,19 @@ class TestMacroChild(unittest.TestCase):
                     mc._enas_layer(1, [input_tensor], 0, 24, True, mc.weights, False)
                     conv_branch.assert_called_with(input_tensor, 5, True, 24, 24, mc.weights, False, start_idx=0, separable=True)
                     case.assert_called()
-                    batch_norm.assert_called()
+                    batch_norm.assert_called_with('add_n', True, mc.data_format, mc.weights)
                     create_weight.assert_not_called()
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init_nhwc)
     @patch('src.cifar10.macro_child.fw.reshape', return_value="reshape")
     @patch('src.cifar10.macro_child.fw.boolean_mask', return_value="boolean_mask")
+    @patch('src.cifar10.macro_child.fw.logical_or', return_value="logical_or")
     @patch('src.cifar10.macro_child.fw.concat', return_value="concat")
     @patch('src.cifar10.macro_child.fw.conv2d', return_value="conv2d")
     @patch('src.cifar10.macro_child.fw.relu', return_value="relu")
     @patch('src.cifar10.macro_child.batch_norm', return_value="batch_norm")
     @patch('src.cifar10.macro_child.fw.add_n', return_value="add_n")
-    def test_enas_layer_not_whole_channels_nhwc(self, add_n, batch_norm, relu, conv_2d, concat, boolean_mask, reshape):
+    def test_enas_layer_not_whole_channels_nhwc(self, add_n, batch_norm, relu, conv_2d, concat, logical_or, boolean_mask, reshape):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
             mc.whole_channels = False
@@ -297,12 +297,12 @@ class TestMacroChild(unittest.TestCase):
                         input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
                         mc._enas_layer(1, [input_tensor], 0, 24, True, mc.weights, False)
                         conv_branch.assert_called_with(input_tensor, 5, True, 0, 24, start_idx=2, separable=True)
-                        concat.assert_called()
-                        conv_2d.assert_called()
+                        concat.assert_called_with(['conv_branch', 'conv_branch', 'conv_branch', 'conv_branch', 'pool_branch', 'pool_branch'], axis=3)
+                        conv_2d.assert_called_with('concat', 'reshape', [1, 1, 1, 1], 'SAME', data_format='NHWC')
                         relu.assert_called_with("batch_norm")
-                        batch_norm.assert_called()
+                        batch_norm.assert_called_with('add_n', True, mc.data_format, mc.weights)
                         create_weight.assert_called_with(False, 'final_conv/', 'w', [144, 24], None)
-                        boolean_mask.assert_called()
+                        boolean_mask.assert_called_with('fw.create_weight', 'logical_or')
                         reshape.assert_called_with('boolean_mask', [1, 1, -1, 24])
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
@@ -327,15 +327,15 @@ class TestMacroChild(unittest.TestCase):
                         input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
                         mc._enas_layer(1, [input_tensor], 0, 24, True, mc.weights, False)
                         conv_branch.assert_called_with(input_tensor, 5, True, 0, 24, start_idx=2, separable=True)
-                        concat.assert_called()
-                        conv_2d.assert_called()
+                        concat.assert_called_with(['conv_branch', 'conv_branch', 'conv_branch', 'conv_branch', 'pool_branch', 'pool_branch'], axis=1)
+                        conv_2d.assert_called_with('reshape', 'reshape', [1, 1, 1, 1], 'SAME', data_format='NCHW')
                         relu.assert_called_with("batch_norm")
-                        batch_norm.assert_called()
+                        batch_norm.assert_called_with('add_n', True, mc.data_format, mc.weights)
                         create_weight.assert_called_with(False, 'final_conv/', "w", [144, 24], None)
                         logical_and.assert_called()
                         logical_or.assert_called_with("logical_or", "logical_and")
                         boolean_mask.assert_called_with("fw.create_weight", "logical_or")
-                        shape.assert_called()
+                        shape.assert_called_with(input_tensor)
                         reshape.assert_called_with("concat", ['shape', -1, 32, 3])
                         create_weight.assert_called_with(False, 'final_conv/', 'w', [144, 24], None)
 
@@ -352,8 +352,8 @@ class TestMacroChild(unittest.TestCase):
                 input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
                 mc._fixed_layer(0, [input_tensor], 0, 24, True, mc.weights, False)
                 relu.assert_called_with("batch_norm")
-                conv2d.assert_called()
-                batch_norm.assert_called()
+                conv2d.assert_called_with('relu', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NHWC')
+                batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
                 create_weight.assert_called_with(False, 'conv_3x3/', 'w', [3, 3, 24, 24], None)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init_nhwc)
@@ -371,8 +371,8 @@ class TestMacroChild(unittest.TestCase):
                 mc._fixed_layer(1, [input_tensor], 0, 24, True, mc.weights, False)
                 create_weight.assert_called_with(False, 'skip/', "w", [1, 1, 96, 24], None)
                 relu.assert_called_with("concat")
-                conv2d.assert_called()
-                batch_norm.assert_called()
+                conv2d.assert_called_with('relu', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NHWC')
+                batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     @patch('src.cifar10.macro_child.fw.relu', return_value="relu")
@@ -387,8 +387,8 @@ class TestMacroChild(unittest.TestCase):
                 input_tensor = tf.constant(np.ndarray((4, 3, 32, 32)), name="hashable")
                 mc._fixed_layer(0, [input_tensor], 0, 24, True, mc.weights, False)
                 relu.assert_called_with("batch_norm")
-                conv2d.assert_called()
-                batch_norm.assert_called()
+                conv2d.assert_called_with('relu', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
+                batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
                 create_weight.assert_called_with(False, 'conv_3x3/', 'w', [3, 3, 24, 24], None)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
@@ -417,8 +417,8 @@ class TestMacroChild(unittest.TestCase):
                         mc._fixed_layer(0, [input_tensor], 0, 24, True, mc.weights, False)
                         conv_branch.assert_called_with(input_tensor, 5, True, 0, separable=True)
                         relu.assert_called_with("concat")
-                        conv2d.assert_called()
-                        batch_norm.assert_called()
+                        conv2d.assert_called_with('relu', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NHWC')
+                        batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
                         pool_branch.assert_called_with(input_tensor, True, 0, "max")
                         concat.assert_called_with(['conv_branch', 'conv_branch', 'conv_branch', 'conv_branch', 'pool_branch', 'pool_branch'], axis=3)
                         create_weight.assert_called_with(False, 'final_conv/', 'w', [1, 1, 4, 24], None)
@@ -440,8 +440,8 @@ class TestMacroChild(unittest.TestCase):
                         mc._fixed_layer(1, [input_tensor], 0, 24, True, mc.weights, False)
                         conv_branch.assert_called_with(input_tensor, 5, True, 0, separable=True)
                         relu.assert_called_with("concat")
-                        conv2d.assert_called()
-                        batch_norm.assert_called()
+                        conv2d.assert_called_with('relu', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
+                        batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
                         pool_branch.assert_called_with(input_tensor, True, 0, "max")
                         concat.assert_called_with(['batch_norm'], axis=1)
                         create_weight.assert_called_with(False, 'skip/', 'w', [1, 1, 24, 24], None)
@@ -459,14 +459,14 @@ class TestMacroChild(unittest.TestCase):
     def test_conv_branch_nhwc(self, relu, batch_norm, conv2d):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
-        with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
-            mc.fixed_arc = "0 3 0 0 1 0"
-            input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
-            mc._conv_branch(input_tensor, 24, True, 0, 24, mc.weights, False)
-            conv2d.assert_called()
-            batch_norm.assert_called()
-            relu.assert_called_with("batch_norm")
-            create_weight.assert_called()
+            with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
+                mc.fixed_arc = "0 3 0 0 1 0"
+                input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
+                mc._conv_branch(input_tensor, 24, True, 0, 24, mc.weights, False)
+                conv2d.assert_called_with('relu', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NHWC')
+                batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
+                relu.assert_called_with("batch_norm")
+                create_weight.assert_called_with(False, 'out_conv_24/', 'w', [24, 24, 3, 0], None)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     @patch('src.cifar10.macro_child.fw.conv2d', return_value="conv2d")
@@ -480,8 +480,8 @@ class TestMacroChild(unittest.TestCase):
             input_tensor = tf.constant(np.ndarray((4, 3, 32, 32)), name="hashable")
             mc._conv_branch(input_tensor, 24, True, 0, 24, mc.weights, False)
             create_weight.assert_any_call(False, 'inp_conv_1/', "w", [1, 1, 3, 24], None)
-            conv2d.assert_called()
-            batch_norm.assert_called()
+            conv2d.assert_called_with('relu', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
+            batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
             relu.assert_called_with("batch_norm")
             create_weight.assert_called_with(False, 'out_conv_24/', "w", [24, 24, 3, 0], None)
 
@@ -502,8 +502,8 @@ class TestMacroChild(unittest.TestCase):
                 input_tensor = tf.constant(np.ndarray((4, 3, 32, 32)), name="hashable")
                 mc._conv_branch(input_tensor, 24, True, 0, 24, mc.weights, False, ch_mul=1, start_idx=None, separable=True)
                 create_weight.assert_any_call(False, 'inp_conv_1/', "w", [1, 1, 3, 24], None)
-                conv2d.assert_called()
-                batch_norm.assert_called()
+                conv2d.assert_called_with(input_tensor, 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
+                batch_norm.assert_called_with('sep_conv2d', True, mc.data_format, mc.weights)
                 relu.assert_called_with("batch_norm")
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
@@ -522,8 +522,8 @@ class TestMacroChild(unittest.TestCase):
                 input_tensor = tf.constant(np.ndarray((4, 3, 32, 32)), name="hashable")
                 mc._conv_branch(input_tensor, 24, True, 0, 24, mc.weights, False, ch_mul=1, start_idx=1)
                 create_weight.assert_any_call(False, 'inp_conv_1/', "w", [1, 1, 3, 24], None)
-                conv2d.assert_called()
-                batch_norm.assert_called()
+                conv2d.assert_called_with('relu', transpose.return_value, [1, 1, 1, 1], 'SAME', data_format='NCHW')
+                batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
                 relu.assert_called_with("bnwm")
                 create_weight.assert_called_with(False, 'out_conv_24/', "w", [24, 24, 24, 24], None)
 
@@ -543,8 +543,8 @@ class TestMacroChild(unittest.TestCase):
                 input_tensor = tf.constant(np.ndarray((4, 3, 32, 32)), name="hashable")
                 mc._conv_branch(input_tensor, 24, True, 0, 24, mc.weights, False, ch_mul=1, start_idx=1, separable=True)
                 create_weight.assert_any_call(False, 'inp_conv_1/', "w", [1, 1, 3, 24], None)
-                conv2d.assert_called()
-                batch_norm.assert_called()
+                conv2d.assert_called_with(input_tensor, mc.weights.get.return_value, [1, 1, 1, 1], 'SAME', data_format='NCHW')
+                batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
                 relu.assert_called_with("bnwm")
                 create_weight.assert_called_with(False, 'out_conv_24/', "w_point", [24, 24], None)
 
@@ -566,8 +566,8 @@ class TestMacroChild(unittest.TestCase):
                 mc.fixed_arc = "0 3 0 0 1 0"
                 input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
                 mc._pool_branch(input_tensor, True, 0, "avg", mc.weights, False, start_idx=True)
-                conv2d.assert_called()
-                batch_norm.assert_called()
+                conv2d.assert_called_with(input_tensor, mc.weights.get.return_value, [1, 1, 1, 1], 'SAME', data_format='NHWC')
+                batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
                 relu.assert_called_with("batch_norm")
                 avg_pool2d.assert_called_with("relu", [3, 3], [1, 1], "SAME", data_format="channels_last")
                 create_weight.assert_called_with(False, 'conv_1/', 'w', [1, 1, 3, 24], None)
@@ -585,8 +585,8 @@ class TestMacroChild(unittest.TestCase):
                 mc.fixed_arc = "0 3 0 0 1 0"
                 input_tensor = tf.constant(np.ndarray((4, 3, 32, 32)), name="hashable")
                 mc._pool_branch(input_tensor, True, 0, "max", mc.weights, False, start_idx=True)
-                conv2d.assert_called()
-                batch_norm.assert_called()
+                conv2d.assert_called_with(input_tensor, mc.weights.get.return_value, [1, 1, 1, 1], 'SAME', data_format='NCHW')
+                batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
                 relu.assert_called_with("batch_norm")
                 max_pool2d.assert_called_with('relu', [3, 3], [1, 1], 'SAME', data_format='channels_first')
                 create_weight.assert_called_with(False, 'conv_1/', 'w', [1, 1, 3, 24], None)
@@ -627,7 +627,7 @@ class TestMacroChild(unittest.TestCase):
                 sscewl.assert_called_with(logits="model", labels=mc.y_train)
                 reduce_mean.assert_called_with("sscewl")
                 argmax.assert_called_with("model", axis=1)
-                get_train_ops.assert_called()
+                get_train_ops.assert_called_with('reduce_mean', [], mc.global_step, mc.learning_rate, clip_mode=None, l2_reg=mc.l2_reg, num_train_batches=310, optim_algo=None)
                 to_int32.assert_called_with('equal')
                 equal.assert_called_with('to_int32', 2)
 
@@ -699,7 +699,7 @@ class TestMacroChild(unittest.TestCase):
                 [mc.images['valid_original'], mc.labels['valid_original']],
                 mc.batch_size,
                 mc.seed)
-            model.assert_called()
+            model.assert_called_with('map_fn', False, mc.weights, reuse=True)
             argmax.assert_called_with("model", axis=1)
             to_int32.assert_any_call("argmax")
             equal.assert_called_with("to_int32", "y_valid_shuffle")

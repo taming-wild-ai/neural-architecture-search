@@ -55,7 +55,7 @@ class TestCIFAR10Main(unittest.TestCase):
             print.assert_any_call(("-" * 80))
             print.assert_any_call("Path  exists. Remove and remake.")
             rmtree.assert_called_with("")
-            makedirs.assert_called()
+            makedirs.assert_called_with('')
             print_flags.assert_called_with()
             train.assert_called_with()
 
@@ -100,12 +100,12 @@ class TestCIFAR10Main(unittest.TestCase):
         with RestoreFLAGS(search_for="micro", controller_training=True, child_fixed_arc=None):
             main.get_ops(None, None)
 
-        mco_ctor.assert_called()
-        mch_ctor.assert_called()
+        mco_ctor.assert_called_with(lstm_size=64, lstm_num_layers=1, lstm_keep_prob=1.0, lr_dec_start=0, lr_dec_every=1000000, optim_algo='adam')
+        mch_ctor.assert_called_with(None, None, clip_mode='norm', optim_algo='momentum')
         gco_ctor.assert_not_called()
         gch_ctor.assert_not_called()
-        mco.build_trainer.assert_called()
-        mch.connect_controller.assert_called()
+        mco.build_trainer.assert_called_with(mch)
+        mch.connect_controller.assert_called_with(mco)
 
     @patch('src.cifar10.main.MicroController')
     @patch('src.cifar10.main.MicroChild')
@@ -121,10 +121,10 @@ class TestCIFAR10Main(unittest.TestCase):
 
         mco_ctor.assert_not_called()
         mch_ctor.assert_not_called()
-        gco_ctor.assert_called()
-        gch_ctor.assert_called()
-        gch.connect_controller.assert_called()
-        gco.build_trainer.assert_called()
+        gco_ctor.assert_called_with(lstm_size=64, lstm_num_layers=1, lstm_keep_prob=1.0, lr_dec_start=0, lr_dec_every=1000000, optim_algo='adam')
+        gch_ctor.assert_called_with(None, None, clip_mode='norm', optim_algo='momentum')
+        gch.connect_controller.assert_called_with(gco)
+        gco.build_trainer.assert_called_with(gch)
 
     @patch('src.cifar10.main.MicroController')
     @patch('src.cifar10.main.MicroChild')
@@ -139,8 +139,8 @@ class TestCIFAR10Main(unittest.TestCase):
         mco_ctor.assert_not_called()
         mch_ctor.assert_not_called()
         gco_ctor.assert_not_called()
-        gch_ctor.assert_called()
-        gch.connect_controller.assert_called()
+        gch_ctor.assert_called_with(None, None, clip_mode='norm', optim_algo='momentum')
+        gch.connect_controller.assert_called_with(None)
 
     @staticmethod
     def mock_session_run(ops):
@@ -185,8 +185,10 @@ class TestCIFAR10Main(unittest.TestCase):
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
+    @patch('src.cifar10.main.fw.ConfigProto')
+    @patch('src.cifar10.main.fw.Hook')
     @patch('src.cifar10.main.print')
-    def test_train(self, print, saver, _rd):
+    def test_train(self, print, hook, cp, saver, _rd):
         with RestoreFLAGS(
             child_sync_replicas=True,
             child_num_aggregate=1,
@@ -204,15 +206,18 @@ class TestCIFAR10Main(unittest.TestCase):
                 main.train()
                 print.assert_any_call(("-" * 80))
                 print.assert_any_call("Starting session")
-                sess.assert_called()
+                cp.assert_called_with()
+                sess.assert_called_with(config=cp(), hooks=[hook(), child_optimizer.make_session_run_hook(True), controller_optimizer.make_session_run_hook(True)], checkpoint_dir='')
                 child_optimizer.make_session_run_hook.assert_called_with(True)
                 saver.assert_called_with()
                 controller_optimizer.make_session_run_hook.assert_called_with(True)
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
+    @patch('src.cifar10.main.fw.ConfigProto')
+    @patch('src.cifar10.main.fw.Hook')
     @patch('src.cifar10.main.print')
-    def test_train_child_only1(self, print, saver, _rd):
+    def test_train_child_only1(self, print, hook, cp, saver, _rd):
         with RestoreFLAGS(
             child_sync_replicas=False,
             controller_sync_replicas=False,
@@ -234,14 +239,16 @@ class TestCIFAR10Main(unittest.TestCase):
                 controller_optimizer.make_session_run_hook.assert_not_called()
                 print.assert_any_call(("-" * 80))
                 print.assert_any_call("Starting session")
-                sess.assert_called()
+                sess.assert_called_with(config=cp(), hooks=[hook()], checkpoint_dir='')
                 print.assert_called_with("Epoch 311: Eval")
                 eval_func.assert_called_with(mock_session, "test")
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
+    @patch('src.cifar10.main.fw.ConfigProto')
+    @patch('src.cifar10.main.fw.Hook')
     @patch('src.cifar10.main.print')
-    def test_train_child_only2(self, print, saver, _rd):
+    def test_train_child_only2(self, print, hook, cp, saver, _rd):
         with RestoreFLAGS(
             child_sync_replicas=False,
             controller_sync_replicas=True,
@@ -263,15 +270,17 @@ class TestCIFAR10Main(unittest.TestCase):
                 controller_optimizer.make_session_run_hooks.assert_not_called()
                 print.assert_any_call(("-" * 80))
                 print.assert_any_call("Starting session")
-                sess.assert_called()
+                sess.assert_called_with(config=cp(), hooks=[hook(), controller_optimizer.make_session_run_hook(True)], checkpoint_dir='')
                 print.assert_any_call("Epoch 311: Training controller")
                 print.assert_called_with("Epoch 311: Eval")
                 eval_func.assert_called_with(mock_session, "test")
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
+    @patch('src.cifar10.main.fw.ConfigProto')
+    @patch('src.cifar10.main.fw.Hook')
     @patch('src.cifar10.main.print')
-    def test_train_child_only3(self, print, saver, _rd):
+    def test_train_child_only3(self, print, hook, cp, saver, _rd):
         with RestoreFLAGS(
             child_sync_replicas=False,
             controller_sync_replicas=True,
@@ -294,7 +303,7 @@ class TestCIFAR10Main(unittest.TestCase):
                 controller_optimizer.make_session_run_hook.assert_called_with(True)
                 print.assert_any_call("-" * 80)
                 print.assert_any_call("Starting session")
-                sess.assert_called()
+                sess.assert_called_with(config=cp(), hooks=[hook(), controller_optimizer.make_session_run_hook(True)], checkpoint_dir='')
                 print.assert_any_call("Epoch 311: Training controller")
                 print.assert_called_with("Epoch 311: Eval")
                 eval_func.assert_called_with(mock_session, "test")
@@ -328,8 +337,10 @@ class TestCIFAR10Main(unittest.TestCase):
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
+    @patch('src.cifar10.main.fw.ConfigProto')
+    @patch('src.cifar10.main.fw.Hook')
     @patch('src.cifar10.main.print')
-    def test_train_child_only_macro_whole_channels(self, print, saver, _rd):
+    def test_train_child_only_macro_whole_channels(self, print, hook, cp, saver, _rd):
         with RestoreFLAGS(
             child_sync_replicas=False,
             controller_sync_replicas=True,
@@ -351,4 +362,4 @@ class TestCIFAR10Main(unittest.TestCase):
                 print.assert_any_call(("-" * 80))
                 print.assert_any_call("Starting session")
                 saver.assert_any_call()
-                sess.assert_called()
+                sess.assert_called_with(config=cp(), hooks=[hook(), controller_optimizer.make_session_run_hook(True)], checkpoint_dir='')

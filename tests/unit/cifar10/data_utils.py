@@ -13,7 +13,7 @@ class TestDataUtils(unittest.TestCase):
         _read_data("outputs", ["batch1"])
         print.assert_called_with("batch1")
         open.assert_called_with("outputs/batch1", 'rb')
-        pickle.load.assert_called()
+        pickle.load.assert_called_with(open().__enter__(), encoding='latin1')
 
     @patch('src.cifar10.data_utils._read_data', return_value=(np.random.rand(45000, 32, 32, 3), np.ones((45000))))
     @patch('src.cifar10.data_utils.print')

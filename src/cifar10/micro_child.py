@@ -151,7 +151,7 @@ class MicroChild(Child):
     with fw.name_scope("calibrate") as scope:
       x = layers[0]
       if hw[0] != hw[1]:
-        assert hw[0] == 2 * hw[1]
+        assert hw[0] == 2 * hw[1], f"hw[0] = {hw[0]}, hw[1] = {hw[1]}"
         with fw.name_scope("pool_x") as scope:
           x = fw.relu(x)
           x = self._factorized_reduction(x, out_filters, 2, is_training, weights, reuse)

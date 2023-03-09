@@ -37,8 +37,8 @@ class TestMicroController(unittest.TestCase):
                 mock_tensor_array.write.assert_called_with(1, 'matmul')
                 matmul.assert_called_with(2, 'gv')
                 while_loop.assert_called()
-                reshape.assert_called()
-                reduce_sum.assert_called()
+                reshape.assert_called_with(tensor_array().__getitem__().stack(), [-1])
+                reduce_sum.assert_called_with(tensor_array().__getitem__())
 
     @patch('src.cifar10.micro_controller.fw.control_dependencies')
     @patch('src.cifar10.micro_controller.fw.to_float', return_value=1.0)
@@ -64,13 +64,19 @@ class TestMicroController(unittest.TestCase):
             with tf.Graph().as_default() as graph:
                 variable()._as_graph_element().graph = graph
                 mc = MicroController(temperature=1.0, tanh_constant=1.0, op_tanh_reduce=1.0, entropy_weight=1.0)
-                mock_child = mock.MagicMock()
+                mock_child = mock.MagicMock(name='mock_child')
                 mc.build_trainer(mock_child)
                 mock_child.build_valid_rl.assert_called_with()
                 zeros.assert_called_with([1, 32], tf.float32)
-                variable().assign_sub.assert_called()
-                get_train_ops.assert_called()
-                to_float.assert_called()
+                variable().assign_sub.assert_called_with(variable().__sub__().__rmul__())
+                get_train_ops.assert_called_with(
+                    variable().__rsub__().__rmul__(),
+                    [],
+                    variable(),
+                    mc.learning_rate,
+                    clip_mode=mc.clip_mode,
+                    optim_algo=mc.optim_algo)
+                to_float.assert_called_with(mock_child.batch_size)
                 cd.assert_called_with(['assign_sub'])
 
 if "__main__" == __name__:

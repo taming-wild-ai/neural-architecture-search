@@ -115,8 +115,8 @@ class TestChild(unittest.TestCase):
                         sscewl.assert_called_with(logits='model', labels={'train': [1], 'valid': [2], 'test': [3], 'valid_original': [2]})
                         reduce_mean.assert_called_with('sscewl')
                         argmax.assert_called_with('model', axis=1)
-                        equal.assert_called()
-                        get_train_ops.assert_called()
+                        equal.assert_called_with('to_int32', y_train)
+                        get_train_ops.assert_called_with('reduce_mean', [], m.global_step, m.learning_rate, clip_mode=m.clip_mode, l2_reg=m.l2_reg, optim_algo=m.optim_algo)
                         to_int32.assert_called_with('equal')
                         reduce_sum.assert_called_with('to_int32')
 
@@ -145,7 +145,7 @@ class TestChild(unittest.TestCase):
                         to_int32.assert_called_with("equal")
                         reduce_sum.assert_called_with('to_int32')
                         argmax.assert_called_with('model', axis=1)
-                        equal.assert_called()
+                        equal.assert_called_with('to_int32', y_train)
 
     @patch('src.cifar10.child.fw.equal', return_value="equal")
     @patch('src.cifar10.child.fw.argmax', return_value="argmax")
@@ -172,7 +172,7 @@ class TestChild(unittest.TestCase):
                         to_int32.assert_called_with("equal")
                         reduce_sum.assert_called_with('to_int32')
                         argmax.assert_called_with('model', axis=1)
-                        equal.assert_called()
+                        equal.assert_called_with('to_int32', y_train)
 
     @patch('src.cifar10.child.fw.equal', return_value="equal")
     @patch('src.cifar10.child.fw.argmax', return_value="argmax")
@@ -199,4 +199,4 @@ class TestChild(unittest.TestCase):
                         to_int32.assert_called_with("equal")
                         reduce_sum.assert_called_with('to_int32')
                         argmax.assert_called_with('model', axis=1)
-                        equal.assert_called()
+                        equal.assert_called_with('to_int32', y_train)
