@@ -60,24 +60,6 @@ class MacroChild(Child):
     return self.data_format.get_strides(stride)
 
 
-  class PathConv(LayeredModel):
-    def __init__(self, weights, reuse: bool, scope: str, out_filters: int, is_training, data_format):
-      self.layers = [
-        lambda x: fw.conv2d(
-          x,
-          weights.get(
-            reuse,
-            scope,
-            "w",
-            [1, 1, data_format.get_C(x), out_filters],
-            None),
-          [1, 1, 1, 1],
-          "SAME",
-          data_format=data_format.name),
-        lambda x: batch_norm(x, is_training, data_format, weights)
-      ]
-
-
   class SkipPath(LayeredModel):
     def __init__(self, stride_spec, data_format, weights, reuse: bool, scope: str, out_filters):
       self.layers = [
@@ -97,16 +79,7 @@ class MacroChild(Child):
             None),
           [1, 1, 1, 1],
           "SAME",
-          data_format=data_format.name)
-      ]
-
-
-  class FRModel(LayeredModel):
-    def __init__(self, concat_axis, is_training, data_format, weights):
-      self.layers = [
-        lambda x: fw.concat(values=x, axis=concat_axis),
-        lambda x: batch_norm(x, is_training, data_format, weights)
-      ]
+          data_format=data_format.name)]
 
 
   def _factorized_reduction(self, x, out_filters: int, stride, is_training: bool, weights, reuse: bool):
@@ -115,7 +88,7 @@ class MacroChild(Child):
         "Need even number of filters when using this factorized reduction.")
     if stride == 1:
       with fw.name_scope("path_conv") as scope:
-        fr_model = MacroChild.PathConv(
+        fr_model = Child.PathConv(
           weights,
           reuse,
           scope,
@@ -140,21 +113,8 @@ class MacroChild(Child):
       path2 = skip_path(path2)
 
     # Concat and apply BN
-    fr_model = MacroChild.FRModel(concat_axis, is_training, self.data_format, weights)
+    fr_model = Child.FactorizedReduction(concat_axis, is_training, self.data_format, weights)
     return fr_model([path1, path2])
-
-
-  class StemConv(LayeredModel):
-    def __init__(self, weights, reuse, scope, out_filters, is_training, data_format):
-      self.layers = [
-        lambda x: fw.conv2d(
-          x,
-          weights.get(reuse, scope, "w", [3, 3, 3, out_filters], None),
-          [1, 1, 1, 1],
-          "SAME",
-          data_format=data_format.name),
-        lambda x: batch_norm(x, is_training, data_format, weights)
-      ]
 
 
   class Dropout(LayeredModel):
@@ -175,12 +135,11 @@ class MacroChild(Child):
 
   def _model(self, images, is_training, weights, reuse=False):
     with fw.name_scope(self.name):
-      layers = []
 
       out_filters = self.out_filters
       with fw.name_scope("stem_conv") as scope:
-        stem_conv = MacroChild.StemConv(weights, reuse, scope, out_filters, is_training, self.data_format)
-        layers.append(stem_conv(images))
+        stem_conv = Child.StemConv(weights, reuse, scope, out_filters, is_training, self.data_format)
+      layers = [stem_conv(images)]
 
       if self.whole_channels:
         start_idx = 0
@@ -218,7 +177,7 @@ class MacroChild(Child):
           weights,
           reuse,
           scope)
-      x = dropout(x)
+        x = dropout(x)
     return x
 
   def _enas_layer(self, layer_id, prev_layers, start_idx, out_filters, is_training: bool, weights, reuse: bool):
@@ -351,8 +310,7 @@ class MacroChild(Child):
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name),
-        lambda x: batch_norm(x, is_training, data_format, weights)
-      ]
+        lambda x: batch_norm(x, is_training, data_format, weights)]
 
 
   class ConvNxN(LayeredModel):
@@ -365,8 +323,7 @@ class MacroChild(Child):
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name),
-        lambda x: batch_norm(x, is_training, data_format, weights),
-      ]
+        lambda x: batch_norm(x, is_training, data_format, weights)]
 
 
   def _fixed_layer(
@@ -480,8 +437,7 @@ class MacroChild(Child):
           'SAME',
           data_format=data_format.name),
         lambda x: batch_norm(x, is_training, data_format, weights),
-        fw.relu
-      ]
+        fw.relu]
 
 
   class OutConv(LayeredModel):
@@ -499,8 +455,7 @@ class MacroChild(Child):
           "SAME",
           data_format=data_format.name),
         lambda x: batch_norm(x, is_training, data_format, weights),
-        fw.relu
-      ]
+        fw.relu]
 
 
   class SeparableConv(LayeredModel):
@@ -525,8 +480,7 @@ class MacroChild(Child):
           padding="SAME",
           data_format=data_format.name),
         lambda x: batch_norm(x, is_training, data_format, weights),
-        fw.relu
-      ]
+        fw.relu]
 
 
   class SeparableConvMasked(LayeredModel):
@@ -561,8 +515,7 @@ class MacroChild(Child):
           out_filters,
           weights,
           data_format=data_format.name),
-        fw.relu
-      ]
+        fw.relu]
 
 
   class OutConvMasked(LayeredModel):
@@ -591,8 +544,7 @@ class MacroChild(Child):
           out_filters,
           weights,
           data_format=data_format.name),
-        fw.relu
-      ]
+        fw.relu]
 
 
   def _conv_branch(self, inputs, filter_size, is_training: bool, count, out_filters,
@@ -712,8 +664,7 @@ class MacroChild(Child):
         lambda x: fw.sparse_softmax_cross_entropy_with_logits(
           logits=x,
           labels=train),
-        fw.reduce_mean,
-      ]
+        fw.reduce_mean]
 
 
   class TrainModel(LayeredModel):
@@ -723,8 +674,7 @@ class MacroChild(Child):
         fw.to_int32,
         lambda x: fw.equal(x, train),
         fw.to_int32,
-        fw.reduce_sum,
-      ]
+        fw.reduce_sum]
 
   # override
   def _build_train(self):
@@ -752,26 +702,57 @@ class MacroChild(Child):
       num_train_batches=self.num_train_batches,
       optim_algo=self.optim_algo)
 
-  # override
+
+  class ValidationPredictions(LayeredModel):
+    def __init__(self, model, weights, reuse):
+      self.layers = [
+        lambda x: model(x, False, weights, reuse=reuse),
+        lambda x: fw.argmax(x, axis=1),
+        fw.to_int32]
+
+
+  class ValidationAccuracy(LayeredModel):
+    def __init__(self, valid):
+      self.layers =  [
+        lambda x: fw.equal(x, valid),
+        fw.to_int32,
+        fw.reduce_sum]
+
+
   def _build_valid(self):
     if self.x_valid is not None:
       print("-" * 80)
       print("Build valid graph")
-      self.valid_preds = fw.to_int32(
-        fw.argmax(
-          self._model(self.x_valid, False, self.weights, reuse=True),
-          axis=1))
-      self.valid_acc = fw.reduce_sum(
-        fw.to_int32(
-          fw.equal(self.valid_preds, self.y_valid)))
+      vp = MacroChild.ValidationPredictions(self._model, self.weights, True)
+      self.valid_preds = vp(self.x_valid)
+      va = MacroChild.ValidationAccuracy(self.y_valid)
+      self.valid_acc = va(self.valid_preds)
+
+
+  class TestPredictions(LayeredModel):
+    def __init__(self, model, weights, reuse):
+      self.layers = [
+        lambda x: model(x, False, weights, reuse=reuse),
+        lambda x: fw.argmax(x, axis=1),
+        fw.to_int32]
+
+
+  class TestAccuracy(LayeredModel):
+    def __init__(self, preds):
+      self.layers = [
+        lambda x: fw.equal(x, preds),
+        fw.to_int32,
+        fw.reduce_sum]
+
 
   # override
   def _build_test(self):
     print("-" * 80)
     print("Build test graph")
-    self.test_preds = fw.to_int32(
-      fw.argmax(self._model(self.x_test, False, self.weights, reuse=True), axis=1))
-    self.test_acc = fw.reduce_sum(fw.to_int32(fw.equal(self.test_preds, self.y_test)))
+    tp = MacroChild.TestPredictions(self._model, self.weights, True)
+    self.test_preds = tp(self.x_test)
+    ta = MacroChild.TestAccuracy(self.y_test)
+    self.test_acc = ta(self.test_preds)
 
   # override
   def build_valid_rl(self, shuffle=False):

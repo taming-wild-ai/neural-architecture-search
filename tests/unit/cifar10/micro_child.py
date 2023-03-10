@@ -68,7 +68,7 @@ class TestMicroChild(unittest.TestCase):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_invalid_data_format):
             self.assertRaises(KeyError, MicroChild, {}, {})
 
-    @patch('src.cifar10.micro_child.batch_norm', return_value="batch_norm")
+    @patch('src.cifar10.child.batch_norm', return_value="batch_norm")
     @patch('src.cifar10.micro_child.fw.concat', return_value="concat")
     @patch('src.cifar10.micro_child.fw.conv2d', return_value="conv2d")
     @patch('src.cifar10.micro_child.fw.avg_pool', return_value="avg_pool")
@@ -91,7 +91,7 @@ class TestMicroChild(unittest.TestCase):
                             batch_norm.assert_called_with('concat', True, mc.data_format, mc.weights)
                             self.assertEqual("batch_norm", retval)
 
-    @patch('src.cifar10.micro_child.batch_norm', return_value="batch_norm")
+    @patch('src.cifar10.child.batch_norm', return_value="batch_norm")
     @patch('src.cifar10.micro_child.fw.concat', return_value="concat")
     @patch('src.cifar10.micro_child.fw.conv2d', return_value="conv2d")
     @patch('src.cifar10.micro_child.fw.avg_pool', return_value="avg_pool")
@@ -114,7 +114,7 @@ class TestMicroChild(unittest.TestCase):
                         batch_norm.assert_called_with('concat', True, mc.data_format, mc.weights)
                         self.assertEqual("batch_norm", retval)
 
-    @patch('src.cifar10.micro_child.batch_norm', return_value="batch_norm")
+    @patch('src.cifar10.child.batch_norm', return_value="batch_norm")
     @patch('src.cifar10.micro_child.fw.conv2d', return_value="conv2d")
     def test_factorized_reduction_nchw_stride1(self, conv2d, batch_norm):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nchw):

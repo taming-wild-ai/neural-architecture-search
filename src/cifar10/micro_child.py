@@ -14,7 +14,7 @@ from src.cifar10.image_ops import drop_path
 
 from src.utils import count_model_params
 from src.utils import get_train_ops
-from src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer
+from src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer, LayeredModel
 
 DEFINE_float("child_drop_path_keep_prob", 1.0, "minimum drop_path_keep_prob")
 DEFINE_integer("child_num_cells", 5, "")
@@ -62,65 +62,62 @@ class MicroChild(Child):
     if self.use_aux_heads:
       self.aux_head_indices = [self.pool_layers[-1] + 1]
 
+
+  class SkipPath(LayeredModel):
+    def __init__(self, stride_spec, data_format, weights, reuse: bool, scope: str, out_filters):
+      self.layers = [
+        lambda x: fw.avg_pool(
+          x,
+          [1, 1, 1, 1],
+          stride_spec,
+          "VALID",
+          data_format=data_format.name),
+        lambda x: fw.conv2d(
+          x,
+          weights.get(
+            reuse,
+            scope,
+            "w",
+            [1, 1, data_format.get_C(x), out_filters // 2],
+            None),
+          [1, 1, 1, 1],
+          "VALID",
+          data_format=data_format.name)]
+
+
   def _factorized_reduction(self, x, out_filters, stride, is_training, weights, reuse):
     """Reduces the shape of x without information loss due to striding."""
     assert out_filters % 2 == 0, (
         "Need even number of filters when using this factorized reduction.")
     if stride == 1:
       with fw.name_scope("path_conv") as scope:
-        return batch_norm(
-          fw.conv2d(
-            x,
-            weights.get(
-              reuse,
-              scope,
-              "w",
-              [1, 1, self.data_format.get_C(x), out_filters],
-              None),
-            [1, 1, 1, 1],
-            "SAME",
-            data_format=self.data_format.name),
+        fr_model = Child.PathConv(
+          weights,
+          reuse,
+          scope,
+          out_filters,
           is_training,
-          self.data_format,
-          weights)
+          self.data_format)
+        return fr_model(x)
 
     stride_spec = self.data_format.get_strides(stride)
     # Skip path 1
-    path1 = fw.avg_pool(
-        x, [1, 1, 1, 1], stride_spec, "VALID", data_format=self.data_format.name)
     with fw.name_scope("path1_conv") as scope:
-      inp_c = self.data_format.get_C(path1)
-      path1 = fw.conv2d(
-        path1,
-        weights.get(reuse, scope, "w", [1, 1, inp_c, out_filters // 2], None),
-        [1, 1, 1, 1],
-        "VALID",
-        data_format=self.data_format.name)
+      skip_path = MicroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, out_filters)
+      path1 = skip_path(x)
 
     # Skip path 2
     # First pad with 0"s on the right and bottom, then shift the filter to
     # include those 0"s that were added.
     path2, concat_axis = self.data_format.factorized_reduction(x)
 
-    path2 = fw.avg_pool(
-        path2, [1, 1, 1, 1], stride_spec, "VALID", data_format=self.data_format.name)
     with fw.name_scope("path2_conv") as scope:
-      inp_c = self.data_format.get_C(path2)
-      path2 = fw.conv2d(
-        path2,
-        weights.get(reuse, scope, "w", [1, 1, inp_c, out_filters // 2], None),
-        [1, 1, 1, 1],
-        "VALID",
-        data_format=self.data_format.name)
+      skip_path = MicroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, out_filters)
+      path2 = skip_path(path2)
 
     # Concat and apply BN
-    final_path = batch_norm(
-      fw.concat(values=[path1, path2], axis=concat_axis),
-      is_training,
-      self.data_format,
-      weights)
-
-    return final_path
+    fr_model = Child.FactorizedReduction(concat_axis, is_training, self.data_format, weights)
+    return fr_model([path1, path2])
 
   def _get_HW(self, x):
     """
@@ -130,17 +127,11 @@ class MicroChild(Child):
     return x.get_shape()[2]
 
   def _apply_drop_path(self, x, layer_id):
-    drop_path_keep_prob = self.drop_path_keep_prob
-
-    layer_ratio = float(layer_id + 1) / (self.num_layers + 2)
-    drop_path_keep_prob = 1.0 - layer_ratio * (1.0 - drop_path_keep_prob)
-
-    step_ratio = fw.to_float(self.global_step + 1) / fw.to_float(self.num_train_steps)
-    step_ratio = fw.minimum(1.0, step_ratio)
-    drop_path_keep_prob = 1.0 - step_ratio * (1.0 - drop_path_keep_prob)
-
-    x = drop_path(x, drop_path_keep_prob)
-    return x
+    return drop_path(
+      x,
+      1.0 - fw.minimum(
+        1.0,
+        fw.to_float(self.global_step + 1) / fw.to_float(self.num_train_steps)) * (1.0 - (1.0 - float(layer_id + 1) / (self.num_layers + 2) * (1.0 - self.drop_path_keep_prob))))
 
   def _maybe_calibrate_size(self, layers, out_filters, is_training, weights, reuse):
     """Makes sure layers[0] and layers[1] have the same shapes."""
@@ -183,6 +174,37 @@ class MicroChild(Child):
             weights)
     return [x, y]
 
+
+  class StemConv(LayeredModel):
+    def __init__(self, weights, reuse, scope, out_filters, is_training, data_format):
+      self.layers = [
+        lambda x: fw.conv2d(
+          x,
+          weights.get(reuse, scope, "w", [3, 3, 3, out_filters], None),
+          [1, 1, 1, 1],
+          "SAME",
+          data_format=data_format.name),
+        lambda x: batch_norm(x, is_training, data_format, weights)]
+
+
+  class Dropout(LayeredModel):
+    def __init__(self, data_format, is_training, keep_prob, weights, reuse, scope):
+      self.layers = [
+        fw.relu,
+        data_format.global_avg_pool]
+      if is_training and keep_prob is not None and keep_prob < 1.0:
+        self.layers += [lambda x: fw.dropout(x, keep_prob)]
+      self.layers += [
+        lambda x: fw.matmul(
+          x,
+          weights.get(
+            reuse,
+            scope,
+            "w",
+            [data_format.get_C(x), 10],
+            None))]
+
+
   def _model(self, images, is_training, reuse=False):
     """Compute the logits given the images."""
 
@@ -192,16 +214,8 @@ class MicroChild(Child):
     with fw.name_scope(self.name) as scope:
       # the first two inputs
       with fw.name_scope("stem_conv") as scope:
-        x = batch_norm(
-          fw.conv2d(
-            images,
-            self.weights.get(reuse, scope, "w", [3, 3, 3, self.out_filters * 3], None),
-            [1, 1, 1, 1],
-            "SAME",
-            data_format=self.data_format.name),
-          is_training,
-          self.data_format,
-          self.weights)
+        stem_conv = MicroChild.StemConv(self.weights, reuse, scope, self.out_filters * 3, is_training, self.data_format)
+        x = stem_conv(images)
       layers = [x, x]
 
       # building layers in the micro space
@@ -283,12 +297,15 @@ class MicroChild(Child):
           self.num_aux_vars = count_model_params(aux_head_variables)
           print("Aux head uses {0} params".format(self.num_aux_vars))
 
-      x = self.data_format.global_avg_pool(fw.relu(x))
-      if is_training and self.keep_prob is not None and self.keep_prob < 1.0:
-        x = fw.dropout(x, self.keep_prob)
       with fw.name_scope("fc") as scope:
-        inp_c = self.data_format.get_C(x)
-        x = fw.matmul(x, self.weights.get(reuse, scope, "w", [inp_c, 10], None))
+        dropout = MicroChild.Dropout(
+          self.data_format,
+          is_training,
+          self.keep_prob,
+          self.weights,
+          reuse,
+          scope)
+        x = dropout(x)
     return x
 
   def _fixed_conv(self, x, f_size, out_filters, stride, is_training, weights, reuse,

@@ -79,7 +79,7 @@ class TestMacroChild(unittest.TestCase):
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     @patch('src.cifar10.macro_child.fw.conv2d', return_value='conv2d')
-    @patch('src.cifar10.macro_child.batch_norm')
+    @patch('src.cifar10.child.batch_norm')
     def test_factorized_reduction_stride1(self, batch_norm, conv2d):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
@@ -97,7 +97,7 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.macro_child.fw.avg_pool', return_value="path1")
     @patch('src.cifar10.macro_child.fw.pad')
     @patch('src.cifar10.macro_child.fw.concat', return_value="final_path")
-    @patch('src.cifar10.macro_child.batch_norm', return_value="final_path")
+    @patch('src.cifar10.child.batch_norm', return_value="final_path")
     def test_factorized_reduction_nhwc(self, batch_norm, concat, pad, avg_pool, conv2d):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
@@ -122,7 +122,7 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.macro_child.fw.avg_pool', return_value="path1")
     @patch('src.cifar10.macro_child.fw.pad')
     @patch('src.cifar10.macro_child.fw.concat', return_value="final_path")
-    @patch('src.cifar10.macro_child.batch_norm', return_value="final_path")
+    @patch('src.cifar10.child.batch_norm', return_value="final_path")
     def test_factorized_reduction_nchw(self, batch_norm, concat, pad, avg_pool, conv2d):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
@@ -163,7 +163,7 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.macro_child.print')
     @patch('src.cifar10.macro_child.fw.matmul', return_value="matmul")
     @patch('src.cifar10.macro_child.fw.conv2d', return_value="conv2d")
-    @patch('src.cifar10.macro_child.batch_norm', return_value="final_path")
+    @patch('src.cifar10.child.batch_norm', return_value="final_path")
     @patch('src.cifar10.macro_child.fw.dropout', return_value="dropout")
     def test_model_nhwc(self, dropout, batch_norm, conv2d, matmul, _print):
         with tf.Graph().as_default():
@@ -186,7 +186,7 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.macro_child.print')
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     @patch('src.cifar10.macro_child.fw.conv2d', return_value="conv2d")
-    @patch('src.cifar10.macro_child.batch_norm', return_value="final_path")
+    @patch('src.cifar10.child.batch_norm', return_value="final_path")
     @patch('src.cifar10.macro_child.fw.dropout', return_value=tf.constant(np.ndarray((4, 3, 32, 32))))
     @patch('src.cifar10.macro_child.fw.matmul')
     def test_model_nchw_no_whole_channels(self, matmul, dropout, batch_norm, conv2d, _print):
@@ -213,7 +213,7 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.macro_child.print')
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     @patch('src.cifar10.macro_child.fw.conv2d', return_value="conv2d")
-    @patch('src.cifar10.macro_child.batch_norm', return_value="final_path")
+    @patch('src.cifar10.child.batch_norm', return_value="final_path")
     @patch('src.cifar10.macro_child.fw.dropout', return_value=tf.constant(np.ndarray((4, 3, 32, 32))))
     @patch('src.cifar10.macro_child.fw.matmul')
     def test_model_nchw_whole_channels(self, matmul, dropout, batch_norm, conv2d, _print):

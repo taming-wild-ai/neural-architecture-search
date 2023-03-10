@@ -6,7 +6,8 @@ import src.framework as fw
 
 from src.utils import count_model_params
 from src.utils import get_train_ops
-from src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer, DEFINE_string, LearningRate, ClipMode, Optimizer
+from src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer, DEFINE_string, LearningRate, ClipMode, Optimizer, LayeredModel
+from src.cifar10.image_ops import batch_norm
 
 DEFINE_integer("batch_size", 32, "")
 DEFINE_integer("child_cutout_size", None, "CutOut size")
@@ -393,3 +394,39 @@ class Child(object):
 
   def _model(self, images, is_training, reuse=None):
     raise NotImplementedError("Abstract method")
+
+
+  class PathConv(LayeredModel):
+    def __init__(self, weights, reuse: bool, scope: str, out_filters: int, is_training, data_format):
+      self.layers = [
+        lambda x: fw.conv2d(
+          x,
+          weights.get(
+            reuse,
+            scope,
+            "w",
+            [1, 1, data_format.get_C(x), out_filters],
+            None),
+          [1, 1, 1, 1],
+          "SAME",
+          data_format=data_format.name),
+        lambda x: batch_norm(x, is_training, data_format, weights)]
+
+
+  class FactorizedReduction(LayeredModel):
+    def __init__(self, concat_axis, is_training, data_format, weights):
+      self.layers = [
+        lambda x: fw.concat(values=x, axis=concat_axis),
+        lambda x: batch_norm(x, is_training, data_format, weights)]
+
+
+  class StemConv(LayeredModel):
+    def __init__(self, weights, reuse, scope, out_filters, is_training, data_format):
+      self.layers = [
+        lambda x: fw.conv2d(
+          x,
+          weights.get(reuse, scope, "w", [3, 3, 3, out_filters], None),
+          [1, 1, 1, 1],
+          "SAME",
+          data_format=data_format.name),
+        lambda x: batch_norm(x, is_training, data_format, weights)]
