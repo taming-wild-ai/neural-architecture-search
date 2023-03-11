@@ -326,7 +326,7 @@ class TestCIFAR10Main(unittest.TestCase):
             mock_session.run = self.mock_session_run
             mock_session_context_mgr = mock.MagicMock()
             mock_session_context_mgr.__enter__ = mock.MagicMock(return_value=mock_session)
-            with patch('src.cifar10.main.fw.Session', return_value=mock_session_context_mgr) as sess:
+            with patch('src.cifar10.main.fw.Session', return_value=mock_session_context_mgr):
 
                 main.train()
 

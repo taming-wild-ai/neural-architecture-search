@@ -3,12 +3,13 @@ import unittest.mock as mock
 from unittest.mock import patch
 
 import numpy as np
-import tensorflow as tf
-tf.compat.v1.disable_eager_execution()
 import src.framework as fw
 
 from src.cifar10.macro_controller import MacroController
 from src.cifar10.macro_child import DEFINE_integer # for child_num_layers, child_num_branches, child_out_filters
+
+import tensorflow as tf
+tf.compat.v1.disable_eager_execution()
 
 class TestMacroController(unittest.TestCase):
     @patch('src.cifar10.macro_controller.fw.random_uniform_initializer')

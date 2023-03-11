@@ -148,16 +148,8 @@ class MicroChild(Child):
           x = self._factorized_reduction(x, out_filters, 2, is_training, weights, reuse)
       elif c[0] != out_filters:
         with fw.name_scope("pool_x") as scope:
-          x = batch_norm(
-            fw.conv2d(
-              fw.relu(x),
-              weights.get(reuse, scope, "w", [1, 1, c[0], out_filters], None),
-              [1, 1, 1, 1],
-              "SAME",
-              data_format=self.data_format.name),
-            is_training,
-            self.data_format,
-            weights)
+          conv = Child.Conv1x1(weights, reuse, scope, c[0], out_filters, is_training, self.data_format)
+          x = conv(x)
 
       y = layers[1]
       if c[1] != out_filters:
@@ -173,18 +165,6 @@ class MicroChild(Child):
             self.data_format,
             weights)
     return [x, y]
-
-
-  class StemConv(LayeredModel):
-    def __init__(self, weights, reuse, scope, out_filters, is_training, data_format):
-      self.layers = [
-        lambda x: fw.conv2d(
-          x,
-          weights.get(reuse, scope, "w", [3, 3, 3, out_filters], None),
-          [1, 1, 1, 1],
-          "SAME",
-          data_format=data_format.name),
-        lambda x: batch_norm(x, is_training, data_format, weights)]
 
 
   class Dropout(LayeredModel):
@@ -205,6 +185,15 @@ class MicroChild(Child):
             None))]
 
 
+  class FullyConnected(LayeredModel):
+    def __init__(self, data_format, weights, reuse, scope):
+      self.layers = [
+        data_format.global_avg_pool,
+        lambda x: fw.matmul(
+          x,
+          weights.get(reuse, scope, "w", [x.get_shape()[1], 10], None))]
+
+
   def _model(self, images, is_training, reuse=False):
     """Compute the logits given the images."""
 
@@ -214,7 +203,7 @@ class MicroChild(Child):
     with fw.name_scope(self.name) as scope:
       # the first two inputs
       with fw.name_scope("stem_conv") as scope:
-        stem_conv = MicroChild.StemConv(self.weights, reuse, scope, self.out_filters * 3, is_training, self.data_format)
+        stem_conv = Child.StemConv(self.weights, reuse, scope, self.out_filters * 3, is_training, self.data_format)
         x = stem_conv(images)
       layers = [x, x]
 
@@ -256,40 +245,31 @@ class MicroChild(Child):
               aux_logits, [5, 5], [3, 3], "VALID",
               data_format=self.data_format.actual)
             with fw.name_scope("proj") as scope:
-              inp_c = self.data_format.get_C(aux_logits)
-              aux_logits = fw.relu(
-                batch_norm(
-                  fw.conv2d(
-                    aux_logits,
-                    self.weights.get(reuse, scope, "w", [1, 1, inp_c, 128], None),
-                    [1, 1, 1, 1],
-                    "SAME",
-                    data_format=self.data_format.name),
-                  True,
-                  self.data_format,
-                  self.weights))
+              inp_conv = Child.InputConv(
+                self.weights,
+                reuse,
+                scope,
+                1,
+                128,
+                is_training,
+                self.data_format)
+              aux_logits = inp_conv(aux_logits)
 
             with fw.name_scope("avg_pool") as scope:
-              inp_c = self.data_format.get_C(aux_logits)
               hw = self._get_HW(aux_logits)
-              aux_logits = fw.relu(
-                batch_norm(
-                  fw.conv2d(
-                    aux_logits,
-                    self.weights.get(reuse, scope, "w", [hw, hw, inp_c, 768], None),
-                    [1, 1, 1, 1],
-                    "SAME",
-                    data_format=self.data_format.name),
-                  True,
-                  self.data_format,
-                  self.weights))
+              inp_conv = Child.InputConv(
+                self.weights,
+                reuse,
+                scope,
+                hw,
+                768,
+                True,
+                self.data_format)
+              aux_logits = inp_conv(aux_logits)
 
             with fw.name_scope("fc") as scope:
-              aux_logits = self.data_format.global_avg_pool(aux_logits)
-              inp_c = aux_logits.get_shape()[1]
-              self.aux_logits = fw.matmul(
-                aux_logits,
-                self.weights.get(reuse, scope, "w", [inp_c, 10], None))
+              fc = MicroChild.FullyConnected(self.data_format, self.weights, reuse, scope)
+              self.aux_logits = fc(aux_logits)
 
           aux_head_variables = [
             var for var in fw.trainable_variables() if (
@@ -308,6 +288,21 @@ class MicroChild(Child):
         x = dropout(x)
     return x
 
+
+  class SeparableConv(LayeredModel):
+    def __init__(self, weights, reuse, scope, filter_size, inp_c, data_format, out_filters, strides, is_training):
+      self.layers = [
+        fw.relu,
+        lambda x: fw.separable_conv2d(
+          x,
+          depthwise_filter=weights.get(reuse, scope, "w_depth", [filter_size, filter_size, inp_c, 1], None),
+          pointwise_filter=weights.get(reuse, scope, "w_point", [1, 1, inp_c, out_filters], None),
+          strides=strides,
+          padding="SAME",
+          data_format=data_format.name),
+        lambda x: batch_norm(x, is_training, data_format, weights)]
+
+
   def _fixed_conv(self, x, f_size, out_filters, stride, is_training, weights, reuse,
                   stack_convs=2):
     """Apply fixed convolution.
@@ -324,17 +319,17 @@ class MicroChild(Child):
         strides = [1, 1, 1, 1]
 
       with fw.name_scope("sep_conv_{}".format(conv_id)) as scope:
-        x = batch_norm(
-          fw.separable_conv2d(
-            fw.relu(x),
-            depthwise_filter=weights.get(reuse, scope, "w_depth", [f_size, f_size, inp_c, 1], None),
-            pointwise_filter=weights.get(reuse, scope, "w_point", [1, 1, inp_c, out_filters], None),
-            strides=strides,
-            padding="SAME",
-            data_format=self.data_format.name),
-          is_training,
+        sep_conv = MicroChild.SeparableConv(
+          weights,
+          reuse,
+          scope,
+          f_size,
+          inp_c,
           self.data_format,
-          weights)
+          out_filters,
+          strides,
+          is_training)
+        x = sep_conv(x)
 
     return x
 
@@ -353,7 +348,6 @@ class MicroChild(Child):
 
     with fw.name_scope("final_combine") as scope:
       for i, layer in enumerate(layers):
-        # print(f"*** layer = {layer}")
         if used[i] == 0:
           hw = self._get_HW(layer)
           if hw > out_hw:
@@ -366,6 +360,19 @@ class MicroChild(Child):
       out = self.data_format.fixed_layer(out)
 
     return out
+
+
+  class LayerBase(LayeredModel):
+    def __init__(self, weights, reuse: bool, scope: str, out_filters: int, is_training: bool, data_format):
+      self.layers = [
+        fw.relu,
+        lambda x: fw.conv2d(
+          x,
+          weights.get(reuse, scope, "w", [1, 1, data_format.get_C(x), out_filters], None),
+          [1, 1, 1, 1],
+          "SAME",
+          data_format=data_format.name),
+        lambda x: batch_norm(x, is_training, data_format, weights)]
 
   def _fixed_layer(self, layer_id, prev_layers, arc, out_filters, stride,
                    is_training, weights, reuse, normal_or_reduction_cell="normal"):
@@ -381,18 +388,8 @@ class MicroChild(Child):
                                         is_training, weights, reuse)
 
     with fw.name_scope("layer_base") as scope:
-      x = layers[1]
-      inp_c = self.data_format.get_C(x)
-      layers[1] = batch_norm(
-        fw.conv2d(
-          fw.relu(x),
-          weights.get(reuse, scope, "w", [1, 1, inp_c, out_filters], None),
-          [1, 1, 1, 1],
-          "SAME",
-          data_format=self.data_format.name),
-        is_training,
-        self.data_format,
-        weights)
+      lb = MicroChild.LayerBase(weights, reuse, scope, out_filters, is_training, self.data_format)
+      layers[1] = lb(layers[1])
 
     used = np.zeros([self.num_cells + 2], dtype=np.int32)
     f_sizes = [3, 5]
@@ -418,32 +415,16 @@ class MicroChild(Child):
                 x, [3, 3], [x_stride, x_stride], "SAME",
                 data_format=self.data_format.actual)
             if inp_c != out_filters:
-              x = batch_norm(
-                fw.conv2d(
-                  fw.relu(x),
-                  weights.get(reuse, scope, "w", [1, 1, inp_c, out_filters], None),
-                  [1, 1, 1, 1],
-                  "SAME",
-                  data_format=self.data_format.name),
-                is_training,
-                self.data_format,
-                weights)
+              x_conv = Child.Conv1x1(weights, reuse, scope, inp_c, out_filters, is_training, self.data_format)
+              x = x_conv(x)
           else:
             inp_c = self.data_format.get_C(x)
             if x_stride > 1:
               assert x_stride == 2
               x = self._factorized_reduction(x, out_filters, 2, is_training)
             if inp_c != out_filters:
-              x = batch_norm(
-                fw.conv2d(
-                  fw.relu(x),
-                  weights.get(reuse, scope, "w", [1, 1, inp_c, out_filters], None),
-                  [1, 1, 1, 1],
-                  "SAME",
-                  data_format=self.data_format.name),
-                is_training,
-                self.data_format,
-                 weights)
+              x_conv = Child.Conv1x1(weights, reuse, scope, inp_c, out_filters, is_training, self.data_format)
+              x = x_conv(x)
           if (x_op in [0, 1, 2, 3] and
               self.drop_path_keep_prob is not None and
               is_training):
@@ -469,16 +450,8 @@ class MicroChild(Child):
                 y, [3, 3], [y_stride, y_stride], "SAME",
                 data_format=self.data_format.actual)
             if inp_c != out_filters:
-              y = batch_norm(
-                fw.conv2d(
-                  fw.relu(y),
-                  weights.get(reuse, scope, "w", [1, 1, inp_c, out_filters], None),
-                  [1, 1, 1, 1],
-                  "SAME",
-                  data_format=self.data_format.name),
-                is_training,
-                self.data_format,
-                weights)
+              out_conv = Child.Conv1x1(weights, reuse, scope, inp_c, out_filters, is_training, self.data_format)
+              y = out_conv(y)
           else:
             inp_c = self.data_format.get_C(y)
             if y_stride > 1:
@@ -508,58 +481,78 @@ class MicroChild(Child):
 
     return out
 
+
+  class MaxPool(LayeredModel):
+    def __init__(self, data_format, out_filters: int, reuse: bool, scope: str, curr_cell, prev_cell: int, weights):
+      def inner(x):
+        inp_c = data_format.get_C(x)
+        if inp_c != out_filters:
+          with fw.name_scope("conv"):
+            return batch_norm(
+              fw.conv2d(
+                fw.relu(x),
+                fw.reshape(
+                  weights.get(
+                    reuse,
+                    scope,
+                    'w',
+                    [curr_cell + 1, inp_c * out_filters],
+                    None)[prev_cell],
+                  [1, 1, inp_c, out_filters]),
+                strides=[1, 1, 1, 1],
+                padding="SAME",
+                data_format=data_format.name),
+              True,
+              data_format,
+              weights)
+        else:
+          return x
+      self.layers = [
+        lambda x: fw.max_pool2d(x, [3, 3], [1, 1], 'SAME', data_format=data_format.actual),
+        inner]
+
+
+  class AvgPool(LayeredModel):
+    def __init__(self, data_format, out_filters: int, reuse: bool, scope: str, curr_cell, prev_cell: int, weights):
+      def inner(x):
+        inp_c = data_format.get_C(x)
+        if inp_c != out_filters:
+          with fw.name_scope("conv"):
+            return batch_norm(
+              fw.conv2d(
+                fw.relu(x),
+                fw.reshape(
+                  weights.get(
+                    reuse,
+                    scope,
+                    'w',
+                    [curr_cell + 1, inp_c * out_filters],
+                    None)[prev_cell],
+                  [1, 1, inp_c, out_filters]),
+                strides=[1, 1, 1, 1],
+                padding="SAME",
+                data_format=data_format.name),
+              True,
+              data_format,
+              weights)
+        else:
+          return x
+      self.layers = [
+        lambda x: fw.avg_pool2d(x, [3, 3], [1, 1], 'SAME', data_format=data_format.actual),
+        inner]
+
   def _enas_cell(self, x, curr_cell, prev_cell, op_id, out_filters, weights, reuse: bool):
     """Performs an enas operation specified by op_id."""
 
     num_possible_inputs = curr_cell + 1
 
     with fw.name_scope("avg_pool") as scope:
-      avg_pool = fw.avg_pool2d(
-        x, [3, 3], [1, 1], "SAME", data_format=self.data_format.actual)
-      avg_pool_c = self.data_format.get_C(avg_pool)
-      if avg_pool_c != out_filters:
-        with fw.name_scope("conv") as scope:
-          avg_pool = batch_norm(
-            fw.conv2d(
-              fw.relu(avg_pool),
-              fw.reshape(
-                weights.get(
-                  reuse,
-                  scope,
-                  "w",
-                  [num_possible_inputs, avg_pool_c * out_filters],
-                  None)[prev_cell],
-                [1, 1, avg_pool_c, out_filters]),
-              strides=[1, 1, 1, 1],
-              padding="SAME",
-              data_format=self.data_format.name),
-            True,
-            self.data_format,
-            weights)
+      ap = MicroChild.AvgPool(self.data_format, out_filters, reuse, scope, curr_cell, prev_cell, weights)
+      avg_pool = ap(x)
 
     with fw.name_scope("max_pool") as scope:
-      max_pool = fw.max_pool2d(
-        x, [3, 3], [1, 1], "SAME", data_format=self.data_format.actual)
-      max_pool_c = self.data_format.get_C(max_pool)
-      if max_pool_c != out_filters:
-        with fw.name_scope("conv") as scope:
-          max_pool = batch_norm(
-            fw.conv2d(
-              fw.relu(max_pool),
-              fw.reshape(
-                weights.get(
-                  reuse,
-                  scope,
-                  "w",
-                  [num_possible_inputs, max_pool_c * out_filters],
-                  None)[prev_cell],
-                [1, 1, max_pool_c, out_filters]),
-              strides=[1, 1, 1, 1],
-              padding="SAME",
-              data_format=self.data_format.name),
-            True,
-            self.data_format,
-            weights)
+      mp = MicroChild.MaxPool(self.data_format, out_filters, reuse, scope, curr_cell, prev_cell, weights)
+      max_pool = mp(x)
 
     x_c = self.data_format.get_C(x)
     if x_c != out_filters:

@@ -180,6 +180,34 @@ class MacroChild(Child):
         x = dropout(x)
     return x
 
+
+  class FinalConv(LayeredModel):
+    def __init__(self, num_branches: int, count: list[int], weights, reuse, scope: str, out_filters: int, is_training: bool, data_format):
+      w_mask = fw.constant([False] * (num_branches * out_filters), fw.bool)
+      new_range = fw.range(0, num_branches * out_filters, dtype=fw.int32)
+      for i in range(num_branches):
+        start = out_filters * i + count[2 * i]
+        w_mask = fw.logical_or(w_mask, fw.logical_and(
+          start <= new_range, new_range < start + count[2 * i + 1]))
+      self.layers = [
+        lambda x: fw.conv2d(
+          x,
+          fw.reshape(
+            fw.boolean_mask(
+              weights.get(
+                reuse,
+                scope,
+                "w",
+                [num_branches * out_filters, out_filters],
+                None),
+              w_mask),
+              [1, 1, -1, out_filters]),
+          [1, 1, 1, 1],
+          'SAME',
+          data_format=data_format.name),
+        lambda x: batch_norm(x, is_training, data_format, weights),
+        fw.relu]
+
   def _enas_layer(self, layer_id, prev_layers, start_idx, out_filters, is_training: bool, weights, reuse: bool):
     """
     Args:
@@ -253,27 +281,11 @@ class MacroChild(Child):
                                             "max", weights, reuse, start_idx=count[10]))
 
       with fw.name_scope("final_conv") as scope:
-        w_mask = fw.constant([False] * (self.num_branches * out_filters), fw.bool)
-        new_range = fw.range(0, self.num_branches * out_filters, dtype=fw.int32)
-        for i in range(self.num_branches):
-          start = out_filters * i + count[2 * i]
-          w_mask = fw.logical_or(w_mask, fw.logical_and(
-            start <= new_range, new_range < start + count[2 * i + 1]))
-        w = fw.reshape(
-          fw.boolean_mask(
-            weights.get(
-              reuse,
-              scope,
-              "w",
-              [self.num_branches * out_filters, out_filters],
-              None),
-            w_mask),
-            [1, 1, -1,
-            out_filters])
-
         inp = prev_layers[-1]
         branches = self.data_format.enas_layer(inp, branches)
-        final_conv = MacroChild.InputConv(
+        final_conv = MacroChild.FinalConv(
+          self.num_branches,
+          count,
           weights,
           reuse,
           scope,
@@ -300,32 +312,6 @@ class MacroChild(Child):
     return out
 
 
-  class Conv1x1(LayeredModel):
-    def __init__(self, weights, reuse: bool, scope: str, inp_c, out_filters, is_training:bool, data_format):
-      self.layers = [
-        fw.relu,
-        lambda x: fw.conv2d(
-          x,
-          weights.get(reuse, scope, "w", [1, 1, inp_c, out_filters], None),
-          [1, 1, 1, 1],
-          "SAME",
-          data_format=data_format.name),
-        lambda x: batch_norm(x, is_training, data_format, weights)]
-
-
-  class ConvNxN(LayeredModel):
-    def __init__(self, weights, reuse: bool, scope: str, filter_size: int, out_filters, data_format, is_training: bool):
-      self.layers = [
-        fw.relu,
-        lambda x: fw.conv2d(
-          x,
-          weights.get(reuse, scope, "w", [filter_size, filter_size, out_filters, out_filters], None),
-          [1, 1, 1, 1],
-          "SAME",
-          data_format=data_format.name),
-        lambda x: batch_norm(x, is_training, data_format, weights)]
-
-
   def _fixed_layer(
       self, layer_id, prev_layers, start_idx, out_filters, is_training: bool, weights, reuse: bool):
     """
@@ -345,11 +331,11 @@ class MacroChild(Child):
       if count in [0, 1, 2, 3]:
         filter_size = [3, 3, 5, 5][count]
         with fw.name_scope("conv_1x1") as scope:
-          conv1x1 = MacroChild.Conv1x1(weights, reuse, scope, inp_c, out_filters, is_training, self.data_format)
+          conv1x1 = Child.Conv1x1(weights, reuse, scope, inp_c, out_filters, is_training, self.data_format)
           out = conv1x1(inputs)
 
         with fw.name_scope("conv_{0}x{0}".format(filter_size)) as scope:
-          convnxn = MacroChild.ConvNxN(weights, reuse, scope, filter_size, out_filters, self.data_format, is_training)
+          convnxn = Child.ConvNxN(weights, reuse, scope, filter_size, out_filters, self.data_format, is_training)
           out = convnxn(out)
       elif count == 4:
         pass
@@ -422,26 +408,8 @@ class MacroChild(Child):
     return out
 
 
-  class InputConv(LayeredModel):
-    def __init__(self, weights, reuse, scope, out_filters, is_training: bool, data_format):
-      self.layers = [
-        lambda x: fw.conv2d(
-          x,
-          weights.get(
-            reuse,
-            scope,
-            "w",
-            [1, 1, data_format.get_C(x), out_filters],
-            None),
-          [1, 1, 1, 1],
-          'SAME',
-          data_format=data_format.name),
-        lambda x: batch_norm(x, is_training, data_format, weights),
-        fw.relu]
-
-
   class OutConv(LayeredModel):
-    def __init__(self, weights, reuse: bool, scope: str, filter_size: int, count: int, data_format, is_training: bool):
+    def __init__(self, weights, reuse: bool, scope: str, filter_size: int, inp_c: int, count: int, data_format, is_training: bool):
       self.layers = [
         lambda x: fw.conv2d(
           x,
@@ -449,7 +417,7 @@ class MacroChild(Child):
             reuse,
             scope,
             "w",
-            [filter_size, filter_size, data_format.get_C(x), count],
+            [filter_size, filter_size, inp_c, count],
             None),
           [1, 1, 1, 1],
           "SAME",
@@ -547,6 +515,25 @@ class MacroChild(Child):
         fw.relu]
 
 
+  class InputConv(LayeredModel):
+    # TODO Eliminate duplication with Child.InputConv
+    def __init__(self, weights, reuse, scope, hw, out_filters, is_training: bool, data_format):
+      self.layers = [
+        lambda x: fw.conv2d(
+          x,
+          weights.get(
+            reuse,
+            scope,
+            "w",
+            [hw, hw, data_format.get_C(x), out_filters],
+            None),
+          [1, 1, 1, 1],
+          'SAME',
+          data_format=data_format.name),
+        lambda x: batch_norm(x, is_training, data_format, weights),
+        fw.relu]
+
+
   def _conv_branch(self, inputs, filter_size, is_training: bool, count, out_filters,
                    weights, reuse: bool, ch_mul=1, start_idx=None, separable=False):
     """
@@ -559,11 +546,14 @@ class MacroChild(Child):
     if start_idx is None:
       assert self.fixed_arc is not None, "you screwed up!"
 
+    inp_c = self.data_format.get_C(inputs)
+
     with fw.name_scope("inp_conv_1") as scope:
       inp_conv_1 = MacroChild.InputConv(
         weights,
         reuse,
         scope,
+        1,
         out_filters,
         is_training,
         self.data_format)
@@ -589,6 +579,7 @@ class MacroChild(Child):
             reuse,
             scope,
             filter_size,
+            inp_c,
             count,
             self.data_format,
             is_training)
@@ -637,6 +628,7 @@ class MacroChild(Child):
         weights,
         reuse,
         scope,
+        1,
         self.out_filters,
         is_training,
         self.data_format)

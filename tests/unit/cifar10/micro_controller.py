@@ -2,11 +2,10 @@ import unittest
 import unittest.mock as mock
 from unittest.mock import patch
 
+from src.cifar10.micro_controller import MicroController
+
 import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
-import numpy as np
-
-from src.cifar10.micro_controller import MicroController
 
 class TestMicroController(unittest.TestCase):
     @patch('src.cifar10.micro_controller.fw.reduce_sum', return_value="reduce_sum")
@@ -27,7 +26,7 @@ class TestMicroController(unittest.TestCase):
         tensor_array.return_value = mock_tensor_array
         with patch('src.cifar10.micro_controller.fw.while_loop', return_value=mock_tensor_array) as while_loop:
             with tf.Graph().as_default():
-                mc = MicroController(temperature=1.0, tanh_constant=1.0, op_tanh_reduce=1.0)
+                _ = MicroController(temperature=1.0, tanh_constant=1.0, op_tanh_reduce=1.0)
                 print.assert_any_call('-' * 80)
                 print.assert_any_call("Building ConvController")
                 zeros.assert_called_with([1, 32], tf.float32)
@@ -78,6 +77,7 @@ class TestMicroController(unittest.TestCase):
                     optim_algo=mc.optim_algo)
                 to_float.assert_called_with(mock_child.batch_size)
                 cd.assert_called_with(['assign_sub'])
+                while_loop.assert_called()
 
 if "__main__" == __name__:
     unittest.main()

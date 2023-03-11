@@ -1,4 +1,3 @@
-import os
 import sys
 
 import numpy as np
@@ -6,7 +5,8 @@ import src.framework as fw
 
 from src.utils import count_model_params
 from src.utils import get_train_ops
-from src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer, DEFINE_string, LearningRate, ClipMode, Optimizer, LayeredModel
+from src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer, DEFINE_string
+from src.utils import LearningRate, ClipMode, Optimizer, LayeredModel
 from src.cifar10.image_ops import batch_norm
 
 DEFINE_integer("batch_size", 32, "")
@@ -430,3 +430,60 @@ class Child(object):
           "SAME",
           data_format=data_format.name),
         lambda x: batch_norm(x, is_training, data_format, weights)]
+
+
+  class Conv1x1(LayeredModel):
+    def __init__(self, weights, reuse: bool, scope: str, inp_c, out_filters, is_training: bool, data_format):
+      self.layers = [
+        fw.relu,
+        lambda x: fw.conv2d(
+          x,
+          weights.get(reuse, scope, "w", [1, 1, inp_c, out_filters], None),
+          [1, 1, 1, 1],
+          "SAME",
+          data_format=data_format.name),
+        lambda x: batch_norm(x, is_training, data_format, weights)]
+
+
+  class ConvNxN(LayeredModel):
+    def __init__(self, weights, reuse: bool, scope: str, filter_size: int, out_filters, data_format, is_training: bool):
+      self.layers = [
+        fw.relu,
+        lambda x: fw.conv2d(
+          x,
+          weights.get(reuse, scope, "w", [filter_size, filter_size, out_filters, out_filters], None),
+          [1, 1, 1, 1],
+          "SAME",
+          data_format=data_format.name),
+        lambda x: batch_norm(x, is_training, data_format, weights)]
+
+
+  class StemConv(LayeredModel):
+    def __init__(self, weights, reuse, scope, out_filters, is_training, data_format):
+      self.layers = [
+        lambda x: fw.conv2d(
+          x,
+          weights.get(reuse, scope, "w", [3, 3, 3, out_filters], None),
+          [1, 1, 1, 1],
+          "SAME",
+          data_format=data_format.name),
+        lambda x: batch_norm(x, is_training, data_format, weights)]
+
+
+  class InputConv(LayeredModel):
+    # TODO Eliminate duplication
+    def __init__(self, weights, reuse, scope, hw, out_filters, is_training: bool, data_format):
+      self.layers = [
+        lambda x: fw.conv2d(
+          x,
+          weights.get(
+            reuse,
+            scope,
+            "w",
+            [hw, hw, data_format.get_C(x), out_filters],
+            None),
+          [1, 1, 1, 1],
+          'SAME',
+          data_format=data_format.name),
+        lambda x: batch_norm(x, is_training, data_format, weights),
+        fw.relu]

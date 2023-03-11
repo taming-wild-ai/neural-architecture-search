@@ -3,12 +3,13 @@ import unittest.mock as mock
 from unittest.mock import patch
 
 import numpy as np
-import tensorflow as tf
-tf.compat.v1.disable_eager_execution()
 
 from src.cifar10.micro_child import MicroChild
 from src.cifar10.child import DataFormat
 from src.framework import WeightRegistry
+
+import tensorflow as tf
+tf.compat.v1.disable_eager_execution()
 
 def mock_init_nhwc(self, images, labels, **kwargs):
     self.data_format = DataFormat.new("NHWC")
@@ -123,7 +124,9 @@ class TestMicroChild(unittest.TestCase):
                 with patch.object(mc.data_format, "get_C", return_value=3) as getc:
                     with patch.object(mc.data_format, "get_strides", return_value="get_strides") as gets:
                         with patch.object(mc.weights, "get", return_value="fw.create_weight") as create_weight:
-                            retval = mc._factorized_reduction(None, 24, 1, True, mc.weights, False)
+                            _ = mc._factorized_reduction(None, 24, 1, True, mc.weights, False)
+                            getc.assert_called_with(None)
+                            gets.assert_not_called()
                             create_weight.assert_called_with(False, 'path_conv/', "w", [1, 1, 3, 24], None)
                             conv2d.assert_called_with(None, "fw.create_weight", [1, 1, 1, 1], 'SAME', data_format="NCHW")
                             batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
@@ -212,7 +215,7 @@ class TestMicroChild(unittest.TestCase):
 
     @patch('src.cifar10.micro_child.fw.matmul', return_value="matmul")
     @patch('src.cifar10.micro_child.fw.relu', return_value="relu")
-    @patch('src.cifar10.micro_child.batch_norm', return_value="batch_norm")
+    @patch('src.cifar10.child.batch_norm', return_value="batch_norm")
     @patch('src.cifar10.micro_child.fw.conv2d', return_value="conv2d")
     @patch('src.cifar10.micro_child.print')
     def test_model_nhwc(self, print, conv2d, batch_norm, relu, matmul):
@@ -241,7 +244,7 @@ class TestMicroChild(unittest.TestCase):
     @patch('src.cifar10.micro_child.fw.matmul', return_value="matmul")
     @patch('src.cifar10.micro_child.fw.dropout', return_value="dropout")
     @patch('src.cifar10.micro_child.fw.relu', return_value="relu")
-    @patch('src.cifar10.micro_child.batch_norm', return_value="batch_norm")
+    @patch('src.cifar10.child.batch_norm', return_value="batch_norm")
     @patch('src.cifar10.micro_child.fw.conv2d', return_value="conv2d")
     @patch('src.cifar10.micro_child.print')
     def test_model_nchw(self, print, conv2d, batch_norm, relu, do, matmul):
@@ -276,7 +279,7 @@ class TestMicroChild(unittest.TestCase):
     @patch('src.cifar10.micro_child.fw.matmul', return_value="matmul")
     @patch('src.cifar10.micro_child.fw.dropout', return_value="dropout")
     @patch('src.cifar10.micro_child.fw.relu', return_value="relu")
-    @patch('src.cifar10.micro_child.batch_norm', return_value="batch_norm")
+    @patch('src.cifar10.child.batch_norm', return_value="batch_norm")
     @patch('src.cifar10.micro_child.fw.conv2d', return_value="conv2d")
     @patch('src.cifar10.micro_child.print')
     def test_model_aux_heads(self, print, conv2d, batch_norm, relu, do, matmul, avg_pool2d):
@@ -356,10 +359,11 @@ class TestMicroChild(unittest.TestCase):
     @patch('src.cifar10.micro_child.fw.max_pool2d')
     @patch('src.cifar10.micro_child.fw.avg_pool2d')
     @patch('src.cifar10.micro_child.fw.separable_conv2d', return_value="s_conv2d")
-    @patch('src.cifar10.micro_child.batch_norm', return_value="batch_norm")
+    @patch('src.cifar10.child.batch_norm', return_value="batch_norm1")
+    @patch('src.cifar10.micro_child.batch_norm', return_value="batch_norm2")
     @patch('src.cifar10.micro_child.fw.conv2d', return_value="conv2d")
     @patch('src.cifar10.micro_child.fw.relu', return_value="relu")
-    def test_fixed_layer(self, relu, conv2d, batch_norm, s_conv2d, avg_pool2d, max_pool2d, np_zeros):
+    def test_fixed_layer(self, relu, conv2d, batch_norm2, batch_norm1, s_conv2d, avg_pool2d, max_pool2d, np_zeros):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
@@ -377,10 +381,11 @@ class TestMicroChild(unittest.TestCase):
                                     create_weight.assert_called_with(False, 'cell_4/y_conv/', "w", [1, 1, 'get_c', 24], None)
                                     relu.assert_called_with(0)
                                     conv2d.assert_called_with("relu", "fw.create_weight", [1, 1, 1, 1], "SAME", data_format="NHWC")
-                                    batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
+                                    batch_norm1.assert_called_with('conv2d', True, mc.data_format, mc.weights)
+                                    batch_norm2.assert_called_with('conv2d', True, mc.data_format, mc.weights)
                                     s_conv2d.assert_called_with("relu", depthwise_filter="fw.create_weight", pointwise_filter="fw.create_weight", strides=[1, 1, 1, 1], padding="SAME", data_format="NHWC")
-                                    adp.assert_called_with('batch_norm', 0)
-                                    fc.assert_called_with([0, 'batch_norm', 'adpadp', 'adpadp', 'adpadp', 'adpadp', 'batch_normbatch_norm'], np_zeros(), 24, True, 'normal')
+                                    adp.assert_called_with('batch_norm1', 0)
+                                    fc.assert_called_with([0, 'batch_norm2', 'adpadp', 'adpadp', 'adpadp', 'adpadp', 'batch_norm1batch_norm2'], np_zeros(), 24, True, 'normal')
 
     @patch('src.cifar10.micro_child.fw.stack', return_value=tf.constant(np.ndarray((1, 4, 32, 32, 3))))
     @patch('src.cifar10.micro_child.batch_norm', return_value="batch_norm")
@@ -496,6 +501,7 @@ class TestMicroChild(unittest.TestCase):
                             mc._enas_layer(0, [layer1, layer2], [0, 0, 0, 0, 0, 1, 0, 1, 0, 2, 0, 2, 0, 3, 0, 3, 0, 4, 0, 4], 3, mc.weights, False)
                             mcs.assert_called_with([layer1, layer2], 3, True, mc.weights, False)
                             ec.assert_called_with(val, 4, 0, 4, 3, mc.weights, False)
+                            create_weight.assert_called_with(False, 'final_conv/', 'w', [7, 9], None)
                             stack.assert_called_with([layer1, layer2, 'ecec', 'ecec', 'ecec', 'ecec', 'ecec'], axis=0)
                             gather.assert_called_with('fw.create_weight', 'reshape', axis=0)
                             transpose.assert_called_with('gather', [1, 0, 2, 3, 4])
@@ -612,6 +618,7 @@ class TestMicroChild(unittest.TestCase):
                 equal.assert_any_call("to_int32", {})
                 to_int32.assert_any_call("equal")
                 reduce_sum.assert_called_with("to_int32")
+                model.assert_called_with({}, False, reuse=True)
 
     @patch('src.cifar10.micro_child.fw.reduce_sum', return_value="reduce_sum")
     @patch('src.cifar10.micro_child.fw.equal', return_value="equal")
@@ -633,6 +640,7 @@ class TestMicroChild(unittest.TestCase):
                 equal.assert_any_call("to_int32", {})
                 to_int32.assert_any_call("equal")
                 reduce_sum.assert_called_with("to_int32")
+                model.assert_called_with({}, False, reuse=True)
 
     @patch('src.cifar10.child.Child.__init__')
     @patch('src.cifar10.micro_child.fw.map_fn', return_value="map_fn")
@@ -677,6 +685,9 @@ class TestMicroChild(unittest.TestCase):
                         mock_controller = mock.MagicMock()
                         mock_controller.sample_arc = (None, None)
                         mc.connect_controller(mock_controller)
+                        build_train.assert_called_with()
+                        build_valid.assert_called_with()
+                        build_test.assert_called_with()
 
 if "__main__" == "__name__":
     unittest.main()
