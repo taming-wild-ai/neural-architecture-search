@@ -432,7 +432,7 @@ class MicroChild(Child):
         self.layers = []
         if x_stride > 1:
           assert x_stride == 2
-          self.layers.append(lambda x: self._factorized_reduction(x, out_filters, 2, is_training))
+          self.layers.append(lambda x: child._factorized_reduction(x, out_filters, 2, is_training, weights, reuse))
         self.layers.append(lambda x: MicroChild.Operator.inner1(x, child, out_filters, weights, reuse, scope, is_training))
 
 
@@ -480,43 +480,8 @@ class MicroChild(Child):
         y = layers[y_id]
         y_stride = stride if y_id in [0, 1] else 1
         with fw.name_scope("y_conv") as scope:
-          if y_op in [0, 1]:
-            f_size = f_sizes[y_op]
-            y = self._fixed_conv(y, f_size, out_filters, y_stride, is_training, weights, reuse)
-          elif y_op in [2, 3]:
-            inp_c = self.data_format.get_C(y)
-            if y_op == 2:
-              y = fw.avg_pool2d(
-                y, [3, 3], [y_stride, y_stride], "SAME",
-                data_format=self.data_format.actual)
-            else:
-              y = fw.max_pool2d(
-                y, [3, 3], [y_stride, y_stride], "SAME",
-                data_format=self.data_format.actual)
-            if inp_c != out_filters:
-              out_conv = Child.Conv1x1(weights, reuse, scope, inp_c, out_filters, is_training, self.data_format)
-              y = out_conv(y)
-          else:
-            inp_c = self.data_format.get_C(y)
-            if y_stride > 1:
-              assert y_stride == 2
-              y = self._factorized_reduction(y, out_filters, 2, is_training, weights, reuse)
-            if inp_c != out_filters:
-              y = batch_norm(
-                fw.conv2d(
-                  fw.relu(y),
-                  weights.get(reuse, scope, "w", [1, 1, inp_c, out_filters], None),
-                  [1, 1, 1, 1],
-                  "SAME",
-                  data_format=self.data_format.name),
-                is_training,
-                self.data_format,
-                weights)
-
-          if (y_op in [0, 1, 2, 3] and
-              self.drop_path_keep_prob is not None and
-              is_training):
-            y = self._apply_drop_path(y, layer_id)
+          op = MicroChild.Operator.new(y_op, self, out_filters, y_stride, is_training, weights, reuse, scope, layer_id)
+          y = op(y)
 
         out = x + y
         layers.append(out)
@@ -585,6 +550,43 @@ class MicroChild(Child):
         lambda x: fw.avg_pool2d(x, [3, 3], [1, 1], 'SAME', data_format=data_format.actual),
         inner]
 
+
+  class ENASCell(LayeredModel):
+    @staticmethod
+    def inner(x, data_format, out_filters: int, weights, reuse: bool, scope: str, num_possible_inputs: int, prev_cell: int):
+      x_c = data_format.get_C(x)
+      if x_c != out_filters:
+        return batch_norm(
+          fw.conv2d(
+            fw.relu(x),
+            fw.reshape(
+              weights.get(
+                reuse,
+                scope,
+                "w",
+                [num_possible_inputs, x_c * out_filters],
+                None)[prev_cell],
+              [1, 1, x_c, out_filters]),
+            strides=[1, 1, 1, 1],
+            padding="SAME",
+            data_format=data_format.name),
+          True,
+          data_format,
+          weights)
+      else:
+        return x
+
+    def __init__(self, data_format, out_filters: int, weights, reuse: bool, scope: str, num_possible_inputs: int, prev_cell: int):
+      self.layers = [lambda x: MicroChild.ENASCell.inner(
+        x,
+        data_format,
+        out_filters,
+        weights,
+        reuse,
+        scope,
+        num_possible_inputs,
+        prev_cell)]
+
   def _enas_cell(self, x, curr_cell, prev_cell, op_id, out_filters, weights, reuse: bool):
     """Performs an enas operation specified by op_id."""
 
@@ -598,26 +600,9 @@ class MicroChild(Child):
       mp = MicroChild.MaxPool(self.data_format, out_filters, reuse, scope, curr_cell, prev_cell, weights)
       max_pool = mp(x)
 
-    x_c = self.data_format.get_C(x)
-    if x_c != out_filters:
-      with fw.name_scope("x_conv") as scope:
-        x = batch_norm(
-          fw.conv2d(
-            fw.relu(x),
-            fw.reshape(
-              weights.get(
-                reuse,
-                scope,
-                "w",
-                [num_possible_inputs, x_c * out_filters],
-                None)[prev_cell],
-              [1, 1, x_c, out_filters]),
-            strides=[1, 1, 1, 1],
-            padding="SAME",
-            data_format=self.data_format.name),
-          True,
-          self.data_format,
-          weights)
+    with fw.name_scope("x_conv") as scope:
+      ec1 = MicroChild.ENASCell(self.data_format, out_filters, weights, reuse, scope, num_possible_inputs, prev_cell)
+      x = ec1(x)
 
     out = [
       self._enas_conv(x, curr_cell, prev_cell, 3, out_filters, weights, reuse),
@@ -631,6 +616,56 @@ class MicroChild(Child):
     out = out[op_id, :, :, :, :]
     return out
 
+
+  class ENASConv(LayeredModel):
+    def __init__(self, weights, reuse: bool, scope: str, num_possible_inputs: int, filter_size: int, prev_cell: int, out_filters: int, data_format):
+      def inner(x, weights, reuse: bool, scope: str, num_possible_inputs: int, filter_size: int, prev_cell: int, out_filters: int, data_format):
+        inp_c = data_format.get_C(x)
+        w_depthwise = fw.reshape(
+          weights.get(
+            reuse,
+            scope,
+            "w_depth",
+            [num_possible_inputs, filter_size * filter_size * inp_c], None)[prev_cell, :],
+          [filter_size, filter_size, inp_c, 1])
+
+        w_pointwise = fw.reshape(
+          weights.get(
+            reuse,
+            scope,
+            "w_point",
+            [num_possible_inputs, inp_c * out_filters], None)[prev_cell, :],
+          [1, 1, inp_c, out_filters])
+
+        with fw.name_scope("bn") as scope:
+          offset = weights.get(
+            reuse,
+            scope,
+            "offset", [num_possible_inputs, out_filters],
+            fw.zeros_init())[prev_cell]
+          scale = weights.get(
+            reuse,
+            scope,
+            "scale", [num_possible_inputs, out_filters],
+            fw.ones_init())[prev_cell]
+
+        return fw.fused_batch_norm(
+          fw.separable_conv2d(
+            fw.relu(x),
+            depthwise_filter=w_depthwise,
+            pointwise_filter=w_pointwise,
+            strides=[1, 1, 1, 1],
+            padding="SAME",
+            data_format=data_format.name),
+          scale,
+          offset,
+          epsilon=1e-5,
+          data_format=data_format.name,
+          is_training=True)[0]
+
+      self.layers = [
+        lambda x: inner(x, weights, reuse, scope, num_possible_inputs, filter_size, prev_cell, out_filters, data_format)]
+
   def _enas_conv(self, x, curr_cell, prev_cell, filter_size, out_filters, weights, reuse: bool,
                  stack_conv=2):
     """Performs an enas convolution specified by the relevant parameters."""
@@ -640,50 +675,56 @@ class MicroChild(Child):
       for conv_id in range(stack_conv):
         with fw.name_scope("stack_{0}".format(conv_id)) as scope:
           # create params and pick the correct path
-          inp_c = self.data_format.get_C(x)
-          w_depthwise = fw.reshape(
-            weights.get(
-              reuse,
-              scope,
-              "w_depth",
-              [num_possible_inputs, filter_size * filter_size * inp_c], None)[prev_cell, :],
-            [filter_size, filter_size, inp_c, 1])
-
-          w_pointwise = fw.reshape(
-            weights.get(
-              reuse,
-              scope,
-              "w_point",
-              [num_possible_inputs, inp_c * out_filters], None)[prev_cell, :],
-            [1, 1, inp_c, out_filters])
-
-          with fw.name_scope("bn") as scope:
-            offset = weights.get(
-              reuse,
-              scope,
-              "offset", [num_possible_inputs, out_filters],
-              fw.zeros_init())[prev_cell]
-            scale = weights.get(
-              reuse,
-              scope,
-              "scale", [num_possible_inputs, out_filters],
-              fw.ones_init())[prev_cell]
-
-          # the computations
-          x, _, _ = fw.fused_batch_norm(
-            fw.separable_conv2d(
-              fw.relu(x),
-              depthwise_filter=w_depthwise,
-              pointwise_filter=w_pointwise,
-              strides=[1, 1, 1, 1],
-              padding="SAME",
-              data_format=self.data_format.name),
-            scale,
-            offset,
-            epsilon=1e-5,
-            data_format=self.data_format.name,
-            is_training=True)
+          ec = MicroChild.ENASConv(weights, reuse, scope, num_possible_inputs, filter_size, prev_cell, out_filters, self.data_format)
+          x = ec(x)
     return x
+
+
+  class ENASLayer(LayeredModel):
+    def __init__(self, weights, reuse: bool, scope:str, num_cells: int, out_filters: int, indices: list[int], num_outs, data_format, prev_layers: list[int]):
+      filters = fw.reshape(
+        fw.gather(
+          weights.get(
+            reuse,
+            scope,
+            "w",
+            [num_cells + 2, out_filters * out_filters],
+            None),
+          indices,
+          axis=0),
+        [1, 1, num_outs * out_filters, out_filters])
+
+      self.layers = [
+        lambda x: fw.stack(x, axis=0),
+        lambda x: fw.gather(x, indices, axis=0),
+        lambda x: data_format.micro_enas(
+          x,
+          prev_layers[0],
+          num_outs,
+          out_filters),
+        fw.relu,
+        lambda x: fw.conv2d(
+          x,
+          filters,
+          strides=[1, 1, 1, 1],
+          padding='SAME',
+          data_format=data_format.name),
+        lambda x: batch_norm(
+          x,
+          True,
+          data_format,
+          weights),
+        lambda x: fw.reshape(x, fw.shape(prev_layers[0]))]
+
+    class Indices(LayeredModel):
+      def __init__(self):
+        self.layers = [
+          fw.add_n,
+          lambda x: fw.equal(x, 0),
+          fw.where,
+          fw.to_int32,
+          lambda x: fw.reshape(x, [-1])]
+
 
   def _enas_layer(self, layer_id, prev_layers, arc, out_filters, weights, reuse):
     """
@@ -695,66 +736,33 @@ class MicroChild(Child):
     """
 
     assert len(prev_layers) == 2, "need exactly 2 inputs"
-    layers = [prev_layers[0], prev_layers[1]]
-    layers = self._maybe_calibrate_size(layers, out_filters, True, weights, reuse)
+    layers = self._maybe_calibrate_size([prev_layers[0], prev_layers[1]], out_filters, True, weights, reuse)
     used = []
     for cell_id in range(self.num_cells):
       prev_layers = fw.stack(layers, axis=0)
       with fw.name_scope("cell_{0}".format(cell_id)) as scope:
         with fw.name_scope("x") as scope:
           x_id = arc[4 * cell_id]
-          x_op = arc[4 * cell_id + 1]
-          x = prev_layers[x_id, :, :, :, :]
-          x = self._enas_cell(x, cell_id, x_id, x_op, out_filters, weights, reuse)
+          x = self._enas_cell(prev_layers[x_id, :, :, :, :], cell_id, x_id, arc[4 * cell_id + 1], out_filters, weights, reuse)
           x_used = fw.one_hot(x_id, depth=self.num_cells + 2, dtype=fw.int32)
 
         with fw.name_scope("y") as scope:
           y_id = arc[4 * cell_id + 2]
-          y_op = arc[4 * cell_id + 3]
-          y = prev_layers[y_id, :, :, :, :]
-          y = self._enas_cell(y, cell_id, y_id, y_op, out_filters, weights, reuse)
+          y = self._enas_cell(prev_layers[y_id, :, :, :, :], cell_id, y_id, arc[4 * cell_id + 3], out_filters, weights, reuse)
           y_used = fw.one_hot(y_id, depth=self.num_cells + 2, dtype=fw.int32)
 
         out = x + y
         used.extend([x_used, y_used])
         layers.append(out)
 
-    used = fw.add_n(used)
-    indices = fw.where(fw.equal(used, 0))
-    indices = fw.to_int32(indices)
-    indices = fw.reshape(indices, [-1])
+    i = MicroChild.ENASLayer.Indices()
+    indices = i(used)
     num_outs = fw.size(indices)
-    out = fw.stack(layers, axis=0)
-    out = fw.gather(out, indices, axis=0)
-
-    inp = prev_layers[0]
-    out = self.data_format.micro_enas(out, inp, num_outs, out_filters)
 
     with fw.name_scope("final_conv") as scope:
-      out = batch_norm(
-        fw.conv2d(
-          fw.relu(out),
-          fw.reshape(
-            fw.gather(
-              weights.get(
-                reuse,
-                scope,
-                "w",
-                [self.num_cells + 2, out_filters * out_filters],
-                None),
-              indices,
-              axis=0),
-            [1, 1, num_outs * out_filters, out_filters]),
-          strides=[1, 1, 1, 1],
-          padding="SAME",
-          data_format=self.data_format.name),
-        True,
-        self.data_format,
-        weights)
+      el = MicroChild.ENASLayer(weights, reuse, scope, self.num_cells, out_filters, indices, num_outs, self.data_format, prev_layers)
 
-    out = fw.reshape(out, fw.shape(prev_layers[0]))
-
-    return out
+    return el(layers)
 
   # override
   def _build_train(self):

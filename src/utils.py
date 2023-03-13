@@ -109,10 +109,10 @@ class ClipMode(object):
   @staticmethod
   def new(mode, bound):
     return {
-      "global": lambda: ClipMode.Global(bound),
-      "norm": lambda: ClipMode.Norm(bound),
-      None: lambda: ClipMode.Null(bound)
-    }[mode]() # to prevent premature instantiation
+      "global": ClipMode.Global,
+      "norm": ClipMode.Norm,
+      None: ClipMode.Null
+    }[mode](bound)
 
 
 class LearningRate(object):
