@@ -133,6 +133,20 @@ class MicroChild(Child):
         1.0,
         fw.to_float(self.global_step + 1) / fw.to_float(self.num_train_steps)) * (1.0 - (1.0 - float(layer_id + 1) / (self.num_layers + 2) * (1.0 - self.drop_path_keep_prob))))
 
+
+  class CalibrateSize(LayeredModel):
+    def __init__(self, weights, reuse: bool, scope: str, inp_c: int, out_filters: int, is_training: bool, data_format):
+      self.layers = [
+        fw.relu,
+        lambda x: fw.conv2d(
+          x,
+          weights.get(reuse, scope, "w", [1, 1, inp_c, out_filters], None),
+          [1, 1, 1, 1],
+          "SAME",
+          data_format=data_format.name),
+        lambda x: batch_norm(x, is_training, data_format, weights)]
+
+
   def _maybe_calibrate_size(self, layers, out_filters, is_training, weights, reuse):
     """Makes sure layers[0] and layers[1] have the same shapes."""
 
@@ -154,16 +168,8 @@ class MicroChild(Child):
       y = layers[1]
       if c[1] != out_filters:
         with fw.name_scope("pool_y") as scope:
-          y = batch_norm(
-            fw.conv2d(
-              fw.relu(y),
-              weights.get(reuse, scope, "w", [1, 1, c[1], out_filters], None),
-              [1, 1, 1, 1],
-              "SAME",
-              data_format=self.data_format.name),
-            is_training,
-            self.data_format,
-            weights)
+          cs = MicroChild.CalibrateSize(weights, reuse, scope, c[1], out_filters, is_training, self.data_format)
+          y = cs(y)
     return [x, y]
 
 
@@ -374,6 +380,71 @@ class MicroChild(Child):
           data_format=data_format.name),
         lambda x: batch_norm(x, is_training, data_format, weights)]
 
+
+  class Operator(object):
+    def inner1(x, child, out_filters, weights, reuse, scope, is_training):
+      inp_c = child.data_format.get_C(x)
+      if inp_c != out_filters:
+        x_conv = Child.Conv1x1(weights, reuse, scope, inp_c, out_filters, is_training, child.data_format)
+        return x_conv(x)
+      else:
+        return x
+
+    def inner2(x, child, is_training, layer_id):
+      if (child.drop_path_keep_prob is not None and
+          is_training):
+        return child._apply_drop_path(x, layer_id)
+      else:
+        return x
+
+    class SeparableConv3x3(LayeredModel):
+      def __init__(self, child, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
+        self.layers = [
+          lambda x: child._fixed_conv(x, 3, out_filters, x_stride, is_training, weights, reuse),
+          lambda x: MicroChild.Operator.inner2(x, child, is_training, layer_id)]
+
+
+    class SeparableConv5x5(LayeredModel):
+      def __init__(self, child, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
+        self.layers = [
+          lambda x: child._fixed_conv(x, 5, out_filters, x_stride, is_training, weights, reuse),
+          lambda x: MicroChild.Operator.inner2(x, child, is_training, layer_id)]
+
+
+    class AveragePooling(LayeredModel):
+      def __init__(self, child, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
+        self.layers = [
+          lambda x: fw.avg_pool2d(x, [3, 3], [x_stride, x_stride], "SAME", data_format=child.data_format.actual),
+          lambda x: MicroChild.Operator.inner1(x, child, out_filters, weights, reuse, scope, is_training),
+          lambda x: MicroChild.Operator.inner2(x, child, is_training, layer_id)]
+
+
+    class MaxPooling(LayeredModel):
+      def __init__(self, child, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
+        self.layers = [
+          lambda x: fw.max_pool2d(x, [3, 3], [x_stride, x_stride], "SAME", data_format=child.data_format.actual),
+          lambda x: MicroChild.Operator.inner1(x, child, out_filters, weights, reuse, scope, is_training),
+          lambda x: MicroChild.Operator.inner2(x, child, is_training, layer_id)]
+
+
+    class Identity(LayeredModel):
+      def __init__(self, child, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
+        self.layers = []
+        if x_stride > 1:
+          assert x_stride == 2
+          self.layers.append(lambda x: self._factorized_reduction(x, out_filters, 2, is_training))
+        self.layers.append(lambda x: MicroChild.Operator.inner1(x, child, out_filters, weights, reuse, scope, is_training))
+
+
+    @staticmethod
+    def new(op_id, child, out_filters: int, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
+      return [
+        MicroChild.Operator.SeparableConv3x3,
+        MicroChild.Operator.SeparableConv5x5,
+        MicroChild.Operator.AveragePooling,
+        MicroChild.Operator.MaxPooling,
+        MicroChild.Operator.Identity][op_id](child, out_filters, x_stride, is_training, weights, reuse, scope, layer_id)
+
   def _fixed_layer(self, layer_id, prev_layers, arc, out_filters, stride,
                    is_training, weights, reuse, normal_or_reduction_cell="normal"):
     """
@@ -401,35 +472,8 @@ class MicroChild(Child):
         x = layers[x_id]
         x_stride = stride if x_id in [0, 1] else 1
         with fw.name_scope("x_conv") as scope:
-          if x_op in [0, 1]:
-            f_size = f_sizes[x_op]
-            x = self._fixed_conv(x, f_size, out_filters, x_stride, is_training, weights, reuse)
-          elif x_op in [2, 3]:
-            inp_c = self.data_format.get_C(x)
-            if x_op == 2:
-              x = fw.avg_pool2d(
-                x, [3, 3], [x_stride, x_stride], "SAME",
-                data_format=self.data_format.actual)
-            else:
-              x = fw.max_pool2d(
-                x, [3, 3], [x_stride, x_stride], "SAME",
-                data_format=self.data_format.actual)
-            if inp_c != out_filters:
-              x_conv = Child.Conv1x1(weights, reuse, scope, inp_c, out_filters, is_training, self.data_format)
-              x = x_conv(x)
-          else:
-            inp_c = self.data_format.get_C(x)
-            if x_stride > 1:
-              assert x_stride == 2
-              x = self._factorized_reduction(x, out_filters, 2, is_training)
-            if inp_c != out_filters:
-              x_conv = Child.Conv1x1(weights, reuse, scope, inp_c, out_filters, is_training, self.data_format)
-              x = x_conv(x)
-          if (x_op in [0, 1, 2, 3] and
-              self.drop_path_keep_prob is not None and
-              is_training):
-            x = self._apply_drop_path(x, layer_id)
-
+          op = MicroChild.Operator.new(x_op, self, out_filters, x_stride, is_training, weights, reuse, scope, layer_id)
+          x = op(x)
         y_id = arc[4 * cell_id + 2]
         used[y_id] += 1
         y_op = arc[4 * cell_id + 3]
