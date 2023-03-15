@@ -246,9 +246,8 @@ class MicroChild(Child):
             and is_training):
           print("Using aux_head at layer {0}".format(layer_id))
           with fw.name_scope("aux_head") as scope:
-            aux_logits = fw.relu(x)
             aux_logits = fw.avg_pool2d(
-              aux_logits, [5, 5], [3, 3], "VALID",
+              fw.relu(x), [5, 5], [3, 3], "VALID",
               data_format=self.data_format.actual)
             with fw.name_scope("proj") as scope:
               inp_conv = Child.InputConv(
@@ -765,29 +764,28 @@ class MicroChild(Child):
     return el(layers)
 
   # override
-  def _build_train(self):
+  def _build_train(self, model, x, y):
     print("-" * 80)
     print("Build train graph")
-    logits = self._model(self.x_train, is_training=True)
-    self.loss = fw.reduce_mean(fw.sparse_softmax_cross_entropy_with_logits(
-      logits=logits, labels=self.y_train))
+    logits = model(x, is_training=True)
+    loss = fw.reduce_mean(fw.sparse_softmax_cross_entropy_with_logits(
+      logits=logits, labels=y))
 
     if self.use_aux_heads:
       self.aux_loss = fw.reduce_mean(fw.sparse_softmax_cross_entropy_with_logits(
-        logits=self.aux_logits, labels=self.y_train))
-      train_loss = self.loss + 0.4 * self.aux_loss
+        logits=self.aux_logits, labels=y))
+      train_loss = loss + 0.4 * self.aux_loss
     else:
-      train_loss = self.loss
+      train_loss = loss
 
-    self.train_acc = fw.reduce_sum(fw.to_int32(fw.equal(fw.to_int32(fw.argmax(logits, axis=1)), self.y_train)))
+    train_acc = fw.reduce_sum(fw.to_int32(fw.equal(fw.to_int32(fw.argmax(logits, axis=1)), y)))
 
     tf_variables = [
       var for var in fw.trainable_variables() if (
         var.name.startswith(self.name) and "aux_head" not in var.name)]
-    self.num_vars = count_model_params(tf_variables)
-    print("Model has {0} params".format(self.num_vars))
+    print("Model has {0} params".format(count_model_params(tf_variables)))
 
-    self.train_op, self.lr, self.grad_norm, self.optimizer = get_train_ops(
+    train_op, lr, grad_norm, optimizer = get_train_ops(
       train_loss,
       tf_variables,
       self.global_step,
@@ -797,28 +795,28 @@ class MicroChild(Child):
       num_train_batches=self.num_train_batches,
       optim_algo=self.optim_algo)
 
-  # override
-  def _build_valid(self):
-    if self.x_valid is not None:
-      print("-" * 80)
-      print("Build valid graph")
-      logits = self._model(self.x_valid, False, reuse=True)
-      self.valid_preds = fw.argmax(logits, axis=1)
-      self.valid_preds = fw.to_int32(self.valid_preds)
-      self.valid_acc = fw.equal(self.valid_preds, self.y_valid)
-      self.valid_acc = fw.to_int32(self.valid_acc)
-      self.valid_acc = fw.reduce_sum(self.valid_acc)
+    return loss, train_acc, train_op, lr, grad_norm, optimizer
 
   # override
-  def _build_test(self):
+  def _build_valid(self, model, x, y):
+    if x is not None:
+      print("-" * 80)
+      print("Build valid graph")
+      logits = model(x, False, reuse=True)
+      predictions = fw.to_int32(fw.argmax(logits, axis=1))
+      return (
+        predictions,
+        fw.reduce_sum(fw.to_int32(fw.equal(predictions, y))))
+
+  # override
+  def _build_test(self, model, x, y):
     print("-" * 80)
     print("Build test graph")
-    logits = self._model(self.x_test, False, reuse=True)
-    self.test_preds = fw.argmax(logits, axis=1)
-    self.test_preds = fw.to_int32(self.test_preds)
-    self.test_acc = fw.equal(self.test_preds, self.y_test)
-    self.test_acc = fw.to_int32(self.test_acc)
-    self.test_acc = fw.reduce_sum(self.test_acc)
+    logits = model(x, False, reuse=True)
+    predictions = fw.to_int32(fw.argmax(logits, axis=1))
+    return (
+      predictions,
+      fw.reduce_sum(fw.to_int32(fw.equal(predictions, y))))
 
   # override
   def build_valid_rl(self, shuffle=False):
@@ -863,5 +861,5 @@ class MicroChild(Child):
       self.reduce_arc = fixed_arc[4 * self.num_cells:]
 
     self._build_train()
-    self._build_valid()
-    self._build_test()
+    self.valid_preds, self.valid_acc = self._build_valid(self._model, self.x_valid, self.y_valid)
+    self.test_preds, self.test_acc = self._build_test(self._model, self.x_test, self.y_test)

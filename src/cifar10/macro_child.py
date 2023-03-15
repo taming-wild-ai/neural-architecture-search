@@ -669,30 +669,30 @@ class MacroChild(Child):
         fw.reduce_sum]
 
   # override
-  def _build_train(self):
+  def _build_train(self, model, weights, x, y):
     print("-" * 80)
     print("Build train graph")
-    logits = self._model(self.x_train, True, self.weights)
-    loss_model = MacroChild.LossModel(self.y_train)
-    self.loss = loss_model(logits)
-    train_model = MacroChild.TrainModel(self.y_train)
-    self.train_acc = train_model(logits)
+    logits = model(x, True, weights)
+    loss_model = MacroChild.LossModel(y)
+    loss = loss_model(logits)
+    train_model = MacroChild.TrainModel(y)
+    train_acc = train_model(logits)
 
     tf_variables = [var
         for var in fw.trainable_variables() if var.name.startswith(self.name)]
-    self.num_vars = count_model_params(tf_variables)
-    print("Model has {} params".format(self.num_vars))
+    print("Model has {} params".format(count_model_params(tf_variables)))
 
-    self.global_step = fw.get_or_create_global_step()
-    self.train_op, self.lr, self.grad_norm, self.optimizer = get_train_ops(
-      self.loss,
+    global_step = fw.get_or_create_global_step()
+    train_op, lr, grad_norm, optimizer = get_train_ops(
+      loss,
       tf_variables,
-      self.global_step,
+      global_step,
       self.learning_rate,
       clip_mode=self.clip_mode,
       l2_reg=self.l2_reg,
       num_train_batches=self.num_train_batches,
       optim_algo=self.optim_algo)
+    return loss, train_acc, global_step, train_op, lr, grad_norm, optimizer
 
 
   class ValidationPredictions(LayeredModel):
@@ -711,14 +711,15 @@ class MacroChild(Child):
         fw.reduce_sum]
 
 
-  def _build_valid(self):
+  def _build_valid(self, model, x, y):
     if self.x_valid is not None:
       print("-" * 80)
       print("Build valid graph")
-      vp = MacroChild.ValidationPredictions(self._model, self.weights, True)
-      self.valid_preds = vp(self.x_valid)
-      va = MacroChild.ValidationAccuracy(self.y_valid)
-      self.valid_acc = va(self.valid_preds)
+      vp = MacroChild.ValidationPredictions(model, self.weights, True)
+      predictions = vp(x)
+      va = MacroChild.ValidationAccuracy(y)
+      accuracy = va(predictions)
+      return predictions, accuracy
 
 
   class TestPredictions(LayeredModel):
@@ -738,13 +739,14 @@ class MacroChild(Child):
 
 
   # override
-  def _build_test(self):
+  def _build_test(self, model, x, y):
     print("-" * 80)
     print("Build test graph")
-    tp = MacroChild.TestPredictions(self._model, self.weights, True)
-    self.test_preds = tp(self.x_test)
-    ta = MacroChild.TestAccuracy(self.y_test)
-    self.test_acc = ta(self.test_preds)
+    tp = MacroChild.TestPredictions(model, self.weights, True)
+    predictions = tp(x)
+    ta = MacroChild.TestAccuracy(y)
+    accuracy = ta(predictions)
+    return predictions, accuracy
 
   # override
   def build_valid_rl(self, shuffle=False):
@@ -784,7 +786,7 @@ class MacroChild(Child):
     else:
       self.sample_arc = np.array([int(x) for x in self.fixed_arc.split(" ") if x])
 
-    self._build_train()
-    self._build_valid()
-    self._build_test()
+    self.loss, self.train_acc, self.global_step, self.train_op, self.lr, self.grad_norm, self.optimizer = self._build_train(self._model, self.weights, self.x_train, self.y_train)
+    self.valid_preds, self.valid_acc = self._build_valid(self._model, self.x_valid, self.y_valid)
+    self.test_preds, self.test_acc = self._build_test(self._model, self.x_test, self.y_test)
 
