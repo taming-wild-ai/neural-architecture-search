@@ -73,7 +73,7 @@ class MacroController(Controller):
         with fw.name_scope("emb"):
           self.w_emb = fw.Variable(
             initializer([self.num_branches, self.lstm_size]),
-            "w",
+            name="w",
             trainable=True)
         with fw.name_scope("softmax"):
           self.w_soft = fw.Variable(

@@ -136,11 +136,12 @@ class MicroChild(Child):
 
   class CalibrateSize(LayeredModel):
     def __init__(self, weights, reuse: bool, scope: str, inp_c: int, out_filters: int, is_training: bool, data_format):
+      w = weights.get(reuse, scope, "w", [1, 1, inp_c, out_filters], None)
       self.layers = [
         fw.relu,
         lambda x: fw.conv2d(
           x,
-          weights.get(reuse, scope, "w", [1, 1, inp_c, out_filters], None),
+          w,
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name),
@@ -200,7 +201,7 @@ class MicroChild(Child):
           weights.get(reuse, scope, "w", [x.get_shape()[1], 10], None))]
 
 
-  def _model(self, images, is_training, reuse=False):
+  def _model(self, weights, images, is_training, reuse=False):
     """Compute the logits given the images."""
 
     if self.fixed_arc is None:
@@ -209,7 +210,7 @@ class MicroChild(Child):
     with fw.name_scope(self.name) as scope:
       # the first two inputs
       with fw.name_scope("stem_conv") as scope:
-        stem_conv = Child.StemConv(self.weights, reuse, scope, self.out_filters * 3, is_training, self.data_format)
+        stem_conv = Child.StemConv(weights, reuse, scope, self.out_filters * 3, is_training, self.data_format)
         x = stem_conv(images)
       layers = [x, x]
 
@@ -220,22 +221,22 @@ class MicroChild(Child):
           if layer_id not in self.pool_layers:
             if self.fixed_arc is None:
               x = self._enas_layer(
-                layer_id, layers, self.normal_arc, out_filters, self.weights, reuse)
+                layer_id, layers, self.normal_arc, out_filters, weights, reuse)
             else:
               x = self._fixed_layer(
                 layer_id, layers, self.normal_arc, out_filters, 1, is_training,
-                self.weights, reuse, normal_or_reduction_cell="normal")
+                weights, reuse, normal_or_reduction_cell="normal")
           else:
             out_filters *= 2
             if self.fixed_arc is None:
-              x = self._factorized_reduction(x, out_filters, 2, is_training, self.weights, reuse)
+              x = self._factorized_reduction(x, out_filters, 2, is_training, weights, reuse)
               layers = [layers[-1], x]
               x = self._enas_layer(
-                layer_id, layers, self.reduce_arc, out_filters, self.weights, reuse)
+                layer_id, layers, self.reduce_arc, out_filters, weights, reuse)
             else:
               x = self._fixed_layer(
                 layer_id, layers, self.reduce_arc, out_filters, 2, is_training,
-                self.weights, reuse, normal_or_reduction_cell="reduction")
+                weights, reuse, normal_or_reduction_cell="reduction")
           print("Layer {0:>2d}: {1}".format(layer_id, x))
           layers = [layers[-1], x]
 
@@ -251,7 +252,7 @@ class MicroChild(Child):
               data_format=self.data_format.actual)
             with fw.name_scope("proj") as scope:
               inp_conv = Child.InputConv(
-                self.weights,
+                weights,
                 reuse,
                 scope,
                 1,
@@ -263,7 +264,7 @@ class MicroChild(Child):
             with fw.name_scope("avg_pool") as scope:
               hw = self._get_HW(aux_logits)
               inp_conv = Child.InputConv(
-                self.weights,
+                weights,
                 reuse,
                 scope,
                 hw,
@@ -273,7 +274,7 @@ class MicroChild(Child):
               aux_logits = inp_conv(aux_logits)
 
             with fw.name_scope("fc") as scope:
-              fc = MicroChild.FullyConnected(self.data_format, self.weights, reuse, scope)
+              fc = MicroChild.FullyConnected(self.data_format, weights, reuse, scope)
               self.aux_logits = fc(aux_logits)
 
           aux_head_variables = [
@@ -287,7 +288,7 @@ class MicroChild(Child):
           self.data_format,
           is_training,
           self.keep_prob,
-          self.weights,
+          weights,
           reuse,
           scope)
         x = dropout(x)
@@ -295,16 +296,18 @@ class MicroChild(Child):
 
 
   class SeparableConv(LayeredModel):
-    def __init__(self, weights, reuse, scope, filter_size, inp_c, data_format, out_filters, strides, is_training):
-      self.layers = [
-        fw.relu,
-        lambda x: fw.separable_conv2d(
-          x,
+    def __init__(self, weights, reuse, scope, filter_size, data_format, out_filters, strides, is_training):
+      def inner(x):
+        inp_c = data_format.get_C(x)
+        return fw.separable_conv2d(
+          fw.relu(x),
           depthwise_filter=weights.get(reuse, scope, "w_depth", [filter_size, filter_size, inp_c, 1], None),
           pointwise_filter=weights.get(reuse, scope, "w_point", [1, 1, inp_c, out_filters], None),
           strides=strides,
           padding="SAME",
-          data_format=data_format.name),
+          data_format=data_format.name)
+      self.layers = [
+        inner,
         lambda x: batch_norm(x, is_training, data_format, weights)]
 
 
@@ -317,7 +320,6 @@ class MicroChild(Child):
     """
 
     for conv_id in range(stack_convs):
-      inp_c = self.data_format.get_C(x)
       if conv_id == 0:
         strides = self.data_format.get_strides(stride)
       else:
@@ -329,7 +331,6 @@ class MicroChild(Child):
           reuse,
           scope,
           f_size,
-          inp_c,
           self.data_format,
           out_filters,
           strides,
@@ -618,6 +619,18 @@ class MicroChild(Child):
 
   class ENASConv(LayeredModel):
     def __init__(self, weights, reuse: bool, scope: str, num_possible_inputs: int, filter_size: int, prev_cell: int, out_filters: int, data_format):
+      with fw.name_scope("bn") as scope:
+        offset = weights.get(
+          reuse,
+          scope,
+          "offset", [num_possible_inputs, out_filters],
+          fw.zeros_init())[prev_cell]
+        scale = weights.get(
+          reuse,
+          scope,
+          "scale", [num_possible_inputs, out_filters],
+          fw.ones_init())[prev_cell]
+
       def inner(x, weights, reuse: bool, scope: str, num_possible_inputs: int, filter_size: int, prev_cell: int, out_filters: int, data_format):
         inp_c = data_format.get_C(x)
         w_depthwise = fw.reshape(
@@ -635,18 +648,6 @@ class MicroChild(Child):
             "w_point",
             [num_possible_inputs, inp_c * out_filters], None)[prev_cell, :],
           [1, 1, inp_c, out_filters])
-
-        with fw.name_scope("bn") as scope:
-          offset = weights.get(
-            reuse,
-            scope,
-            "offset", [num_possible_inputs, out_filters],
-            fw.zeros_init())[prev_cell]
-          scale = weights.get(
-            reuse,
-            scope,
-            "scale", [num_possible_inputs, out_filters],
-            fw.ones_init())[prev_cell]
 
         return fw.fused_batch_norm(
           fw.separable_conv2d(
@@ -764,10 +765,10 @@ class MicroChild(Child):
     return el(layers)
 
   # override
-  def _build_train(self, model, x, y):
+  def _build_train(self, model, weights, x, y):
     print("-" * 80)
     print("Build train graph")
-    logits = model(x, is_training=True)
+    logits = model(weights, x, is_training=True)
     loss = fw.reduce_mean(fw.sparse_softmax_cross_entropy_with_logits(
       logits=logits, labels=y))
 
@@ -798,21 +799,21 @@ class MicroChild(Child):
     return loss, train_acc, train_op, lr, grad_norm, optimizer
 
   # override
-  def _build_valid(self, model, x, y):
+  def _build_valid(self, model, weights, x, y):
     if x is not None:
       print("-" * 80)
       print("Build valid graph")
-      logits = model(x, False, reuse=True)
+      logits = model(x, weights, False, reuse=True)
       predictions = fw.to_int32(fw.argmax(logits, axis=1))
       return (
         predictions,
         fw.reduce_sum(fw.to_int32(fw.equal(predictions, y))))
 
   # override
-  def _build_test(self, model, x, y):
+  def _build_test(self, model, weights, x, y):
     print("-" * 80)
     print("Build test graph")
-    logits = model(x, False, reuse=True)
+    logits = model(x, weights, False, reuse=True)
     predictions = fw.to_int32(fw.argmax(logits, axis=1))
     return (
       predictions,
@@ -845,7 +846,7 @@ class MicroChild(Child):
         x_valid_shuffle = fw.map_fn(
           _pre_process, x_valid_shuffle, back_prop=False)
 
-    logits = self._model(x_valid_shuffle, is_training=True, reuse=True)
+    logits = self._model(x_valid_shuffle, self.weights, is_training=True, reuse=True)
     valid_shuffle_preds = fw.argmax(logits, axis=1)
     valid_shuffle_preds = fw.to_int32(valid_shuffle_preds)
     self.valid_shuffle_acc = fw.equal(valid_shuffle_preds, y_valid_shuffle)
@@ -860,6 +861,6 @@ class MicroChild(Child):
       self.normal_arc = fixed_arc[:4 * self.num_cells]
       self.reduce_arc = fixed_arc[4 * self.num_cells:]
 
-    self._build_train()
-    self.valid_preds, self.valid_acc = self._build_valid(self._model, self.x_valid, self.y_valid)
-    self.test_preds, self.test_acc = self._build_test(self._model, self.x_test, self.y_test)
+    self.loss, self.train_acc, self.train_op, self.lr, self.grad_norm, self.optimizer = self._build_train(self._model, self.weights, self.x_train, self.y_train)
+    self.valid_preds, self.valid_acc = self._build_valid(self._model, self.weights, self.x_valid, self.y_valid)
+    self.test_preds, self.test_acc = self._build_test(self._model, self.weights, self.x_test, self.y_test)

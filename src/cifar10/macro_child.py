@@ -189,17 +189,18 @@ class MacroChild(Child):
         start = out_filters * i + count[2 * i]
         w_mask = fw.logical_or(w_mask, fw.logical_and(
           start <= new_range, new_range < start + count[2 * i + 1]))
+      w = weights.get(
+        reuse,
+        scope,
+        "w",
+        [num_branches * out_filters, out_filters],
+        None)
       self.layers = [
         lambda x: fw.conv2d(
           x,
           fw.reshape(
             fw.boolean_mask(
-              weights.get(
-                reuse,
-                scope,
-                "w",
-                [num_branches * out_filters, out_filters],
-                None),
+              w,
               w_mask),
               [1, 1, -1, out_filters]),
           [1, 1, 1, 1],
@@ -410,15 +411,16 @@ class MacroChild(Child):
 
   class OutConv(LayeredModel):
     def __init__(self, weights, reuse: bool, scope: str, filter_size: int, inp_c: int, count: int, data_format, is_training: bool):
+      w = weights.get(
+        reuse,
+        scope,
+        "w",
+        [filter_size, filter_size, inp_c, count],
+        None)
       self.layers = [
         lambda x: fw.conv2d(
           x,
-          weights.get(
-            reuse,
-            scope,
-            "w",
-            [filter_size, filter_size, inp_c, count],
-            None),
+          w,
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name),
@@ -428,21 +430,23 @@ class MacroChild(Child):
 
   class SeparableConv(LayeredModel):
     def __init__(self, weights, reuse: bool, scope: str, filter_size: int, out_filters: int, ch_mul: int, count: int, data_format, is_training: bool):
+      w_depth = weights.get(
+        reuse,
+        scope,
+        "w_depth",
+        [filter_size, filter_size, out_filters, ch_mul],
+        None)
+      w_point = weights.get(
+        reuse,
+        scope,
+        "w_point",
+        [1, 1, out_filters * ch_mul, count],
+        None)
       self.layers = [
         lambda x: fw.separable_conv2d(
           x,
-          weights.get(
-            reuse,
-            scope,
-            "w_depth",
-            [filter_size, filter_size, out_filters, ch_mul],
-            None),
-          weights.get(
-            reuse,
-            scope,
-            "w_point",
-            [1, 1, out_filters * ch_mul, count],
-            None),
+          w_depth,
+          w_point,
           data_format,
           strides=[1, 1, 1, 1],
           padding="SAME",
@@ -454,23 +458,25 @@ class MacroChild(Child):
   class SeparableConvMasked(LayeredModel):
     def __init__(self, weights, reuse, scope, filter_size, out_filters: int, ch_mul: int, start_idx: int, count: int, data_format, is_training: bool):
       self.mask = fw.range(0, out_filters, dtype=fw.int32)
+      w_depth = weights.get(
+        reuse,
+        scope,
+        "w_depth",
+        [filter_size, filter_size, out_filters, ch_mul],
+        None)
+      w_point = weights.get(
+        reuse,
+        scope,
+        "w_point",
+        [out_filters, out_filters * ch_mul],
+        None)
       self.layers = [
         lambda x: fw.separable_conv2d(
           x,
-          weights.get(
-              reuse,
-              scope,
-              "w_depth",
-              [filter_size, filter_size, out_filters, ch_mul],
-              None),
+          w_depth,
           fw.reshape(
             fw.transpose(
-              weights.get(
-                reuse,
-                scope,
-                "w_point",
-                [out_filters, out_filters * ch_mul],
-                None)[start_idx:start_idx+count, :],
+              w_point[start_idx:start_idx+count, :],
               [1, 0]),
             [1, 1, out_filters * ch_mul, count]),
           strides=[1, 1, 1, 1],
@@ -489,17 +495,18 @@ class MacroChild(Child):
   class OutConvMasked(LayeredModel):
     def __init__(self, weights, reuse, scope, filter_size, out_filters: int, start_idx: int, count: int, data_format, is_training: bool):
       self.mask = fw.range(0, out_filters, dtype=fw.int32)
+      w = weights.get(
+        reuse,
+        scope,
+        "w",
+        [filter_size, filter_size, out_filters, out_filters],
+        None)
       self.layers = [
         lambda x: fw.conv2d(
           x,
           fw.transpose(
             fw.transpose(
-              weights.get(
-              reuse,
-              scope,
-              "w",
-              [filter_size, filter_size, out_filters, out_filters],
-              None),
+              w,
               [3, 0, 1, 2])[start_idx:start_idx+count, :, :, :],
             [1, 2, 3, 0]),
           [1, 1, 1, 1],
