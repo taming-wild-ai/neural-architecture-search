@@ -629,7 +629,7 @@ class TestMicroChild(unittest.TestCase):
                 equal.assert_any_call("to_int32", {})
                 to_int32.assert_any_call("equal")
                 reduce_sum.assert_called_with("to_int32")
-                model.assert_called_with({}, mc.weights, False, reuse=True)
+                model.assert_called_with(mc.weights, {}, False, reuse=True)
 
     @patch('src.cifar10.micro_child.fw.reduce_sum', return_value="reduce_sum")
     @patch('src.cifar10.micro_child.fw.equal', return_value="equal")
@@ -651,7 +651,7 @@ class TestMicroChild(unittest.TestCase):
                 equal.assert_any_call("to_int32", {})
                 to_int32.assert_any_call("equal")
                 reduce_sum.assert_called_with("to_int32")
-                model.assert_called_with({}, mc.weights, False, reuse=True)
+                model.assert_called_with(mc.weights, {}, False, reuse=True)
 
     @patch('src.cifar10.child.Child.__init__')
     @patch('src.cifar10.micro_child.fw.map_fn', return_value="map_fn")
@@ -679,7 +679,7 @@ class TestMicroChild(unittest.TestCase):
                         mc.seed,
                         25000)
                     map_fn.assert_called()
-                    model.assert_called_with('map_fn', mc.weights, is_training=True, reuse=True)
+                    model.assert_called_with(mc.weights, 'map_fn', is_training=True, reuse=True)
                     argmax.assert_called_with("model", axis=1)
                     to_int32.assert_any_call("argmax")
                     equal.assert_called_with("to_int32", "y_valid_shuffle")

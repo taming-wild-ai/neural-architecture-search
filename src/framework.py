@@ -4,6 +4,39 @@ from collections import defaultdict
 from functools import partial
 
 
+class NameScope(object):
+  singleton = None
+
+  @staticmethod
+  def name_scope(name=None):
+    if NameScope.singleton is None:
+      NameScope.singleton = NameScope()
+    NameScope.singleton.push(name)
+    return NameScope.singleton
+
+  def __init__(self):
+    self.stack = []
+
+  def __enter__(self):
+    return self.current()
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+    self.stack.pop()
+
+  def current(self):
+    if len(self.stack) > 0:
+      return '/'.join(self.stack) + '/'
+    else:
+      return ''
+
+  def push(self, name):
+    if name:
+      self.stack.append(name)
+
+
+name_scope = NameScope.name_scope
+
+
 class WeightRegistry(object):
   @staticmethod
   def factory():
@@ -16,7 +49,7 @@ class WeightRegistry(object):
   def create_weight(self, scope, name, shape, initializer=None, trainable=True):
     if initializer is None:
       initializer = self.default_initializer
-    return tf.Variable(initializer(shape), trainable, name=name, import_scope=scope)
+    return Variable(initializer(shape), name=name, trainable=trainable, import_scope=scope)
 
   def get(self, reuse: bool, scope, name, shape, initializer, trainable=True):
     if not reuse:
@@ -29,7 +62,13 @@ Graph = tf.Graph
 Hook = tf.estimator.CheckpointSaverHook
 IndexedSlices = tf.IndexedSlices
 TensorArray = tf.TensorArray
-Variable = partial(tf.Variable, trainable=False)
+
+def Variable(initial, name="Variable", trainable=False, dtype=None, import_scope=None):
+  if import_scope is None:
+    import_scope = name_scope().current()
+  retval = tf.Variable(initial, name=import_scope + name, trainable=trainable, dtype=dtype)
+  return retval
+
 add_n = tf.add_n
 argmax = tf.argmax
 avg_pool = tf.nn.avg_pool
@@ -38,7 +77,10 @@ boolean_mask = tf.boolean_mask
 case = tf.case
 clip_by_norm = tf.clip_by_norm
 clip_by_global_norm = tf.clip_by_global_norm
-concat = tf.concat
+def concat(values, axis, name=None):
+  if name is None:
+    name = name_scope().current() + "concat"
+  return tf.concat(values, axis, name)
 cond = tf.cond
 constant = tf.constant
 control_dependencies = tf.control_dependencies
@@ -79,7 +121,10 @@ range = tf.range
 reduce_mean = tf.reduce_mean
 reduce_sum = tf.reduce_sum
 relu = tf.nn.relu
-reshape = tf.reshape
+def reshape(tensor, shape, name=None):
+  if name is None:
+    name = name_scope().current() + "Reshape"
+  return tf.reshape(tensor, shape, name)
 separable_conv2d = tf.nn.separable_conv2d
 shape = tf.shape
 sigmoid = tf.sigmoid
@@ -128,7 +173,6 @@ def get_variable(name, shape, initializer=None):
 
 max_pool2d = tf.compat.v1.layers.max_pooling2d
 multinomial = tf.compat.v1.multinomial
-name_scope = tf.name_scope
 ones_init = partial(tf.compat.v1.keras.initializers.ones, dtype=tf.float32)
 run = tf.compat.v1.app.run
 scatter_sub = partial(tf.compat.v1.scatter_sub, use_locking=True)

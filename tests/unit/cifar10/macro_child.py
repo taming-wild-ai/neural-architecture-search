@@ -658,7 +658,7 @@ class TestMacroChild(unittest.TestCase):
         mc.x_valid = True
         mc.y_valid = None
         with patch.object(mc, '_model', return_value='model') as model:
-            self.assertEqual(('to_int32', 'reduce_sum'), mc._build_valid(mc._model, mc.x_valid, mc.y_valid))
+            self.assertEqual(('to_int32', 'reduce_sum'), mc._build_valid(mc._model, mc.weights, mc.x_valid, mc.y_valid))
             print.assert_any_call("-" * 80)
             print.assert_any_call("Build valid graph")
             model.assert_called_with(True, False, mc.weights, reuse=True)
@@ -680,7 +680,7 @@ class TestMacroChild(unittest.TestCase):
         mc.x_test = True
         mc.y_test = False
         with patch.object(mc, '_model', return_value='model') as model:
-            self.assertEqual(('to_int32', 'reduce_sum'), mc._build_test(mc._model, mc.x_test, mc.y_test))
+            self.assertEqual(('to_int32', 'reduce_sum'), mc._build_test(mc._model, mc.weights, mc.x_test, mc.y_test))
             print.assert_any_call('-' * 80)
             print.assert_any_call("Build test graph")
             model.assert_called_with(True, False, mc.weights, reuse=True)
@@ -732,8 +732,8 @@ class TestMacroChild(unittest.TestCase):
                     controller_mock = mock.MagicMock()
                     mc.connect_controller(controller_mock)
                     build_train.assert_called_with(mc._model, mc.weights, mc.x_train, mc.y_train)
-                    build_valid.assert_called_with(mc._model, mc.x_valid, mc.y_valid)
-                    build_test.assert_called_with(mc._model, mc.x_test, mc.y_test)
+                    build_valid.assert_called_with(mc._model, mc.weights, mc.x_valid, mc.y_valid)
+                    build_test.assert_called_with(mc._model, mc.weights, mc.x_test, mc.y_test)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     def test_connect_controller_fixed_arc(self):
@@ -746,5 +746,5 @@ class TestMacroChild(unittest.TestCase):
                     controller_mock = mock.MagicMock()
                     mc.connect_controller(controller_mock)
                     build_train.assert_called_with(mc._model, mc.weights, mc.x_train, mc.y_train)
-                    build_valid.assert_called_with(mc._model, mc.x_valid, mc.y_valid)
-                    build_test.assert_called_with(mc._model, mc.x_test, mc.y_test)
+                    build_valid.assert_called_with(mc._model, mc.weights, mc.x_valid, mc.y_valid)
+                    build_test.assert_called_with(mc._model, mc.weights, mc.x_test, mc.y_test)

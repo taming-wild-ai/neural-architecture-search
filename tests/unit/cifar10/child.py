@@ -140,7 +140,7 @@ class TestChild(unittest.TestCase):
                         print.assert_any_call("Build model generic_model")
                         print.assert_any_call("Build data ops")
                         map_fn.assert_called()
-                        m._build_valid()
+                        m._build_valid(m._model, m.weights, x_train, y_train)
                         print.assert_any_call('Build valid graph')
                         to_int32.assert_called_with("equal")
                         reduce_sum.assert_called_with('to_int32')

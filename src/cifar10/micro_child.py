@@ -803,17 +803,20 @@ class MicroChild(Child):
     if x is not None:
       print("-" * 80)
       print("Build valid graph")
-      logits = model(x, weights, False, reuse=True)
+      logits = model(weights, x, False, reuse=True)
       predictions = fw.to_int32(fw.argmax(logits, axis=1))
-      return (
+      retval = (
         predictions,
         fw.reduce_sum(fw.to_int32(fw.equal(predictions, y))))
+    else:
+      retval = (None, None)
+    return retval
 
   # override
   def _build_test(self, model, weights, x, y):
     print("-" * 80)
     print("Build test graph")
-    logits = model(x, weights, False, reuse=True)
+    logits = model(weights, x, False, reuse=True)
     predictions = fw.to_int32(fw.argmax(logits, axis=1))
     return (
       predictions,
@@ -846,7 +849,7 @@ class MicroChild(Child):
         x_valid_shuffle = fw.map_fn(
           _pre_process, x_valid_shuffle, back_prop=False)
 
-    logits = self._model(x_valid_shuffle, self.weights, is_training=True, reuse=True)
+    logits = self._model(self.weights, x_valid_shuffle, is_training=True, reuse=True)
     valid_shuffle_preds = fw.argmax(logits, axis=1)
     valid_shuffle_preds = fw.to_int32(valid_shuffle_preds)
     self.valid_shuffle_acc = fw.equal(valid_shuffle_preds, y_valid_shuffle)

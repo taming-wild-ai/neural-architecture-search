@@ -334,16 +334,18 @@ class Child(object):
       l2_reg=self.l2_reg,
       optim_algo=self.optim_algo)
 
-  def _build_valid(self):
-    if self.x_valid is not None:
+  def _build_valid(self, model, weights, x, y):
+    if x is not None:
       print("-" * 80)
       print("Build valid graph")
-      logits = self._model(self.x_valid, False, reuse=True)
-      self.valid_preds = fw.argmax(logits, axis=1)
-      self.valid_preds = fw.to_int32(self.valid_preds)
-      self.valid_acc = fw.equal(self.valid_preds, self.y_valid)
-      self.valid_acc = fw.to_int32(self.valid_acc)
-      self.valid_acc = fw.reduce_sum(self.valid_acc)
+      logits = model(weights, x, False, reuse=True)
+      predictions = fw.to_int32(fw.argmax(logits, axis=1))
+      retval = (
+        predictions,
+        fw.reduce_sum(fw.to_int32(fw.equal(predictions, y))))
+    else:
+      retval = (None, None)
+    return retval
 
   def _build_test(self):
     print("-" * 80)
