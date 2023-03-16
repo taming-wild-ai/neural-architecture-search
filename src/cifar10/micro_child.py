@@ -822,6 +822,17 @@ class MicroChild(Child):
       predictions,
       fw.reduce_sum(fw.to_int32(fw.equal(predictions, y))))
 
+
+  class ValidationRL(LayeredModel):
+    def __init__(self, model, weights, y):
+      self.layers = [
+        lambda x: model(weights, x, is_training=True, reuse=True),
+        lambda x: fw.argmax(x, axis=1),
+        fw.to_int32,
+        lambda x: fw.equal(x, y),
+        fw.to_int32,
+        fw.reduce_sum]
+
   # override
   def build_valid_rl(self, shuffle=False):
     print("-" * 80)
@@ -849,12 +860,8 @@ class MicroChild(Child):
         x_valid_shuffle = fw.map_fn(
           _pre_process, x_valid_shuffle, back_prop=False)
 
-    logits = self._model(self.weights, x_valid_shuffle, is_training=True, reuse=True)
-    valid_shuffle_preds = fw.argmax(logits, axis=1)
-    valid_shuffle_preds = fw.to_int32(valid_shuffle_preds)
-    self.valid_shuffle_acc = fw.equal(valid_shuffle_preds, y_valid_shuffle)
-    self.valid_shuffle_acc = fw.to_int32(self.valid_shuffle_acc)
-    self.valid_shuffle_acc = fw.reduce_sum(self.valid_shuffle_acc)
+    vrl = MicroChild.ValidationRL(self._model, self.weights, y_valid_shuffle)
+    return vrl(x_valid_shuffle)
 
   def connect_controller(self, controller_model):
     if self.fixed_arc is None:

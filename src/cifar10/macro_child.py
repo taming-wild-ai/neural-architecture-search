@@ -757,6 +757,18 @@ class MacroChild(Child):
     accuracy = ta(predictions)
     return predictions, accuracy
 
+
+  class ValidationRL(LayeredModel):
+    def __init__(self, model, weights, y):
+      self.layers = [
+        lambda x: model(x, False, weights, reuse=True),
+        lambda x: fw.argmax(x, axis=1),
+        fw.to_int32,
+        lambda x: fw.equal(x, y),
+        fw.to_int32,
+        fw.reduce_sum]
+
+
   # override
   def build_valid_rl(self, shuffle=False):
     print("-" * 80)
@@ -782,12 +794,8 @@ class MacroChild(Child):
         x_valid_shuffle = fw.map_fn(
           _pre_process, x_valid_shuffle, back_prop=False)
 
-    self.valid_shuffle_acc = fw.equal(
-      fw.to_int32(
-        fw.argmax(self._model(x_valid_shuffle, False, self.weights, reuse=True), axis=1)),
-        y_valid_shuffle)
-    self.valid_shuffle_acc = fw.to_int32(self.valid_shuffle_acc)
-    self.valid_shuffle_acc = fw.reduce_sum(self.valid_shuffle_acc)
+    vrl = MacroChild.ValidationRL(self._model, self.weights, y_valid_shuffle)
+    return vrl(x_valid_shuffle)
 
   def connect_controller(self, controller_model):
     if self.fixed_arc is None:
