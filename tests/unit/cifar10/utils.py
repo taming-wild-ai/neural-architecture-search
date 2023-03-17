@@ -62,6 +62,7 @@ class TestUtils(unittest.TestCase):
             mock_adam.apply_gradients.assert_called_with(zip.return_value, global_step=0)
 
     @patch('src.utils.fw.cond')
+    @patch('src.utils.fw.greater_equal', return_value="ge")
     @patch('src.utils.fw.less')
     @patch('src.utils.zip', return_value=[[mock.MagicMock(), 2]])
     @patch('src.utils.fw.exp_decay', return_value="exp_decay")
@@ -71,7 +72,7 @@ class TestUtils(unittest.TestCase):
     @patch('src.utils.fw.gradients', return_value=[0.0])
     @patch('src.utils.fw.add_n', return_value=1.0)
     @patch('src.utils.fw.reduce_sum')
-    def test_get_train_ops_no_grad_norms_sgd_norm(self, reduce_sum, add_n, gradients, global_norm, sqrt, max, exp_decay, zip, less, cond):
+    def test_get_train_ops_no_grad_norms_sgd_norm(self, reduce_sum, add_n, gradients, global_norm, sqrt, max, exp_decay, zip, less, ge, cond):
         mock_sro = mock.MagicMock(name='sro')
         mock_sgd = mock.MagicMock(name='sgd')
         with patch('src.utils.fw.Optimizer.SGD', return_value=mock_sgd) as sgd:
@@ -86,13 +87,18 @@ class TestUtils(unittest.TestCase):
                     LearningRate.new(True, 1, 2, 3, 4, 5, 6, 7, 8, 9),
                     optim_algo=Optimizer.new("sgd", True, 1, 1),
                     clip_mode=ClipMode.new("norm", 0.0),
-                    num_train_batches=1)
+                    num_train_batches=1,
+                    get_grad_norms=True)
                 add_n.assert_called_with([reduce_sum()])
                 gradients.assert_called_with(1e-4, [var])
                 global_norm.assert_called_with([0.0])
                 sqrt.assert_called_with(reduce_sum())
                 max.assert_not_called()
                 exp_decay.assert_not_called()
+                zip.assert_called_with([var], [0.0])
+                less.assert_not_called()
+                ge.assert_called()
+                cond.assert_called()
                 sgd.assert_called_with(cond())
                 sro.assert_called_with(mock_sgd, 1, 1)
                 mock_sgd.apply_gradients.assert_not_called()

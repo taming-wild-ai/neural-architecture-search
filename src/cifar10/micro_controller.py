@@ -227,12 +227,12 @@ class MicroController(Controller):
     for var in tf_variables:
       print(var)
 
-    self.train_op, self.lr, self.grad_norm, self.optimizer = get_train_ops(
+    self.skip_rate = fw.constant(0.0, dtype=fw.float32)
+
+    return get_train_ops(
       self.loss,
       tf_variables,
       self.train_step,
       self.learning_rate,
       clip_mode=self.clip_mode,
       optim_algo=self.optim_algo)
-
-    self.skip_rate = fw.constant(0.0, dtype=fw.float32)

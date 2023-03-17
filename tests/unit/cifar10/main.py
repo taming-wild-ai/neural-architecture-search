@@ -94,8 +94,10 @@ class TestCIFAR10Main(unittest.TestCase):
     @patch('src.cifar10.main.MacroChild')
     def test_get_ops_micro(self, gch_ctor, gco_ctor, mch_ctor, mco_ctor):
         mco = mock.MagicMock()
+        mco.build_trainer = mock.MagicMock(return_value=('train_op', 'lr', 'grad_norm', 'optimizer'))
         mco_ctor.return_value = mco
         mch = mock.MagicMock()
+        mch.connect_controller = mock.MagicMock(return_value=('train_op', 'lr', 'grad_norm', 'optimizer'))
         mch_ctor.return_value = mch
         with RestoreFLAGS(search_for="micro", controller_training=True, child_fixed_arc=None):
             main.get_ops(None, None)
@@ -113,8 +115,10 @@ class TestCIFAR10Main(unittest.TestCase):
     @patch('src.cifar10.main.MacroChild')
     def test_get_ops_macro(self, gch_ctor, gco_ctor, mch_ctor, mco_ctor):
         gco = mock.MagicMock()
+        gco.build_trainer = mock.MagicMock(return_value=('train_op', 'lr', 'grad_norm', 'optimizer'))
         gco_ctor.return_value = gco
         gch = mock.MagicMock()
+        gch.connect_controller = mock.MagicMock(return_value=('train_op', 'lr', 'grad_norm', 'optimizer'))
         gch_ctor.return_value = gch
         with RestoreFLAGS(search_for="macro", controller_training=True, child_fixed_arc=None):
             main.get_ops(None, None)
@@ -132,6 +136,7 @@ class TestCIFAR10Main(unittest.TestCase):
     @patch('src.cifar10.main.MacroChild')
     def test_get_ops_macro_child_only(self, gch_ctor, gco_ctor, mch_ctor, mco_ctor):
         gch = mock.MagicMock()
+        gch.connect_controller = mock.MagicMock(return_value=('train_op', 'lr', 'grad_norm', 'optimizer'))
         gch_ctor.return_value = gch
         with RestoreFLAGS(search_for="macro", controller_training=False, child_fixed_arc=""):
             main.get_ops(None, None)

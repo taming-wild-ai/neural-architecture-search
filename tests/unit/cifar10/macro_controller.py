@@ -127,7 +127,7 @@ class TestMacroController(unittest.TestCase):
             mc = MacroController(temperature=0.9)
             child_model = mock.MagicMock()
             mc.skip_penaltys = 1.0
-            mc.build_trainer(child_model)
+            self.assertEqual((1, 2, 3, 4), mc.build_trainer(child_model))
             child_model.build_valid_rl.assert_called_with()
             variable.assert_called_with(0, dtype=tf.int32, name='train_step')
             variable(0.0, dtype=fw.float32).assign_sub.assert_called_with(variable().__sub__().__rmul__())

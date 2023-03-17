@@ -9,7 +9,7 @@ from src.controller import Controller
 from src.utils import get_train_ops, Optimizer, ClipMode
 from src.common_ops import stack_lstm
 
-from src.utils import DEFINE_boolean, DEFINE_float, ClipMode
+from src.utils import DEFINE_boolean, DEFINE_float, ClipMode, LayeredModel
 
 DEFINE_boolean("controller_search_whole_channels", False, "")
 DEFINE_float("controller_skip_target", 0.8, "")
@@ -54,7 +54,8 @@ class MacroController(Controller):
     self.name = name
 
     self._create_params()
-    self._build_sampler()
+
+    self.sample_arc, self.sample_entropy, self.sample_log_prob, self.skip_count, self.skip_penaltys = self._build_sampler()
 
   def _create_params(self):
     initializer = fw.random_uniform_initializer(minval=-0.1, maxval=0.1)
@@ -116,11 +117,37 @@ class MacroController(Controller):
         self.w_attn_2 = fw.Variable(initializer([self.lstm_size, self.lstm_size]), name="w_2", trainable=True)
         self.v_attn = fw.Variable(initializer([self.lstm_size, 1]), name="v", trainable=True)
 
+
+  class LogitAdjuster(LayeredModel):
+    def __init__(self, temperature, tanh_constant):
+      self.layers = []
+      if temperature is not None:
+        self.layers.append(lambda logit: logit / temperature)
+      if tanh_constant is not None:
+        self.layers.append(lambda logit: tanh_constant * fw.tanh(logit))
+
+
+  class BranchSelector(LayeredModel):
+    def __init__(self, search_for):
+      if search_for == "macro" or search_for == "branch":
+        self.layers = [
+          lambda logit: fw.multinomial(logit, 1),
+          fw.to_int32,
+          lambda logit: fw.reshape(logit, [1])]
+      elif self.search_for == "connection":
+        self.layers = [
+          lambda _: fw.constant([0], dtype=fw.int32)]
+      else:
+        raise ValueError("Unknown search_for {}".format(self.search_for))
+
+
   def _build_sampler(self):
     """Build the sampler ops and the log_prob ops."""
 
     print("-" * 80)
     print("Build controller sampler")
+    la = MacroController.LogitAdjuster(self.temperature, self.tanh_constant)
+    bselect = MacroController.BranchSelector(self.search_for)
     anchors = []
     anchors_w_1 = []
 
@@ -141,20 +168,12 @@ class MacroController(Controller):
       if self.search_whole_channels:
         next_c, next_h = stack_lstm(inputs, prev_c, prev_h, self.w_lstm)
         prev_c, prev_h = next_c, next_h
-        logit = fw.matmul(next_h[-1], self.w_soft)
-        if self.temperature is not None:
-          logit /= self.temperature
-        if self.tanh_constant is not None:
-          logit = self.tanh_constant * fw.tanh(logit)
-        if self.search_for == "macro" or self.search_for == "branch":
-          branch_id = fw.reshape(fw.to_int32(fw.multinomial(logit, 1)), [1])
-        elif self.search_for == "connection":
-          branch_id = fw.constant([0], dtype=fw.int32)
-        else:
-          raise ValueError("Unknown search_for {}".format(self.search_for))
+        logit = la(fw.matmul(next_h[-1], self.w_soft))
+        branch_id = bselect(logit)
         arc_seq.append(branch_id)
         log_prob = fw.sparse_softmax_cross_entropy_with_logits(
-          logits=logit, labels=branch_id)
+          logits=logit,
+          labels=branch_id)
         log_probs.append(log_prob)
         entropys.append(fw.stop_gradient(log_prob * fw.exp(-log_prob)))
         inputs = fw.embedding_lookup(self.w_emb, branch_id)
@@ -162,11 +181,7 @@ class MacroController(Controller):
         for branch_id in range(self.num_branches):
           next_c, next_h = stack_lstm(inputs, prev_c, prev_h, self.w_lstm)
           prev_c, prev_h = next_c, next_h
-          logit = fw.matmul(next_h[-1], self.w_soft["start"][branch_id])
-          if self.temperature is not None:
-            logit /= self.temperature
-          if self.tanh_constant is not None:
-            logit = self.tanh_constant * fw.tanh(logit)
+          logit = la(fw.matmul(next_h[-1], self.w_soft["start"][branch_id]))
           start = fw.reshape(fw.to_int32(fw.multinomial(logit, 1)), [1])
           arc_seq.append(start)
           log_prob = fw.sparse_softmax_cross_entropy_with_logits(
@@ -177,11 +192,7 @@ class MacroController(Controller):
 
           next_c, next_h = stack_lstm(inputs, prev_c, prev_h, self.w_lstm)
           prev_c, prev_h = next_c, next_h
-          logit = fw.matmul(next_h[-1], self.w_soft["count"][branch_id])
-          if self.temperature is not None:
-            logit /= self.temperature
-          if self.tanh_constant is not None:
-            logit = self.tanh_constant * fw.tanh(logit)
+          logit = la(fw.matmul(next_h[-1], self.w_soft["count"][branch_id]))
           logit = fw.where(
             fw.less_equal(
               fw.reshape(
@@ -203,11 +214,7 @@ class MacroController(Controller):
 
       if layer_id > 0:
         query = fw.matmul(fw.tanh(fw.concat(anchors_w_1, axis=0) + fw.matmul(next_h[-1], self.w_attn_2)), self.v_attn)
-        logit = fw.concat([-query, query], axis=1)
-        if self.temperature is not None:
-          logit /= self.temperature
-        if self.tanh_constant is not None:
-          logit = self.tanh_constant * fw.tanh(logit)
+        logit = la(fw.concat([-query, query], axis=1))
 
         skip = fw.reshape(fw.to_int32(fw.multinomial(logit, 1)), [layer_id])
         arc_seq.append(skip)
@@ -232,15 +239,12 @@ class MacroController(Controller):
       anchors.append(next_h[-1])
       anchors_w_1.append(fw.matmul(next_h[-1], self.w_attn_1))
 
-    self.sample_arc = fw.reshape(fw.concat(arc_seq, axis=0), [-1])
-
-    self.sample_entropy = fw.reduce_sum(fw.stack(entropys))
-
-    self.sample_log_prob = fw.reduce_sum(fw.stack(log_probs))
-
-    self.skip_count = fw.reduce_sum(fw.stack(skip_count))
-
-    self.skip_penaltys = fw.reduce_mean(fw.stack(skip_penaltys))
+    return(
+      fw.reshape(fw.concat(arc_seq, axis=0), [-1]),
+      fw.reduce_sum(fw.stack(entropys)),
+      fw.reduce_sum(fw.stack(log_probs)),
+      fw.reduce_sum(fw.stack(skip_count)),
+      fw.reduce_mean(fw.stack(skip_penaltys)))
 
   def build_trainer(self, child_model):
     valid_shuffle_acc = child_model.build_valid_rl()
@@ -255,7 +259,6 @@ class MacroController(Controller):
 
     self.sample_log_prob = fw.reduce_sum(self.sample_log_prob)
     self.baseline = fw.Variable(0.0, dtype=fw.float32)
-    print(f"self.baseline = {self.baseline}, self.bl_dec = {self.bl_dec}, self.reward = {self.reward}")
 
     with fw.control_dependencies([
       self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - self.reward))]):
@@ -272,7 +275,7 @@ class MacroController(Controller):
     for var in tf_variables:
       print(var)
 
-    self.train_op, self.lr, self.grad_norm, self.optimizer = get_train_ops(
+    return get_train_ops(
       self.loss,
       tf_variables,
       self.train_step,

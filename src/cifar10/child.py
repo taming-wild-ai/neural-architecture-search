@@ -47,9 +47,11 @@ class DataFormat(object):
 
     @staticmethod
     def factorized_reduction(input):
-      return (
-        fw.pad(input, [[0, 0], [0, 0], [0, 1], [0, 1]])[:, :, 1:, 1:],
-        1)
+      return fw.pad(input, [[0, 0], [0, 0], [0, 1], [0, 1]])[:, :, 1:, 1:]
+
+    @staticmethod
+    def concat_axis():
+        return 1
 
     @staticmethod
     def get_N(input): return input.get_shape()[0]
@@ -102,9 +104,11 @@ class DataFormat(object):
 
     @staticmethod
     def factorized_reduction(input):
-      return (
-        fw.pad(input, [[0, 0], [0, 1], [0, 1], [0, 0]])[:, 1:, 1:, :],
-        3)
+      return fw.pad(input, [[0, 0], [0, 1], [0, 1], [0, 0]])[:, 1:, 1:, :]
+
+    @staticmethod
+    def concat_axis():
+        return 3
 
     @staticmethod
     def get_N(input): return input.get_shape()[0]
@@ -335,6 +339,7 @@ class Child(object):
       optim_algo=self.optim_algo)
 
   def _build_valid(self, model, weights, x, y):
+    """ always overridden """
     if x is not None:
       print("-" * 80)
       print("Build valid graph")
@@ -348,14 +353,12 @@ class Child(object):
     return retval
 
   def _build_test(self):
+    """ always overridden """
     print("-" * 80)
     print("Build test graph")
     logits = self._model(self.x_test, False, reuse=True)
-    self.test_preds = fw.argmax(logits, axis=1)
-    self.test_preds = fw.to_int32(self.test_preds)
-    self.test_acc = fw.equal(self.test_preds, self.y_test)
-    self.test_acc = fw.to_int32(self.test_acc)
-    self.test_acc = fw.reduce_sum(self.test_acc)
+    self.test_preds = fw.to_int32(fw.argmax(logits, axis=1))
+    self.test_acc = fw.reduce_sum(fw.to_int32(fw.equal(self.test_preds, self.y_test)))
 
   def build_valid_rl(self, shuffle=False):
     print("-" * 80)
@@ -416,21 +419,9 @@ class Child(object):
 
 
   class FactorizedReduction(LayeredModel):
-    def __init__(self, concat_axis, is_training, data_format, weights):
+    def __init__(self, is_training, data_format, weights):
       self.layers = [
-        lambda x: fw.concat(values=x, axis=concat_axis),
-        lambda x: batch_norm(x, is_training, data_format, weights)]
-
-
-  class StemConv(LayeredModel):
-    def __init__(self, weights, reuse, scope, out_filters, is_training, data_format):
-      self.layers = [
-        lambda x: fw.conv2d(
-          x,
-          weights.get(reuse, scope, "w", [3, 3, 3, out_filters], None),
-          [1, 1, 1, 1],
-          "SAME",
-          data_format=data_format.name),
+        lambda x: fw.concat(values=x, axis=data_format.concat_axis()),
         lambda x: batch_norm(x, is_training, data_format, weights)]
 
 
@@ -462,10 +453,11 @@ class Child(object):
 
   class StemConv(LayeredModel):
     def __init__(self, weights, reuse, scope, out_filters, is_training, data_format):
+      w = weights.get(reuse, scope, "w", [3, 3, 3, out_filters], None)
       self.layers = [
         lambda x: fw.conv2d(
           x,
-          weights.get(reuse, scope, "w", [3, 3, 3, out_filters], None),
+          w,
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name),

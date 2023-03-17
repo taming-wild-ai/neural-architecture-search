@@ -97,23 +97,26 @@ class MacroChild(Child):
           self.data_format)
         return fr_model(x)
 
+    fr_model = Child.FactorizedReduction(is_training, self.data_format, weights)
     stride_spec = self._get_strides(stride)
-    # Skip path 1
     with fw.name_scope("path1_conv") as scope:
       skip_path = MacroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, out_filters)
+    with fw.name_scope("path2_conv") as scope:
+      skip_path2 = MacroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, out_filters)
+
+    # Skip path 1
+    with fw.name_scope("path1_conv") as scope:
       path1 = skip_path(x)
 
     # Skip path 2
     # First pad with 0s on the right and bottom, then shift the filter to
     # include those 0s that were added.
-    path2, concat_axis = self.data_format.factorized_reduction(x)
+    path2 = self.data_format.factorized_reduction(x)
 
     with fw.name_scope("path2_conv") as scope:
-      skip_path = MacroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, out_filters)
-      path2 = skip_path(path2)
+      path2 = skip_path2(path2)
 
     # Concat and apply BN
-    fr_model = Child.FactorizedReduction(concat_axis, is_training, self.data_format, weights)
     return fr_model([path1, path2])
 
 
@@ -135,16 +138,18 @@ class MacroChild(Child):
 
   def _model(self, images, is_training, weights, reuse=False):
     with fw.name_scope(self.name):
-
-      out_filters = self.out_filters
       with fw.name_scope("stem_conv") as scope:
-        stem_conv = Child.StemConv(weights, reuse, scope, out_filters, is_training, self.data_format)
+        stem_conv = Child.StemConv(weights, reuse, scope, self.out_filters, is_training, self.data_format)
+
       layers = [stem_conv(images)]
 
       if self.whole_channels:
         start_idx = 0
       else:
         start_idx = self.num_branches
+
+      out_filters = self.out_filters
+
       for layer_id in range(self.num_layers):
         with fw.name_scope("layer_{0}".format(layer_id)):
           if self.fixed_arc is None:
@@ -677,12 +682,12 @@ class MacroChild(Child):
 
   # override
   def _build_train(self, model, weights, x, y):
+    loss_model = MacroChild.LossModel(y)
+    train_model = MacroChild.TrainModel(y)
     print("-" * 80)
     print("Build train graph")
     logits = model(x, True, weights)
-    loss_model = MacroChild.LossModel(y)
     loss = loss_model(logits)
-    train_model = MacroChild.TrainModel(y)
     train_acc = train_model(logits)
 
     tf_variables = [var
@@ -803,7 +808,7 @@ class MacroChild(Child):
     else:
       self.sample_arc = np.array([int(x) for x in self.fixed_arc.split(" ") if x])
 
-    self.loss, self.train_acc, self.global_step, self.train_op, self.lr, self.grad_norm, self.optimizer = self._build_train(self._model, self.weights, self.x_train, self.y_train)
-    self.valid_preds, self.valid_acc = self._build_valid(self._model, self.weights, self.x_valid, self.y_valid)
-    self.test_preds, self.test_acc = self._build_test(self._model, self.weights, self.x_test, self.y_test)
-
+    self.loss, self.train_acc, self.global_step, train_op, lr, grad_norm, optimizer = self._build_train(self._model, self.weights, self.x_train, self.y_train)
+    self.valid_preds, self.valid_acc = self._build_valid(self._model, self.weights, self.x_valid, self.y_valid) # unused?
+    self.test_preds, self.test_acc = self._build_test(self._model, self.weights, self.x_test, self.y_test) # unused?
+    return train_op, lr, grad_norm, optimizer

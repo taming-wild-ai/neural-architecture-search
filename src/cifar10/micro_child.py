@@ -109,14 +109,15 @@ class MicroChild(Child):
     # Skip path 2
     # First pad with 0"s on the right and bottom, then shift the filter to
     # include those 0"s that were added.
-    path2, concat_axis = self.data_format.factorized_reduction(x)
+    path2 = self.data_format.factorized_reduction(x)
+    concat_axis = self.data_format.concat_axis()
 
     with fw.name_scope("path2_conv") as scope:
       skip_path = MicroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, out_filters)
       path2 = skip_path(path2)
 
     # Concat and apply BN
-    fr_model = Child.FactorizedReduction(concat_axis, is_training, self.data_format, weights)
+    fr_model = Child.FactorizedReduction(is_training, self.data_format, weights)
     return fr_model([path1, path2])
 
   def _get_HW(self, x):
@@ -211,6 +212,16 @@ class MicroChild(Child):
       # the first two inputs
       with fw.name_scope("stem_conv") as scope:
         stem_conv = Child.StemConv(weights, reuse, scope, self.out_filters * 3, is_training, self.data_format)
+      with fw.name_scope("fc") as scope:
+        dropout = MicroChild.Dropout(
+          self.data_format,
+          is_training,
+          self.keep_prob,
+          weights,
+          reuse,
+          scope)
+
+      with fw.name_scope("stem_conv") as scope:
         x = stem_conv(images)
       layers = [x, x]
 
@@ -284,13 +295,6 @@ class MicroChild(Child):
           print("Aux head uses {0} params".format(self.num_aux_vars))
 
       with fw.name_scope("fc") as scope:
-        dropout = MicroChild.Dropout(
-          self.data_format,
-          is_training,
-          self.keep_prob,
-          weights,
-          reuse,
-          scope)
         x = dropout(x)
     return x
 
@@ -764,13 +768,30 @@ class MicroChild(Child):
 
     return el(layers)
 
+
+  class Loss(LayeredModel):
+    def __init__(self, y):
+      self.layers = [
+        lambda x: fw.sparse_softmax_cross_entropy_with_logits(logits=x, labels=y),
+        fw.reduce_mean]
+
+
+  class Accuracy(LayeredModel):
+    def __init__(self, y):
+      self.layers = [
+        lambda x: fw.argmax(x, axis=1),
+        fw.to_int32,
+        lambda x: fw.equal(x, y),
+        fw.to_int32,
+        fw.reduce_sum]
+
   # override
   def _build_train(self, model, weights, x, y):
     print("-" * 80)
     print("Build train graph")
     logits = model(weights, x, is_training=True)
-    loss = fw.reduce_mean(fw.sparse_softmax_cross_entropy_with_logits(
-      logits=logits, labels=y))
+    mcl = MicroChild.Loss(y)
+    loss = mcl(logits)
 
     if self.use_aux_heads:
       self.aux_loss = fw.reduce_mean(fw.sparse_softmax_cross_entropy_with_logits(
@@ -778,8 +799,6 @@ class MicroChild(Child):
       train_loss = loss + 0.4 * self.aux_loss
     else:
       train_loss = loss
-
-    train_acc = fw.reduce_sum(fw.to_int32(fw.equal(fw.to_int32(fw.argmax(logits, axis=1)), y)))
 
     tf_variables = [
       var for var in fw.trainable_variables() if (
@@ -795,6 +814,9 @@ class MicroChild(Child):
       l2_reg=self.l2_reg,
       num_train_batches=self.num_train_batches,
       optim_algo=self.optim_algo)
+
+    mca = MicroChild.Accuracy(y)
+    train_acc = mca(logits)
 
     return loss, train_acc, train_op, lr, grad_norm, optimizer
 
@@ -871,6 +893,7 @@ class MicroChild(Child):
       self.normal_arc = fixed_arc[:4 * self.num_cells]
       self.reduce_arc = fixed_arc[4 * self.num_cells:]
 
-    self.loss, self.train_acc, self.train_op, self.lr, self.grad_norm, self.optimizer = self._build_train(self._model, self.weights, self.x_train, self.y_train)
+    self.loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train(self._model, self.weights, self.x_train, self.y_train)
     self.valid_preds, self.valid_acc = self._build_valid(self._model, self.weights, self.x_valid, self.y_valid)
     self.test_preds, self.test_acc = self._build_test(self._model, self.weights, self.x_test, self.y_test)
+    return train_op, lr, grad_norm, optimizer

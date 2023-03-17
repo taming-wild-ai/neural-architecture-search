@@ -65,17 +65,17 @@ def get_ops(images, labels):
       lr_dec_every=1000000,  # never decrease learning rate
       optim_algo="adam")
 
-    child_model.connect_controller(controller_model)
-    controller_model.build_trainer(child_model)
+    child_train_op, child_lr, child_grad_norm, child_optimizer = child_model.connect_controller(controller_model)
+    controller_train_op, controller_lr, controller_grad_norm, controller_optimizer = controller_model.build_trainer(child_model)
 
     controller_ops = {
       "train_step": controller_model.train_step,
       "loss": controller_model.loss,
-      "train_op": controller_model.train_op,
-      "lr": controller_model.lr,
-      "grad_norm": controller_model.grad_norm,
+      "train_op": controller_train_op,
+      "lr": controller_lr,
+      "grad_norm": controller_grad_norm,
       "valid_acc": controller_model.valid_acc,
-      "optimizer": controller_model.optimizer,
+      "optimizer": controller_optimizer,
       "baseline": controller_model.baseline,
       "entropy": controller_model.sample_entropy,
       "sample_arc": controller_model.sample_arc,
@@ -84,18 +84,18 @@ def get_ops(images, labels):
   else:
     assert not FLAGS.controller_training, (
       "--child_fixed_arc is given, cannot train controller")
-    child_model.connect_controller(None)
+    child_train_op, child_lr, child_grad_norm, child_optimizer = child_model.connect_controller(None)
     controller_ops = None
 
   return {
     "child": {
       "global_step": child_model.global_step,
       "loss": child_model.loss,
-      "train_op": child_model.train_op,
-      "lr": child_model.lr,
-      "grad_norm": child_model.grad_norm,
+      "train_op": child_train_op,
+      "lr": child_lr,
+      "grad_norm": child_grad_norm,
       "train_acc": child_model.train_acc,
-      "optimizer": child_model.optimizer,
+      "optimizer": child_optimizer,
       "num_train_batches": child_model.num_train_batches,
     },
     "controller": controller_ops,

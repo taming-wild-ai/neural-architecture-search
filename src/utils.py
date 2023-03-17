@@ -117,7 +117,7 @@ class ClipMode(object):
 
 class LearningRate(object):
   class Cosine(object):
-    def __init__(self, max, min, T_0, mul):
+    def __init__(self, max, min, T_0, mul, lr_warmup_val, lr_warmup_steps):
       assert max is not None, "Need lr_max to use lr_cosine"
       assert min is not None, "Need lr_min to use lr_cosine"
       assert T_0 is not None, "Need lr_T_0 to use lr_cosine"
@@ -126,6 +126,8 @@ class LearningRate(object):
       self.min = min
       self.T_0 = T_0
       self.mul = mul
+      self.lr_warmup_val = lr_warmup_val
+      self.lr_warmup_steps = lr_warmup_steps
 
     def update(self, num_train_batches, train_step):
       assert num_train_batches is not None, ("Need num_train_batches to use"
@@ -146,16 +148,27 @@ class LearningRate(object):
       def _no_update():
         return self.min + 0.5 * (self.max - self.min) * (1.0 + fw.cos(fw.to_float(T_curr) / fw.to_float(T_i) * 3.1415926))
 
-      return fw.cond(
-        fw.greater_equal(T_curr, T_i), _update, _no_update)
+
+      learning_rate = fw.cond(
+          fw.greater_equal(T_curr, T_i), _update, _no_update)
+
+      if self.lr_warmup_val is not None:
+        return fw.cond(
+          fw.less(train_step, self.lr_warmup_steps),
+          lambda: self.lr_warmup_val,
+          lambda: learning_rate)
+      else:
+        return learning_rate
 
   class Regular(object):
-    def __init__(self, init, start, every, rate, dec_min):
+    def __init__(self, init, start, every, rate, dec_min, lr_warmup_val, lr_warmup_steps):
       self.init = init
       self.start = start
       self.every = every
       self.rate = rate
       self.dec_min = dec_min
+      self.lr_warmup_val = lr_warmup_val
+      self.lr_warmup_steps = lr_warmup_steps
 
     def update(self, _, train_step):
       learning_rate = fw.exp_decay(
@@ -163,17 +176,24 @@ class LearningRate(object):
         self.rate, staircase=True)
       if self.dec_min is not None:
         learning_rate = fw.maximum(learning_rate, self.dec_min)
-      return learning_rate
+
+      if self.lr_warmup_val is not None:
+        return fw.cond(
+          fw.less(train_step, self.lr_warmup_steps),
+          lambda: self.lr_warmup_val,
+          lambda: learning_rate)
+      else:
+        return learning_rate
 
   def __init__(self):
     raise AttributeError("Use factory method `new` instead.")
 
   @staticmethod
-  def new(cosine, init, start, every, rate, dec_min, max, min, T_0, mul):
+  def new(cosine, init, start, every, rate, dec_min, max, min, T_0, mul, lr_warmup_val=None, lr_warmup_steps=0):
     if True == cosine:
-      return LearningRate.Cosine(max, min, T_0, mul)
+      return LearningRate.Cosine(max, min, T_0, mul, lr_warmup_val, lr_warmup_steps)
     elif False == cosine:
-      return LearningRate.Regular(init, start, every, rate, dec_min)
+      return LearningRate.Regular(init, start, every, rate, dec_min, lr_warmup_val, lr_warmup_steps)
     else:
       raise KeyError("cosine must be True or False")
 
@@ -242,6 +262,24 @@ def count_model_params(tf_variables):
   return num_vars
 
 
+class L2Reg(object):
+  def __init__(self, l2_reg):
+
+    def adjust(loss, tf_variables):
+      l2_losses = []
+      for var in tf_variables:
+        l2_losses.append(fw.reduce_sum(var ** 2))
+      return loss + l2_reg * fw.add_n(l2_losses)
+
+    if l2_reg > 0:
+      self.layer = adjust
+    else:
+      self.layer = lambda x, _: x # identity
+
+  def __call__(self, loss, tf_variables):
+    return self.layer(loss, tf_variables)
+
+
 def get_train_ops(
     loss,
     tf_variables,
@@ -260,37 +298,26 @@ def get_train_ops(
     clip_mode: "global", "norm", or None.
     moving_average: store the moving average of parameters
   """
+  loss_adjuster = L2Reg(l2_reg)
 
-  if l2_reg > 0:
-    l2_losses = []
-    for var in tf_variables:
-      l2_losses.append(fw.reduce_sum(var ** 2))
-    loss += l2_reg * fw.add_n(l2_losses)
-
-  grads = fw.gradients(loss, tf_variables)
+  grads = fw.gradients(loss_adjuster(loss, tf_variables), tf_variables)
   grad_norm = fw.global_norm(grads)
 
-  grad_norms = {}
-  for v, g in zip(tf_variables, grads):
-    if v is None or g is None:
-      continue
-    if isinstance(g, fw.IndexedSlices):
-      grad_norms[v.name] = fw.sqrt(fw.reduce_sum(g.values ** 2))
-    else:
-      grad_norms[v.name] = fw.sqrt(fw.reduce_sum(g ** 2))
-
-  grads = clip_mode.clip(grads)
-
   learning_rate = updater.update(num_train_batches, train_step)
-
-  if lr_warmup_val is not None:
-    learning_rate = fw.cond(fw.less(train_step, lr_warmup_steps),
-                            lambda: lr_warmup_val, lambda: learning_rate)
   opt = optim_algo.get(learning_rate, moving_average)
   train_op = opt.apply_gradients(
-    zip(grads, tf_variables), global_step=train_step)
+    zip(clip_mode.clip(grads), tf_variables),
+    global_step=train_step)
 
   if get_grad_norms:
+    grad_norms = {}
+    for v, g in zip(tf_variables, grads):
+      if v is None or g is None:
+        continue
+      if isinstance(g, fw.IndexedSlices):
+        grad_norms[v.name] = fw.sqrt(fw.reduce_sum(g.values ** 2))
+      else:
+        grad_norms[v.name] = fw.sqrt(fw.reduce_sum(g ** 2))
     return train_op, learning_rate, grad_norm, opt, grad_norms
   else:
     return train_op, learning_rate, grad_norm, opt
