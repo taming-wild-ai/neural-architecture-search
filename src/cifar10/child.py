@@ -361,6 +361,7 @@ class Child(object):
     self.test_acc = fw.reduce_sum(fw.to_int32(fw.equal(self.test_preds, self.y_test)))
 
   def build_valid_rl(self, shuffle=False):
+    """ always overridden """
     print("-" * 80)
     print("Build valid graph on shuffled data")
     with fw.device("/gpu:0"):

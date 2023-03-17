@@ -787,19 +787,19 @@ class MacroChild(Child):
         self.batch_size,
         self.seed)
 
-      def _pre_process(x):
-        return self.data_format.child_init_preprocess(fw.image.random_flip_left_right(
-          fw.image.random_crop(
-            fw.pad(x, [[4, 4], [4, 4], [0, 0]]),
-            [32, 32, 3],
-            seed=self.seed),
-          seed=self.seed))
+      vrl = MacroChild.ValidationRL(self._model, self.weights, y_valid_shuffle)
 
       if shuffle:
+        def _pre_process(x):
+          return self.data_format.child_init_preprocess(fw.image.random_flip_left_right(
+            fw.image.random_crop(
+              fw.pad(x, [[4, 4], [4, 4], [0, 0]]),
+              [32, 32, 3],
+              seed=self.seed),
+            seed=self.seed))
         x_valid_shuffle = fw.map_fn(
           _pre_process, x_valid_shuffle, back_prop=False)
 
-    vrl = MacroChild.ValidationRL(self._model, self.weights, y_valid_shuffle)
     return vrl(x_valid_shuffle)
 
   def connect_controller(self, controller_model):

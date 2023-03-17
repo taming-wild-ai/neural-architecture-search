@@ -262,7 +262,7 @@ def count_model_params(tf_variables):
   return num_vars
 
 
-class L2Reg(object):
+class GradientCalculator(object):
   def __init__(self, l2_reg):
 
     def adjust(loss, tf_variables):
@@ -272,12 +272,12 @@ class L2Reg(object):
       return loss + l2_reg * fw.add_n(l2_losses)
 
     if l2_reg > 0:
-      self.layer = adjust
+      self.adjuster = adjust
     else:
-      self.layer = lambda x, _: x # identity
+      self.adjuster = lambda x, _: x # identity
 
   def __call__(self, loss, tf_variables):
-    return self.layer(loss, tf_variables)
+    return fw.gradients(self.adjuster(loss, tf_variables), tf_variables)
 
 
 def get_train_ops(
@@ -287,8 +287,6 @@ def get_train_ops(
     updater,
     clip_mode=None,
     l2_reg=1e-4,
-    lr_warmup_val=None,
-    lr_warmup_steps=100,
     num_train_batches=None,
     optim_algo=None,
     moving_average=None,
@@ -298,9 +296,9 @@ def get_train_ops(
     clip_mode: "global", "norm", or None.
     moving_average: store the moving average of parameters
   """
-  loss_adjuster = L2Reg(l2_reg)
+  gc = GradientCalculator(l2_reg)
 
-  grads = fw.gradients(loss_adjuster(loss, tf_variables), tf_variables)
+  grads = gc(loss, tf_variables)
   grad_norm = fw.global_norm(grads)
 
   learning_rate = updater.update(num_train_batches, train_step)
