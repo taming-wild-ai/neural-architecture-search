@@ -128,29 +128,29 @@ class LearningRate(object):
       self.mul = mul
       self.lr_warmup_val = lr_warmup_val
       self.lr_warmup_steps = lr_warmup_steps
+      self.last_reset = fw.Variable(0, dtype=fw.int64, name="last_reset")
+      self.T_i = fw.Variable(self.T_0, dtype=fw.int64, name="T_i")
 
     def update(self, num_train_batches, train_step):
-      assert num_train_batches is not None, ("Need num_train_batches to use"
-                                           " lr_cosine")
+      assert num_train_batches is not None, "Need num_train_batches to use lr_cosine"
 
       curr_epoch = train_step // num_train_batches
 
-      last_reset = fw.Variable(0, dtype=fw.int64, name="last_reset")
-      T_i = fw.Variable(self.T_0, dtype=fw.int64, name="T_i")
-      T_curr = curr_epoch - last_reset
+      T_curr = curr_epoch - self.last_reset
 
       def _update():
         with fw.control_dependencies([
-          last_reset.assign(curr_epoch, use_locking=True),
-          T_i.assign(T_i * self.mul, use_locking=True)]):
-          return self.min + 0.5 * (self.max - self.min) * (1.0 + fw.cos(fw.to_float(T_curr) / fw.to_float(T_i) * 3.1415926))
+          self.last_reset.assign(curr_epoch, use_locking=True),
+          self.T_i.assign(self.T_i * self.mul, use_locking=True)]):
+          return self.min + 0.5 * (self.max - self.min) * (1.0 + fw.cos(fw.to_float(T_curr) / fw.to_float(self.T_i) * 3.1415926))
 
       def _no_update():
-        return self.min + 0.5 * (self.max - self.min) * (1.0 + fw.cos(fw.to_float(T_curr) / fw.to_float(T_i) * 3.1415926))
-
+        return self.min + 0.5 * (self.max - self.min) * (1.0 + fw.cos(fw.to_float(T_curr) / fw.to_float(self.T_i) * 3.1415926))
 
       learning_rate = fw.cond(
-          fw.greater_equal(T_curr, T_i), _update, _no_update)
+        fw.greater_equal(T_curr, self.T_i),
+        _update,
+        _no_update)
 
       if self.lr_warmup_val is not None:
         return fw.cond(
