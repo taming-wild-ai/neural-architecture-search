@@ -250,19 +250,19 @@ class MacroController(Controller):
     valid_shuffle_acc = child_model.build_valid_rl()
     self.valid_acc = (fw.to_float(valid_shuffle_acc) /
                       fw.to_float(child_model.batch_size))
-    self.reward = self.valid_acc
+    reward = self.valid_acc
 
     self.skip_rate = fw.to_float(self.skip_count) / fw.to_float(self.num_layers * (self.num_layers - 1) / 2)
 
     if self.entropy_weight is not None:
-      self.reward += self.entropy_weight * self.sample_entropy
+      reward += self.entropy_weight * self.sample_entropy
 
     self.sample_log_prob = fw.reduce_sum(self.sample_log_prob)
     self.baseline = fw.Variable(0.0, dtype=fw.float32)
 
     with fw.control_dependencies([
-      self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - self.reward))]):
-      self.reward = fw.identity(self.reward)
+      self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward))]):
+      self.reward = fw.identity(reward)
 
     self.loss = self.sample_log_prob * (self.reward - self.baseline)
     if self.skip_weight is not None:

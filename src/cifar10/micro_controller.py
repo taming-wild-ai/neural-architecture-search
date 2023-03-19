@@ -214,9 +214,8 @@ class MicroController(Controller):
 
     self.sample_log_prob = fw.reduce_sum(self.sample_log_prob)
     self.baseline = fw.Variable(0.0, dtype=fw.float32)
-    baseline_update = self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward))
 
-    with fw.control_dependencies([baseline_update]):
+    with fw.control_dependencies([self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward))]):
       self.reward = fw.identity(reward)
 
     self.loss = self.sample_log_prob * (self.reward - self.baseline)
