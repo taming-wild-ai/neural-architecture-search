@@ -225,6 +225,15 @@ class MacroChild(Child):
     """
 
     inputs = prev_layers[-1]
+    with fw.name_scope("conv_1") as scope:
+      input_conv = MacroChild.InputConv(
+        weights,
+        reuse,
+        scope,
+        1,
+        self.out_filters,
+        is_training,
+        self.data_format)
     if self.whole_channels:
       inp_h, inp_w = self.data_format.get_HW(inputs)
 
@@ -248,13 +257,13 @@ class MacroChild(Child):
         branches[fw.equal(count, 3)] = lambda: y
       if self.num_branches >= 5:
         with fw.name_scope("branch_4"):
-          y = self._pool_branch(inputs, is_training, out_filters, "avg",
-                                weights, reuse, start_idx=0)
+          y = self._pool_branch(inputs, out_filters, "avg",
+                                input_conv, start_idx=0)
         branches[fw.equal(count, 4)] = lambda: y
       if self.num_branches >= 6:
         with fw.name_scope("branch_5"):
-          y = self._pool_branch(inputs, is_training, out_filters, "max",
-                                weights, reuse, start_idx=0)
+          y = self._pool_branch(inputs, out_filters, "max",
+                                input_conv, start_idx=0)
         branches[fw.equal(count, 5)] = lambda: y
       out = fw.case(branches, default=lambda: fw.constant(0, fw.float32),
                     exclusive=True)
@@ -279,12 +288,12 @@ class MacroChild(Child):
                                           separable=True))
       if self.num_branches >= 5:
         with fw.name_scope("branch_4"):
-          branches.append(self._pool_branch(inputs, is_training, count[9],
-                                            "avg", weights, reuse, start_idx=count[8]))
+          branches.append(self._pool_branch(inputs, count[9],
+                                            "avg", input_conv, start_idx=count[8]))
       if self.num_branches >= 6:
         with fw.name_scope("branch_5"):
-          branches.append(self._pool_branch(inputs, is_training, count[11],
-                                            "max", weights, reuse, start_idx=count[10]))
+          branches.append(self._pool_branch(inputs, count[11],
+                                            "max", input_conv, start_idx=count[10]))
 
       with fw.name_scope("final_conv") as scope:
         inp = prev_layers[-1]
@@ -330,6 +339,15 @@ class MacroChild(Child):
     """
 
     inputs = prev_layers[-1]
+    with fw.name_scope("conv_1") as scope:
+      input_conv = MacroChild.InputConv(
+        weights,
+        reuse,
+        scope,
+        1,
+        self.out_filters,
+        is_training,
+        self.data_format)
     if self.whole_channels:
       inp_c = self.data_format.get_C(inputs)
 
@@ -372,12 +390,12 @@ class MacroChild(Child):
         with fw.name_scope("branch_4"):
           total_out_channels += count[9]
           branches.append(
-            self._pool_branch(inputs, is_training, count[9], "avg"))
+            self._pool_branch(inputs, count[9], "avg", input_conv))
       if self.num_branches >= 6:
         with fw.name_scope("branch_5"):
           total_out_channels += count[11]
           branches.append(
-            self._pool_branch(inputs, is_training, count[11], "max"))
+            self._pool_branch(inputs, count[11], "max", input_conv))
 
       with fw.name_scope("final_conv") as scope:
         branches = self.data_format.fixed_layer(branches)
@@ -624,7 +642,7 @@ class MacroChild(Child):
           x = out_conv(x)
     return x
 
-  def _pool_branch(self, inputs, is_training: bool, count, avg_or_max: str, weights, reuse: bool, start_idx=None):
+  def _pool_branch(self, inputs, count, avg_or_max: str, input_conv, start_idx=None):
     """
     Args:
       start_idx: where to start taking the output channels. if None, assuming
@@ -636,14 +654,6 @@ class MacroChild(Child):
       assert self.fixed_arc is not None, "you screwed up!"
 
     with fw.name_scope("conv_1") as scope:
-      input_conv = MacroChild.InputConv(
-        weights,
-        reuse,
-        scope,
-        1,
-        self.out_filters,
-        is_training,
-        self.data_format)
       x = input_conv(inputs)
 
     with fw.name_scope("pool"):
