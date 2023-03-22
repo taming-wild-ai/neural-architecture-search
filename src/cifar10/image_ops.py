@@ -9,8 +9,8 @@ def drop_path(x, keep_prob):
     [fw.shape(x)[0], 1, 1, 1],
     dtype=fw.float32))
 
-def batch_norm(x, is_training, data_format, weights, name="bn", decay=0.9, epsilon=1e-5):
-  shape = [data_format.get_C(x)]
+def batch_norm(x, is_training, data_format, weights, num_chan: int, name="bn", decay=0.9, epsilon=1e-5):
+  shape = [num_chan]
 
   with fw.name_scope(name) as scope:
     reuse = None if is_training else True

@@ -65,14 +65,8 @@ class MicroChild(Child):
 
   class SkipPath(LayeredModel):
     def __init__(self, stride_spec, data_format, weights, reuse: bool, scope: str, out_filters):
-      self.layers = [
-        lambda x: fw.avg_pool(
-          x,
-          [1, 1, 1, 1],
-          stride_spec,
-          "VALID",
-          data_format=data_format.name),
-        lambda x: fw.conv2d(
+      def conv2d(x):
+        return fw.conv2d(
           x,
           weights.get(
             reuse,
@@ -82,10 +76,18 @@ class MicroChild(Child):
             None),
           [1, 1, 1, 1],
           "VALID",
-          data_format=data_format.name)]
+          data_format=data_format.name)
+      self.layers = [
+        lambda x: fw.avg_pool(
+          x,
+          [1, 1, 1, 1],
+          stride_spec,
+          "VALID",
+          data_format=data_format.name),
+        conv2d]
 
 
-  def _factorized_reduction(self, x, out_filters, stride, is_training, weights, reuse):
+  def _factorized_reduction(self, x, out_filters: int, stride, is_training: bool, weights, reuse: bool):
     """Reduces the shape of x without information loss due to striding."""
     assert out_filters % 2 == 0, (
         "Need even number of filters when using this factorized reduction.")
@@ -95,6 +97,7 @@ class MicroChild(Child):
           weights,
           reuse,
           scope,
+          self.data_format.get_C(x),
           out_filters,
           is_training,
           self.data_format)
@@ -146,7 +149,7 @@ class MicroChild(Child):
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name),
-        lambda x: batch_norm(x, is_training, data_format, weights)]
+        lambda x: batch_norm(x, is_training, data_format, weights, out_filters)]
 
 
   def _maybe_calibrate_size(self, layers, out_filters, is_training, weights, reuse):
@@ -177,20 +180,21 @@ class MicroChild(Child):
 
   class Dropout(LayeredModel):
     def __init__(self, data_format, is_training, keep_prob, weights, reuse, scope):
-      self.layers = [
-        fw.relu,
-        data_format.global_avg_pool]
-      if is_training and keep_prob is not None and keep_prob < 1.0:
-        self.layers += [lambda x: fw.dropout(x, keep_prob)]
-      self.layers += [
-        lambda x: fw.matmul(
+      def matmul(x):
+        return fw.matmul(
           x,
           weights.get(
             reuse,
             scope,
             "w",
             [data_format.get_C(x), 10],
-            None))]
+            None))
+      self.layers = [
+        fw.relu,
+        data_format.global_avg_pool]
+      if is_training and keep_prob is not None and keep_prob < 1.0:
+        self.layers += [lambda x: fw.dropout(x, keep_prob)]
+      self.layers += [matmul]
 
 
   class FullyConnected(LayeredModel):
@@ -267,6 +271,7 @@ class MicroChild(Child):
                 reuse,
                 scope,
                 1,
+                self.data_format.get_C(aux_logits),
                 128,
                 is_training,
                 self.data_format)
@@ -279,6 +284,7 @@ class MicroChild(Child):
                 reuse,
                 scope,
                 hw,
+                self.data_format.get_C(aux_logits),
                 768,
                 True,
                 self.data_format)
@@ -301,7 +307,7 @@ class MicroChild(Child):
 
   class SeparableConv(LayeredModel):
     def __init__(self, weights, reuse, scope, filter_size, data_format, out_filters, strides, is_training):
-      def inner(x):
+      def separable_conv2d(x):
         inp_c = data_format.get_C(x)
         return fw.separable_conv2d(
           fw.relu(x),
@@ -311,8 +317,8 @@ class MicroChild(Child):
           padding="SAME",
           data_format=data_format.name)
       self.layers = [
-        inner,
-        lambda x: batch_norm(x, is_training, data_format, weights)]
+        separable_conv2d,
+        lambda x: batch_norm(x, is_training, data_format, weights, out_filters)]
 
 
   def _fixed_conv(self, x, f_size, out_filters, stride, is_training, weights, reuse,
@@ -374,15 +380,17 @@ class MicroChild(Child):
 
   class LayerBase(LayeredModel):
     def __init__(self, weights, reuse: bool, scope: str, out_filters: int, is_training: bool, data_format):
-      self.layers = [
-        fw.relu,
-        lambda x: fw.conv2d(
+      def conv2d(x):
+        return fw.conv2d(
           x,
           weights.get(reuse, scope, "w", [1, 1, data_format.get_C(x), out_filters], None),
           [1, 1, 1, 1],
           "SAME",
-          data_format=data_format.name),
-        lambda x: batch_norm(x, is_training, data_format, weights)]
+          data_format=data_format.name)
+      self.layers = [
+        fw.relu,
+        conv2d,
+        lambda x: batch_norm(x, is_training, data_format, weights, out_filters)]
 
 
   class Operator(object):
@@ -697,7 +705,6 @@ class MicroChild(Child):
           indices,
           axis=0),
         [1, 1, num_outs * out_filters, out_filters])
-
       self.layers = [
         lambda x: fw.stack(x, axis=0),
         lambda x: fw.gather(x, indices, axis=0),
@@ -717,7 +724,8 @@ class MicroChild(Child):
           x,
           True,
           data_format,
-          weights),
+          weights,
+          out_filters),
         lambda x: fw.reshape(x, fw.shape(prev_layers[0]))]
 
     class Indices(LayeredModel):
