@@ -86,7 +86,6 @@ class MacroChild(Child):
 
   def _factorized_reduction(self, x, num_input_chan: int, out_filters: int, stride, is_training: bool, weights, reuse: bool):
     """Reduces the shape of x without information loss due to striding."""
-    assert num_input_chan == self.data_format.get_C(x), f"was {num_input_chan}, expecting {self.data_format.get_C(x)}"
     assert out_filters % 2 == 0, (
         "Need even number of filters when using this factorized reduction.")
     if stride == 1:
@@ -123,8 +122,9 @@ class MacroChild(Child):
 
 
   class Dropout(LayeredModel):
-    def __init__(self, data_format, is_training, keep_prob, weights, reuse, scope):
+    def __init__(self, data_format, is_training, keep_prob, weights, reuse, scope, num_inp_chan):
       def matmul(x):
+        assert num_inp_chan == data_format.get_C(x), f"was {num_inp_chan}, expecting {data_format.get_C(x)}"
         return fw.matmul(
           x,
           weights.get(
@@ -184,7 +184,8 @@ class MacroChild(Child):
           self.keep_prob,
           weights,
           reuse,
-          scope)
+          scope,
+          self.data_format.get_C(x))
         x = dropout(x)
     return x
 
