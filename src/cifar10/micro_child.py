@@ -379,25 +379,23 @@ class MicroChild(Child):
 
   class LayerBase(LayeredModel):
     def __init__(self, weights, reuse: bool, scope: str, num_input_chan: int, out_filters: int, is_training: bool, data_format):
-      def conv2d(x):
-        assert num_input_chan == data_format.get_C(x)
-        return fw.conv2d(
-          x,
-          weights.get(reuse, scope, "w", [1, 1, num_input_chan, out_filters], None),
-          [1, 1, 1, 1],
-          "SAME",
-          data_format=data_format.name)
+      w = weights.get(reuse, scope, "w", [1, 1, num_input_chan, out_filters], None)
       self.layers = [
         fw.relu,
-        conv2d,
+        lambda x: fw.conv2d(
+          x,
+          w,
+          [1, 1, 1, 1],
+          "SAME",
+          data_format=data_format.name),
         lambda x: batch_norm(x, is_training, data_format, weights, out_filters)]
 
 
   class Operator(object):
-    def inner1(x, child, out_filters, weights, reuse, scope, is_training):
-      inp_c = child.data_format.get_C(x)
-      if inp_c != out_filters:
-        x_conv = Child.Conv1x1(weights, reuse, scope, inp_c, out_filters, is_training, child.data_format)
+    def inner1(x, child, num_input_chan: int, out_filters: int, weights, reuse, scope, is_training):
+      assert num_input_chan == child.data_format.get_C(x)
+      if num_input_chan != out_filters:
+        x_conv = Child.Conv1x1(weights, reuse, scope, num_input_chan, out_filters, is_training, child.data_format)
         return x_conv(x)
       else:
         return x
@@ -427,7 +425,7 @@ class MicroChild(Child):
       def __init__(self, child, num_input_chan, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
         self.layers = [
           lambda x: fw.avg_pool2d(x, [3, 3], [x_stride, x_stride], "SAME", data_format=child.data_format.actual),
-          lambda x: MicroChild.Operator.inner1(x, child, out_filters, weights, reuse, scope, is_training),
+          lambda x: MicroChild.Operator.inner1(x, child, num_input_chan, out_filters, weights, reuse, scope, is_training),
           lambda x: MicroChild.Operator.inner2(x, child, is_training, layer_id)]
 
 
@@ -435,7 +433,7 @@ class MicroChild(Child):
       def __init__(self, child, num_input_chan, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
         self.layers = [
           lambda x: fw.max_pool2d(x, [3, 3], [x_stride, x_stride], "SAME", data_format=child.data_format.actual),
-          lambda x: MicroChild.Operator.inner1(x, child, out_filters, weights, reuse, scope, is_training),
+          lambda x: MicroChild.Operator.inner1(x, child, num_input_chan, out_filters, weights, reuse, scope, is_training),
           lambda x: MicroChild.Operator.inner2(x, child, is_training, layer_id)]
 
 
@@ -445,7 +443,7 @@ class MicroChild(Child):
         if x_stride > 1:
           assert x_stride == 2
           self.layers.append(lambda x: child._factorized_reduction(x, num_input_chan, out_filters, 2, is_training, weights, reuse))
-        self.layers.append(lambda x: MicroChild.Operator.inner1(x, child, out_filters, weights, reuse, scope, is_training))
+        self.layers.append(lambda x: MicroChild.Operator.inner1(x, child, num_input_chan, out_filters, weights, reuse, scope, is_training))
 
 
     @staticmethod
