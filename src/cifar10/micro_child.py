@@ -86,7 +86,7 @@ class MicroChild(Child):
           data_format=data_format.name)]
 
 
-  def _factorized_reduction(self, x, out_filters: int, stride, is_training: bool, weights, reuse: bool):
+  def _factorized_reduction(self, x, num_input_chan: int, out_filters: int, stride, is_training: bool, weights, reuse: bool):
     """Reduces the shape of x without information loss due to striding."""
     assert out_filters % 2 == 0, (
         "Need even number of filters when using this factorized reduction.")
@@ -96,7 +96,7 @@ class MicroChild(Child):
           weights,
           reuse,
           scope,
-          self.data_format.get_C(x),
+          num_input_chan,
           out_filters,
           is_training,
           self.data_format)
@@ -105,7 +105,7 @@ class MicroChild(Child):
     stride_spec = self.data_format.get_strides(stride)
     # Skip path 1
     with fw.name_scope("path1_conv") as scope:
-      skip_path = MicroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, self.data_format.get_C(x), out_filters)
+      skip_path = MicroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, num_input_chan, out_filters)
       path1 = skip_path(x)
 
     # Skip path 2
@@ -115,7 +115,7 @@ class MicroChild(Child):
     concat_axis = self.data_format.concat_axis()
 
     with fw.name_scope("path2_conv") as scope:
-      skip_path = MicroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, self.data_format.get_C(path2), out_filters)
+      skip_path = MicroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, num_input_chan, out_filters)
       path2 = skip_path(path2)
 
     # Concat and apply BN
@@ -163,7 +163,7 @@ class MicroChild(Child):
         assert hw[0] == 2 * hw[1], f"hw[0] = {hw[0]}, hw[1] = {hw[1]}"
         with fw.name_scope("pool_x") as scope:
           x = fw.relu(x)
-          x = self._factorized_reduction(x, out_filters, 2, is_training, weights, reuse)
+          x = self._factorized_reduction(x, self.data_format.get_C(x), out_filters, 2, is_training, weights, reuse)
       elif c[0] != out_filters:
         with fw.name_scope("pool_x") as scope:
           conv = Child.Conv1x1(weights, reuse, scope, c[0], out_filters, is_training, self.data_format)
@@ -243,7 +243,7 @@ class MicroChild(Child):
           else:
             out_filters *= 2
             if self.fixed_arc is None:
-              x = self._factorized_reduction(x, out_filters, 2, is_training, weights, reuse)
+              x = self._factorized_reduction(x, self.data_format.get_C(x), out_filters, 2, is_training, weights, reuse)
               layers = [layers[-1], x]
               x = self._enas_layer(
                 layer_id, layers, self.reduce_arc, out_filters, weights, reuse)
@@ -368,7 +368,7 @@ class MicroChild(Child):
           if hw > out_hw:
             assert hw == out_hw * 2, ("i_hw={0} != {1}=o_hw".format(hw, out_hw))
             with fw.name_scope("calibrate_{0}".format(i)) as scope:
-              x = self._factorized_reduction(layer, out_filters, 2, is_training)
+              x = self._factorized_reduction(layer, self.data_format.get_C(layer), out_filters, 2, is_training)
           else:
             x = layer
           out.append(x)
@@ -409,21 +409,21 @@ class MicroChild(Child):
         return x
 
     class SeparableConv3x3(LayeredModel):
-      def __init__(self, child, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
+      def __init__(self, child, num_input_chan, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
         self.layers = [
           lambda x: child._fixed_conv(x, 3, out_filters, x_stride, is_training, weights, reuse),
           lambda x: MicroChild.Operator.inner2(x, child, is_training, layer_id)]
 
 
     class SeparableConv5x5(LayeredModel):
-      def __init__(self, child, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
+      def __init__(self, child, num_input_chan, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
         self.layers = [
           lambda x: child._fixed_conv(x, 5, out_filters, x_stride, is_training, weights, reuse),
           lambda x: MicroChild.Operator.inner2(x, child, is_training, layer_id)]
 
 
     class AveragePooling(LayeredModel):
-      def __init__(self, child, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
+      def __init__(self, child, num_input_chan, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
         self.layers = [
           lambda x: fw.avg_pool2d(x, [3, 3], [x_stride, x_stride], "SAME", data_format=child.data_format.actual),
           lambda x: MicroChild.Operator.inner1(x, child, out_filters, weights, reuse, scope, is_training),
@@ -431,7 +431,7 @@ class MicroChild(Child):
 
 
     class MaxPooling(LayeredModel):
-      def __init__(self, child, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
+      def __init__(self, child, num_input_chan, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
         self.layers = [
           lambda x: fw.max_pool2d(x, [3, 3], [x_stride, x_stride], "SAME", data_format=child.data_format.actual),
           lambda x: MicroChild.Operator.inner1(x, child, out_filters, weights, reuse, scope, is_training),
@@ -439,22 +439,22 @@ class MicroChild(Child):
 
 
     class Identity(LayeredModel):
-      def __init__(self, child, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
+      def __init__(self, child, num_input_chan: int, out_filters: int, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
         self.layers = []
         if x_stride > 1:
           assert x_stride == 2
-          self.layers.append(lambda x: child._factorized_reduction(x, out_filters, 2, is_training, weights, reuse))
+          self.layers.append(lambda x: child._factorized_reduction(x, num_input_chan, out_filters, 2, is_training, weights, reuse))
         self.layers.append(lambda x: MicroChild.Operator.inner1(x, child, out_filters, weights, reuse, scope, is_training))
 
 
     @staticmethod
-    def new(op_id, child, out_filters: int, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
+    def new(op_id, child, num_input_chan, out_filters: int, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
       return [
         MicroChild.Operator.SeparableConv3x3,
         MicroChild.Operator.SeparableConv5x5,
         MicroChild.Operator.AveragePooling,
         MicroChild.Operator.MaxPooling,
-        MicroChild.Operator.Identity][op_id](child, out_filters, x_stride, is_training, weights, reuse, scope, layer_id)
+        MicroChild.Operator.Identity][op_id](child, num_input_chan, out_filters, x_stride, is_training, weights, reuse, scope, layer_id)
 
   def _fixed_layer(self, layer_id, prev_layers, arc, out_filters, stride,
                    is_training, weights, reuse, normal_or_reduction_cell="normal"):
@@ -483,7 +483,7 @@ class MicroChild(Child):
         x = layers[x_id]
         x_stride = stride if x_id in [0, 1] else 1
         with fw.name_scope("x_conv") as scope:
-          op = MicroChild.Operator.new(x_op, self, out_filters, x_stride, is_training, weights, reuse, scope, layer_id)
+          op = MicroChild.Operator.new(x_op, self, self.data_format.get_C(x), out_filters, x_stride, is_training, weights, reuse, scope, layer_id)
           x = op(x)
         y_id = arc[4 * cell_id + 2]
         used[y_id] += 1
@@ -491,7 +491,7 @@ class MicroChild(Child):
         y = layers[y_id]
         y_stride = stride if y_id in [0, 1] else 1
         with fw.name_scope("y_conv") as scope:
-          op = MicroChild.Operator.new(y_op, self, out_filters, y_stride, is_training, weights, reuse, scope, layer_id)
+          op = MicroChild.Operator.new(y_op, self, self.data_format.get_C(y), out_filters, y_stride, is_training, weights, reuse, scope, layer_id)
           y = op(y)
 
         out = x + y
