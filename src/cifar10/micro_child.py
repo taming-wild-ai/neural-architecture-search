@@ -378,11 +378,12 @@ class MicroChild(Child):
 
 
   class LayerBase(LayeredModel):
-    def __init__(self, weights, reuse: bool, scope: str, out_filters: int, is_training: bool, data_format):
+    def __init__(self, weights, reuse: bool, scope: str, num_input_chan: int, out_filters: int, is_training: bool, data_format):
       def conv2d(x):
+        assert num_input_chan == data_format.get_C(x)
         return fw.conv2d(
           x,
-          weights.get(reuse, scope, "w", [1, 1, data_format.get_C(x), out_filters], None),
+          weights.get(reuse, scope, "w", [1, 1, num_input_chan, out_filters], None),
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name)
@@ -470,7 +471,7 @@ class MicroChild(Child):
                                         is_training, weights, reuse)
 
     with fw.name_scope("layer_base") as scope:
-      lb = MicroChild.LayerBase(weights, reuse, scope, out_filters, is_training, self.data_format)
+      lb = MicroChild.LayerBase(weights, reuse, scope, self.data_format.get_C(layers[1]), out_filters, is_training, self.data_format)
       layers[1] = lb(layers[1])
 
     used = np.zeros([self.num_cells + 2], dtype=np.int32)
