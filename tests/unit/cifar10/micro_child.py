@@ -333,12 +333,9 @@ class TestMicroChild(unittest.TestCase):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
-            with patch.object(mc.data_format, 'get_C', return_value="get_c") as get_c:
                 with patch.object(mc.weights, 'get', return_value="fw.create_weight") as create_weight:
-                    mc._fixed_conv(None, 3, 24, 1, True, mc.weights, False)
-                    get_c.assert_called_with('batch_norm')
-                    # create_weight.assert_any_call("w_depth", [3, 3, "get_c", 1])
-                    create_weight.assert_called_with(False, 'sep_conv_1/', "w_point", [1, 1, "get_c", 24], None)
+                    mc._fixed_conv(None, 3, 3, 24, 1, True, mc.weights, False)
+                    create_weight.assert_called_with(False, 'sep_conv_1/', "w_point", [1, 1, 3, 24], None)
                     relu.assert_called_with("batch_norm")
                     s_conv2d.assert_called_with("relu", depthwise_filter="fw.create_weight", pointwise_filter="fw.create_weight", strides=[1, 1, 1, 1], padding="SAME", data_format="NHWC")
                     batch_norm.assert_called_with('s_conv2d', True, mc.data_format, mc.weights, 24)

@@ -163,7 +163,7 @@ class MicroChild(Child):
         assert hw[0] == 2 * hw[1], f"hw[0] = {hw[0]}, hw[1] = {hw[1]}"
         with fw.name_scope("pool_x") as scope:
           x = fw.relu(x)
-          x = self._factorized_reduction(x, self.data_format.get_C(x), out_filters, 2, is_training, weights, reuse)
+          x = self._factorized_reduction(x, c[0], out_filters, 2, is_training, weights, reuse)
       elif c[0] != out_filters:
         with fw.name_scope("pool_x") as scope:
           conv = Child.Conv1x1(weights, reuse, scope, c[0], out_filters, is_training, self.data_format)
@@ -305,13 +305,12 @@ class MicroChild(Child):
 
 
   class SeparableConv(LayeredModel):
-    def __init__(self, weights, reuse, scope, filter_size, data_format, out_filters, strides, is_training):
+    def __init__(self, weights, reuse, scope, filter_size, data_format, num_input_chan: int, out_filters: int, strides, is_training):
       def separable_conv2d(x):
-        inp_c = data_format.get_C(x)
         return fw.separable_conv2d(
           fw.relu(x),
-          depthwise_filter=weights.get(reuse, scope, "w_depth", [filter_size, filter_size, inp_c, 1], None),
-          pointwise_filter=weights.get(reuse, scope, "w_point", [1, 1, inp_c, out_filters], None),
+          depthwise_filter=weights.get(reuse, scope, "w_depth", [filter_size, filter_size, num_input_chan, 1], None),
+          pointwise_filter=weights.get(reuse, scope, "w_point", [1, 1, num_input_chan, out_filters], None),
           strides=strides,
           padding="SAME",
           data_format=data_format.name)
@@ -320,7 +319,7 @@ class MicroChild(Child):
         lambda x: batch_norm(x, is_training, data_format, weights, out_filters)]
 
 
-  def _fixed_conv(self, x, f_size, out_filters, stride, is_training, weights, reuse,
+  def _fixed_conv(self, x, f_size, num_input_chan: int, out_filters: int, stride, is_training, weights, reuse,
                   stack_convs=2):
     """Apply fixed convolution.
 
@@ -341,6 +340,7 @@ class MicroChild(Child):
           scope,
           f_size,
           self.data_format,
+          num_input_chan,
           out_filters,
           strides,
           is_training)
@@ -411,14 +411,14 @@ class MicroChild(Child):
     class SeparableConv3x3(LayeredModel):
       def __init__(self, child, num_input_chan, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
         self.layers = [
-          lambda x: child._fixed_conv(x, 3, out_filters, x_stride, is_training, weights, reuse),
+          lambda x: child._fixed_conv(x, 3, num_input_chan, out_filters, x_stride, is_training, weights, reuse),
           lambda x: MicroChild.Operator.inner2(x, child, is_training, layer_id)]
 
 
     class SeparableConv5x5(LayeredModel):
       def __init__(self, child, num_input_chan, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
         self.layers = [
-          lambda x: child._fixed_conv(x, 5, out_filters, x_stride, is_training, weights, reuse),
+          lambda x: child._fixed_conv(x, 5, num_input_chan, out_filters, x_stride, is_training, weights, reuse),
           lambda x: MicroChild.Operator.inner2(x, child, is_training, layer_id)]
 
 
