@@ -503,7 +503,6 @@ class MicroChild(Child):
   class MaxPool(LayeredModel):
     def __init__(self, data_format, num_input_chan: int, out_filters: int, reuse: bool, scope: str, curr_cell, prev_cell: int, weights):
       def inner(x):
-        assert num_input_chan == data_format.get_C(x)
         if num_input_chan != out_filters:
           with fw.name_scope("conv"):
             return batch_norm(
@@ -533,7 +532,6 @@ class MicroChild(Child):
   class AvgPool(LayeredModel):
     def __init__(self, data_format, num_input_chan: int, out_filters: int, reuse: bool, scope: str, curr_cell, prev_cell: int, weights):
       def inner(x):
-        assert num_input_chan == data_format.get_C(x)
         if num_input_chan != out_filters:
           with fw.name_scope("conv"):
             return batch_norm(
@@ -563,7 +561,6 @@ class MicroChild(Child):
   class ENASCell(LayeredModel):
     @staticmethod
     def inner(x, data_format, num_input_chan: int, out_filters: int, weights, reuse: bool, scope: str, num_possible_inputs: int, prev_cell: int):
-      assert num_input_chan == data_format.get_C(x)
       if num_input_chan != out_filters:
         return batch_norm(
           fw.conv2d(
@@ -597,21 +594,21 @@ class MicroChild(Child):
         num_possible_inputs,
         prev_cell)]
 
-  def _enas_cell(self, x, curr_cell, prev_cell, op_id, out_filters, weights, reuse: bool):
+  def _enas_cell(self, x, curr_cell, prev_cell, op_id, num_input_chan: int, out_filters: int, weights, reuse: bool):
     """Performs an enas operation specified by op_id."""
-
+    assert num_input_chan == self.data_format.get_C(x)
     num_possible_inputs = curr_cell + 1
 
     with fw.name_scope("avg_pool") as scope:
-      ap = MicroChild.AvgPool(self.data_format, self.data_format.get_C(x), out_filters, reuse, scope, curr_cell, prev_cell, weights)
+      ap = MicroChild.AvgPool(self.data_format, num_input_chan, out_filters, reuse, scope, curr_cell, prev_cell, weights)
       avg_pool = ap(x)
 
     with fw.name_scope("max_pool") as scope:
-      mp = MicroChild.MaxPool(self.data_format, self.data_format.get_C(x), out_filters, reuse, scope, curr_cell, prev_cell, weights)
+      mp = MicroChild.MaxPool(self.data_format, num_input_chan, out_filters, reuse, scope, curr_cell, prev_cell, weights)
       max_pool = mp(x)
 
     with fw.name_scope("x_conv") as scope:
-      ec1 = MicroChild.ENASCell(self.data_format, self.data_format.get_C(x), out_filters, weights, reuse, scope, num_possible_inputs, prev_cell)
+      ec1 = MicroChild.ENASCell(self.data_format, num_input_chan, out_filters, weights, reuse, scope, num_possible_inputs, prev_cell)
       x = ec1(x)
 
     out = [
@@ -753,12 +750,14 @@ class MicroChild(Child):
       with fw.name_scope("cell_{0}".format(cell_id)) as scope:
         with fw.name_scope("x") as scope:
           x_id = arc[4 * cell_id]
-          x = self._enas_cell(prev_layers[x_id, :, :, :, :], cell_id, x_id, arc[4 * cell_id + 1], out_filters, weights, reuse)
+          x = prev_layers[x_id, :, :, :, :]
+          x = self._enas_cell(x, cell_id, x_id, arc[4 * cell_id + 1], self.data_format.get_C(x), out_filters, weights, reuse)
           x_used = fw.one_hot(x_id, depth=self.num_cells + 2, dtype=fw.int32)
 
         with fw.name_scope("y") as scope:
           y_id = arc[4 * cell_id + 2]
-          y = self._enas_cell(prev_layers[y_id, :, :, :, :], cell_id, y_id, arc[4 * cell_id + 3], out_filters, weights, reuse)
+          y = prev_layers[y_id, :, :, :, :]
+          y = self._enas_cell(y, cell_id, y_id, arc[4 * cell_id + 3], self.data_format.get_C(y), out_filters, weights, reuse)
           y_used = fw.one_hot(y_id, depth=self.num_cells + 2, dtype=fw.int32)
 
         out = x + y
