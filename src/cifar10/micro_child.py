@@ -393,7 +393,6 @@ class MicroChild(Child):
 
   class Operator(object):
     def inner1(x, child, num_input_chan: int, out_filters: int, weights, reuse, scope, is_training):
-      assert num_input_chan == child.data_format.get_C(x)
       if num_input_chan != out_filters:
         x_conv = Child.Conv1x1(weights, reuse, scope, num_input_chan, out_filters, is_training, child.data_format)
         return x_conv(x)
@@ -502,10 +501,10 @@ class MicroChild(Child):
 
 
   class MaxPool(LayeredModel):
-    def __init__(self, data_format, out_filters: int, reuse: bool, scope: str, curr_cell, prev_cell: int, weights):
+    def __init__(self, data_format, num_input_chan: int, out_filters: int, reuse: bool, scope: str, curr_cell, prev_cell: int, weights):
       def inner(x):
-        inp_c = data_format.get_C(x)
-        if inp_c != out_filters:
+        assert num_input_chan == data_format.get_C(x)
+        if num_input_chan != out_filters:
           with fw.name_scope("conv"):
             return batch_norm(
               fw.conv2d(
@@ -515,9 +514,9 @@ class MicroChild(Child):
                     reuse,
                     scope,
                     'w',
-                    [curr_cell + 1, inp_c * out_filters],
+                    [curr_cell + 1, num_input_chan * out_filters],
                     None)[prev_cell],
-                  [1, 1, inp_c, out_filters]),
+                  [1, 1, num_input_chan, out_filters]),
                 strides=[1, 1, 1, 1],
                 padding="SAME",
                 data_format=data_format.name),
@@ -532,10 +531,10 @@ class MicroChild(Child):
 
 
   class AvgPool(LayeredModel):
-    def __init__(self, data_format, out_filters: int, reuse: bool, scope: str, curr_cell, prev_cell: int, weights):
+    def __init__(self, data_format, num_input_chan: int, out_filters: int, reuse: bool, scope: str, curr_cell, prev_cell: int, weights):
       def inner(x):
-        inp_c = data_format.get_C(x)
-        if inp_c != out_filters:
+        assert num_input_chan == data_format.get_C(x)
+        if num_input_chan != out_filters:
           with fw.name_scope("conv"):
             return batch_norm(
               fw.conv2d(
@@ -545,9 +544,9 @@ class MicroChild(Child):
                     reuse,
                     scope,
                     'w',
-                    [curr_cell + 1, inp_c * out_filters],
+                    [curr_cell + 1, num_input_chan * out_filters],
                     None)[prev_cell],
-                  [1, 1, inp_c, out_filters]),
+                  [1, 1, num_input_chan, out_filters]),
                 strides=[1, 1, 1, 1],
                 padding="SAME",
                 data_format=data_format.name),
@@ -563,9 +562,9 @@ class MicroChild(Child):
 
   class ENASCell(LayeredModel):
     @staticmethod
-    def inner(x, data_format, out_filters: int, weights, reuse: bool, scope: str, num_possible_inputs: int, prev_cell: int):
-      x_c = data_format.get_C(x)
-      if x_c != out_filters:
+    def inner(x, data_format, num_input_chan: int, out_filters: int, weights, reuse: bool, scope: str, num_possible_inputs: int, prev_cell: int):
+      assert num_input_chan == data_format.get_C(x)
+      if num_input_chan != out_filters:
         return batch_norm(
           fw.conv2d(
             fw.relu(x),
@@ -574,9 +573,9 @@ class MicroChild(Child):
                 reuse,
                 scope,
                 "w",
-                [num_possible_inputs, x_c * out_filters],
+                [num_possible_inputs, num_input_chan * out_filters],
                 None)[prev_cell],
-              [1, 1, x_c, out_filters]),
+              [1, 1, num_input_chan, out_filters]),
             strides=[1, 1, 1, 1],
             padding="SAME",
             data_format=data_format.name),
@@ -586,10 +585,11 @@ class MicroChild(Child):
       else:
         return x
 
-    def __init__(self, data_format, out_filters: int, weights, reuse: bool, scope: str, num_possible_inputs: int, prev_cell: int):
+    def __init__(self, data_format, num_input_chan: int, out_filters: int, weights, reuse: bool, scope: str, num_possible_inputs: int, prev_cell: int):
       self.layers = [lambda x: MicroChild.ENASCell.inner(
         x,
         data_format,
+        num_input_chan,
         out_filters,
         weights,
         reuse,
@@ -603,15 +603,15 @@ class MicroChild(Child):
     num_possible_inputs = curr_cell + 1
 
     with fw.name_scope("avg_pool") as scope:
-      ap = MicroChild.AvgPool(self.data_format, out_filters, reuse, scope, curr_cell, prev_cell, weights)
+      ap = MicroChild.AvgPool(self.data_format, self.data_format.get_C(x), out_filters, reuse, scope, curr_cell, prev_cell, weights)
       avg_pool = ap(x)
 
     with fw.name_scope("max_pool") as scope:
-      mp = MicroChild.MaxPool(self.data_format, out_filters, reuse, scope, curr_cell, prev_cell, weights)
+      mp = MicroChild.MaxPool(self.data_format, self.data_format.get_C(x), out_filters, reuse, scope, curr_cell, prev_cell, weights)
       max_pool = mp(x)
 
     with fw.name_scope("x_conv") as scope:
-      ec1 = MicroChild.ENASCell(self.data_format, out_filters, weights, reuse, scope, num_possible_inputs, prev_cell)
+      ec1 = MicroChild.ENASCell(self.data_format, self.data_format.get_C(x), out_filters, weights, reuse, scope, num_possible_inputs, prev_cell)
       x = ec1(x)
 
     out = [
