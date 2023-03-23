@@ -84,8 +84,9 @@ class MacroChild(Child):
         conv2d]
 
 
-  def _factorized_reduction(self, x, out_filters: int, stride, is_training: bool, weights, reuse: bool):
+  def _factorized_reduction(self, x, num_input_chan: int, out_filters: int, stride, is_training: bool, weights, reuse: bool):
     """Reduces the shape of x without information loss due to striding."""
+    assert num_input_chan == self.data_format.get_C(x), f"was {num_input_chan}, expecting {self.data_format.get_C(x)}"
     assert out_filters % 2 == 0, (
         "Need even number of filters when using this factorized reduction.")
     if stride == 1:
@@ -94,7 +95,7 @@ class MacroChild(Child):
           weights,
           reuse,
           scope,
-          self.data_format.get_C(x),
+          num_input_chan,
           out_filters,
           is_training,
           self.data_format)
@@ -105,7 +106,7 @@ class MacroChild(Child):
 
     # Skip path 1
     with fw.name_scope("path1_conv") as scope:
-      skip_path1 = MacroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, self.data_format.get_C(x), out_filters)
+      skip_path1 = MacroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, num_input_chan, out_filters)
       path1 = skip_path1(x)
 
     # Skip path 2
@@ -114,7 +115,7 @@ class MacroChild(Child):
     path2 = self.data_format.factorized_reduction(x)
 
     with fw.name_scope("path2_conv") as scope:
-      skip_path2 = MacroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, self.data_format.get_C(path2), out_filters)
+      skip_path2 = MacroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, num_input_chan, out_filters)
       path2 = skip_path2(path2)
 
     # Concat and apply BN
@@ -167,7 +168,7 @@ class MacroChild(Child):
               for i, layer in enumerate(layers):
                 with fw.name_scope("from_{0}".format(i)):
                   x = self._factorized_reduction(
-                    layer, out_filters, 2, is_training, weights, reuse)
+                    layer, self.data_format.get_C(layer), out_filters, 2, is_training, weights, reuse)
                 pooled_layers.append(x)
               layers = pooled_layers
         if self.whole_channels:
