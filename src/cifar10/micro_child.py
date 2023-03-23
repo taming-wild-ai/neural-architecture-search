@@ -625,7 +625,7 @@ class MicroChild(Child):
 
 
   class ENASConv(LayeredModel):
-    def __init__(self, weights, reuse: bool, scope: str, num_possible_inputs: int, filter_size: int, prev_cell: int, out_filters: int, data_format):
+    def __init__(self, weights, reuse: bool, scope: str, num_possible_inputs: int, filter_size: int, prev_cell: int, num_input_chan: int, out_filters: int, data_format):
       with fw.name_scope("bn") as scope:
         offset = weights.get(
           reuse,
@@ -638,23 +638,23 @@ class MicroChild(Child):
           "scale", [num_possible_inputs, out_filters],
           fw.ones_init())[prev_cell]
 
-      def inner(x, weights, reuse: bool, scope: str, num_possible_inputs: int, filter_size: int, prev_cell: int, out_filters: int, data_format):
-        inp_c = data_format.get_C(x)
+      def inner(x, weights, reuse: bool, scope: str, num_possible_inputs: int, filter_size: int, prev_cell: int, num_input_chan: int, out_filters: int, data_format):
+        assert num_input_chan == data_format.get_C(x)
         w_depthwise = fw.reshape(
           weights.get(
             reuse,
             scope,
             "w_depth",
-            [num_possible_inputs, filter_size * filter_size * inp_c], None)[prev_cell, :],
-          [filter_size, filter_size, inp_c, 1])
+            [num_possible_inputs, filter_size * filter_size * num_input_chan], None)[prev_cell, :],
+          [filter_size, filter_size, num_input_chan, 1])
 
         w_pointwise = fw.reshape(
           weights.get(
             reuse,
             scope,
             "w_point",
-            [num_possible_inputs, inp_c * out_filters], None)[prev_cell, :],
-          [1, 1, inp_c, out_filters])
+            [num_possible_inputs, num_input_chan * out_filters], None)[prev_cell, :],
+          [1, 1, num_input_chan, out_filters])
 
         return fw.fused_batch_norm(
           fw.separable_conv2d(
@@ -671,7 +671,7 @@ class MicroChild(Child):
           is_training=True)[0]
 
       self.layers = [
-        lambda x: inner(x, weights, reuse, scope, num_possible_inputs, filter_size, prev_cell, out_filters, data_format)]
+        lambda x: inner(x, weights, reuse, scope, num_possible_inputs, filter_size, prev_cell, num_input_chan, out_filters, data_format)]
 
   def _enas_conv(self, x, curr_cell, prev_cell, filter_size, out_filters, weights, reuse: bool,
                  stack_conv=2):
@@ -682,7 +682,7 @@ class MicroChild(Child):
       for conv_id in range(stack_conv):
         with fw.name_scope("stack_{0}".format(conv_id)) as scope:
           # create params and pick the correct path
-          ec = MicroChild.ENASConv(weights, reuse, scope, num_possible_inputs, filter_size, prev_cell, out_filters, self.data_format)
+          ec = MicroChild.ENASConv(weights, reuse, scope, num_possible_inputs, filter_size, prev_cell, self.data_format.get_C(x), out_filters, self.data_format)
           x = ec(x)
     return x
 
