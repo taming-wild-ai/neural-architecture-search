@@ -108,19 +108,17 @@ class TestMacroChild(unittest.TestCase):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
             with patch.object(mc, '_get_strides', return_value="stride spec") as get_strides:
-                with patch.object(mc.data_format, 'get_C', return_value="inp_c") as get_C:
-                    with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
-                        self.assertEqual("final_path", mc._factorized_reduction(None, 'inp_c', 2, 2, True, mc.weights, False))
-                        get_strides.assert_called_with(2)
-                        avg_pool.assert_any_call(None, [1, 1, 1, 1], 'stride spec', 'VALID', data_format='NHWC')
-                        create_weight.assert_any_call(False, 'path1_conv/', "w", [1, 1, 'inp_c', 1], None)
-                        pad.assert_called_with(None, [[0, 0], [0, 1], [0, 1], [0, 0]])
-                        avg_pool.assert_called_with(pad().__getitem__(), [1, 1, 1, 1], 'stride spec', 'VALID', data_format='NHWC')
-                        get_C.assert_called_with("final_path")
-                        create_weight.assert_called_with(False, 'path2_conv/', "w", [1, 1, 'inp_c', 1], None)
-                        conv2d.assert_called_with('path1', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NHWC')
-                        concat.assert_called_with(values=["conv2d", "conv2d"], axis=3)
-                        batch_norm.assert_called_with('final_path', True, mc.data_format, mc.weights, 'inp_c')
+                with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
+                    self.assertEqual("final_path", mc._factorized_reduction(None, 'inp_c', 2, 2, True, mc.weights, False))
+                    get_strides.assert_called_with(2)
+                    avg_pool.assert_any_call(None, [1, 1, 1, 1], 'stride spec', 'VALID', data_format='NHWC')
+                    create_weight.assert_any_call(False, 'path1_conv/', "w", [1, 1, 'inp_c', 1], None)
+                    pad.assert_called_with(None, [[0, 0], [0, 1], [0, 1], [0, 0]])
+                    avg_pool.assert_called_with(pad().__getitem__(), [1, 1, 1, 1], 'stride spec', 'VALID', data_format='NHWC')
+                    create_weight.assert_called_with(False, 'path2_conv/', "w", [1, 1, 'inp_c', 1], None)
+                    conv2d.assert_called_with('path1', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NHWC')
+                    concat.assert_called_with(values=["conv2d", "conv2d"], axis=3)
+                    batch_norm.assert_called_with('final_path', True, mc.data_format, mc.weights, 2)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     @patch('src.cifar10.macro_child.fw.conv2d', return_value="conv2d")
@@ -132,19 +130,17 @@ class TestMacroChild(unittest.TestCase):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
             with patch.object(mc, '_get_strides', return_value="stride spec") as get_strides:
-                with patch.object(mc.data_format, 'get_C', return_value="inp_c") as get_C:
-                    with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
-                        self.assertEqual("final_path", mc._factorized_reduction(None, 'inp_c', 2, 2, True, mc.weights, False))
-                        get_strides.assert_called_with(2)
-                        avg_pool.assert_any_call(None, [1, 1, 1, 1], 'stride spec', 'VALID', data_format=mc.data_format.name)
-                        create_weight.assert_any_call(False, 'path1_conv/', "w", [1, 1, 'inp_c', 1], None)
-                        pad.assert_called_with(None, [[0, 0], [0, 0], [0, 1], [0, 1]])
-                        avg_pool.assert_called_with(pad().__getitem__(), [1, 1, 1, 1], 'stride spec', 'VALID', data_format='NCHW')
-                        get_C.assert_called_with('final_path')
-                        create_weight.assert_called_with(False, 'path2_conv/', "w", [1, 1, 'inp_c', 1], None)
-                        conv2d.assert_called_with('path1', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
-                        concat.assert_called_with(values=["conv2d", "conv2d"], axis=1)
-                        batch_norm.assert_called_with('final_path', True, mc.data_format, mc.weights, 'inp_c')
+                with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
+                    self.assertEqual("final_path", mc._factorized_reduction(None, 'inp_c', 2, 2, True, mc.weights, False))
+                    get_strides.assert_called_with(2)
+                    avg_pool.assert_any_call(None, [1, 1, 1, 1], 'stride spec', 'VALID', data_format=mc.data_format.name)
+                    create_weight.assert_any_call(False, 'path1_conv/', "w", [1, 1, 'inp_c', 1], None)
+                    pad.assert_called_with(None, [[0, 0], [0, 0], [0, 1], [0, 1]])
+                    avg_pool.assert_called_with(pad().__getitem__(), [1, 1, 1, 1], 'stride spec', 'VALID', data_format='NCHW')
+                    create_weight.assert_called_with(False, 'path2_conv/', "w", [1, 1, 'inp_c', 1], None)
+                    conv2d.assert_called_with('path1', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
+                    concat.assert_called_with(values=["conv2d", "conv2d"], axis=1)
+                    batch_norm.assert_called_with('final_path', True, mc.data_format, mc.weights, 2)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     def test_get_c_nchw(self):

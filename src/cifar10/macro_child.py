@@ -99,7 +99,6 @@ class MacroChild(Child):
           self.data_format)
         return fr_model(x)
 
-    fr_model = Child.FactorizedReduction(is_training, self.data_format, weights)
     stride_spec = self._get_strides(stride)
 
     # Skip path 1
@@ -117,6 +116,7 @@ class MacroChild(Child):
       path2 = skip_path2(path2)
 
     # Concat and apply BN
+    fr_model = Child.FactorizedReduction(is_training, self.data_format, weights, out_filters // 2 * 2)
     return fr_model([path1, path2])
 
 

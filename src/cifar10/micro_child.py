@@ -119,7 +119,7 @@ class MicroChild(Child):
       path2 = skip_path(path2)
 
     # Concat and apply BN
-    fr_model = Child.FactorizedReduction(is_training, self.data_format, weights)
+    fr_model = Child.FactorizedReduction(is_training, self.data_format, weights, out_filters // 2 * 2)
     return fr_model([path1, path2])
 
   def _get_HW(self, x):
@@ -639,7 +639,6 @@ class MicroChild(Child):
           fw.ones_init())[prev_cell]
 
       def inner(x, weights, reuse: bool, scope: str, num_possible_inputs: int, filter_size: int, prev_cell: int, num_input_chan: int, out_filters: int, data_format):
-        assert num_input_chan == data_format.get_C(x)
         w_depthwise = fw.reshape(
           weights.get(
             reuse,

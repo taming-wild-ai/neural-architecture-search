@@ -86,19 +86,17 @@ class TestMicroChild(unittest.TestCase):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
-                with patch.object(mc.data_format, "get_C", return_value=3) as getc:
-                    with patch.object(mc.data_format, "get_strides", return_value="get_strides") as gets:
-                        with patch.object(mc.weights, "create_weight", return_value="fw.create_weight") as create_weight:
-                            retval = mc._factorized_reduction(None, 3, 24, 2, True, mc.weights, False)
-                            gets.assert_called_with(2)
-                            pad.assert_called_with(None, [[0, 0], [0, 1], [0, 1], [0, 0]])
-                            avg_pool.assert_called_with(pad().__getitem__(), [1, 1, 1, 1], 'get_strides', 'VALID', data_format='NHWC')
-                            getc.assert_called_with('concat')
-                            create_weight.assert_called_with('path2_conv/', 'w', [1, 1, 3, 12], initializer=None, trainable=True)
-                            conv2d.assert_called_with('avg_pool', 'fw.create_weight', [1, 1, 1, 1], "VALID", data_format="NHWC")
-                            concat.assert_called_with(values=['conv2d', 'conv2d'], axis=3)
-                            batch_norm.assert_called_with('concat', True, mc.data_format, mc.weights, 3)
-                            self.assertEqual("batch_norm", retval)
+                with patch.object(mc.data_format, "get_strides", return_value="get_strides") as gets:
+                    with patch.object(mc.weights, "create_weight", return_value="fw.create_weight") as create_weight:
+                        retval = mc._factorized_reduction(None, 3, 24, 2, True, mc.weights, False)
+                        gets.assert_called_with(2)
+                        pad.assert_called_with(None, [[0, 0], [0, 1], [0, 1], [0, 0]])
+                        avg_pool.assert_called_with(pad().__getitem__(), [1, 1, 1, 1], 'get_strides', 'VALID', data_format='NHWC')
+                        create_weight.assert_called_with('path2_conv/', 'w', [1, 1, 3, 12], initializer=None, trainable=True)
+                        conv2d.assert_called_with('avg_pool', 'fw.create_weight', [1, 1, 1, 1], "VALID", data_format="NHWC")
+                        concat.assert_called_with(values=['conv2d', 'conv2d'], axis=3)
+                        batch_norm.assert_called_with('concat', True, mc.data_format, mc.weights, 24)
+                        self.assertEqual("batch_norm", retval)
 
     @patch('src.cifar10.child.batch_norm', return_value="batch_norm")
     @patch('src.cifar10.micro_child.fw.concat', return_value="concat")
@@ -109,18 +107,16 @@ class TestMicroChild(unittest.TestCase):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nchw):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
-            with patch.object(mc.data_format, "get_C", return_value=3) as getc:
                 with patch.object(mc.data_format, "get_strides", return_value="get_strides") as gets:
                     with patch.object(mc.weights, "get", return_value="fw.create_weight") as create_weight:
                         retval = mc._factorized_reduction(None, 3, 24, 2, True, mc.weights, False)
                         gets.assert_called_with(2)
                         pad.assert_called_with(None, [[0, 0], [0, 0], [0, 1], [0, 1]])
                         avg_pool.assert_called_with(pad().__getitem__(), [1, 1, 1, 1], 'get_strides', 'VALID', data_format='NCHW')
-                        getc.assert_called_with('concat')
                         create_weight.assert_called_with(False, 'path2_conv/', 'w', [1, 1, 3, 12], None)
                         conv2d.assert_called_with('avg_pool', 'fw.create_weight', [1, 1, 1, 1], "VALID", data_format="NCHW")
                         concat.assert_called_with(values=['conv2d', 'conv2d'], axis=1)
-                        batch_norm.assert_called_with('concat', True, mc.data_format, mc.weights, 3)
+                        batch_norm.assert_called_with('concat', True, mc.data_format, mc.weights, 24)
                         self.assertEqual("batch_norm", retval)
 
     @patch('src.cifar10.child.batch_norm', return_value="batch_norm")

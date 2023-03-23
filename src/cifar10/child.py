@@ -422,10 +422,12 @@ class Child(object):
 
 
   class FactorizedReduction(LayeredModel):
-    def __init__(self, is_training, data_format, weights):
+    def __init__(self, is_training, data_format, weights, num_input_chan):
+      def inner(x):
+        return batch_norm(x, is_training, data_format, weights, num_input_chan)
       self.layers = [
         lambda x: fw.concat(values=x, axis=data_format.concat_axis()),
-        lambda x: batch_norm(x, is_training, data_format, weights, data_format.get_C(x))]
+        inner]
 
 
   class Conv1x1(LayeredModel):
