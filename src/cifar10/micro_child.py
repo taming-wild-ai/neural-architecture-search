@@ -64,19 +64,13 @@ class MicroChild(Child):
 
 
   class SkipPath(LayeredModel):
-    def __init__(self, stride_spec, data_format, weights, reuse: bool, scope: str, out_filters):
-      def conv2d(x):
-        return fw.conv2d(
-          x,
-          weights.get(
-            reuse,
-            scope,
-            "w",
-            [1, 1, data_format.get_C(x), out_filters // 2],
-            None),
-          [1, 1, 1, 1],
-          "VALID",
-          data_format=data_format.name)
+    def __init__(self, stride_spec, data_format, weights, reuse: bool, scope: str, num_input_chan: int, out_filters):
+      w = weights.get(
+        reuse,
+        scope,
+        "w",
+        [1, 1, num_input_chan, out_filters // 2],
+        None)
       self.layers = [
         lambda x: fw.avg_pool(
           x,
@@ -84,7 +78,12 @@ class MicroChild(Child):
           stride_spec,
           "VALID",
           data_format=data_format.name),
-        conv2d]
+        lambda x: fw.conv2d(
+          x,
+          w,
+          [1, 1, 1, 1],
+          "VALID", # Only difference from MacroChild.SkipPath
+          data_format=data_format.name)]
 
 
   def _factorized_reduction(self, x, out_filters: int, stride, is_training: bool, weights, reuse: bool):
@@ -106,7 +105,7 @@ class MicroChild(Child):
     stride_spec = self.data_format.get_strides(stride)
     # Skip path 1
     with fw.name_scope("path1_conv") as scope:
-      skip_path = MicroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, out_filters)
+      skip_path = MicroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, self.data_format.get_C(x), out_filters)
       path1 = skip_path(x)
 
     # Skip path 2
@@ -116,7 +115,7 @@ class MicroChild(Child):
     concat_axis = self.data_format.concat_axis()
 
     with fw.name_scope("path2_conv") as scope:
-      skip_path = MicroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, out_filters)
+      skip_path = MicroChild.SkipPath(stride_spec, self.data_format, weights, reuse, scope, self.data_format.get_C(path2), out_filters)
       path2 = skip_path(path2)
 
     # Concat and apply BN

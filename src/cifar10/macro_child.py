@@ -62,18 +62,12 @@ class MacroChild(Child):
 
   class SkipPath(LayeredModel):
     def __init__(self, stride_spec, data_format, weights, reuse: bool, scope: str, num_input_chan: int, out_filters: int):
-      def conv2d(x):
-        return fw.conv2d(
-          x,
-          weights.get(
-            reuse,
-            scope,
-            "w",
-            [1, 1, num_input_chan, out_filters // 2],
-            None),
-          [1, 1, 1, 1],
-          "SAME",
-          data_format=data_format.name)
+      w = weights.get(
+        reuse,
+        scope,
+        "w",
+        [1, 1, num_input_chan, out_filters // 2],
+        None)
       self.layers = [
         lambda x: fw.avg_pool(
           x,
@@ -81,7 +75,12 @@ class MacroChild(Child):
           stride_spec,
           "VALID",
           data_format=data_format.name),
-        conv2d]
+        lambda x: fw.conv2d(
+          x,
+          w,
+          [1, 1, 1, 1],
+          "SAME", # Only difference from MicroChild.SkipPath
+          data_format=data_format.name)]
 
 
   def _factorized_reduction(self, x, num_input_chan: int, out_filters: int, stride, is_training: bool, weights, reuse: bool):
