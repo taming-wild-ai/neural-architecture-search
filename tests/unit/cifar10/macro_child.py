@@ -164,7 +164,7 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.macro_child.fw.matmul', return_value="matmul")
     @patch('src.cifar10.macro_child.fw.conv2d', return_value="conv2d")
     @patch('src.cifar10.child.batch_norm', return_value="final_path")
-    @patch('src.cifar10.macro_child.fw.dropout', return_value="dropout")
+    @patch('src.cifar10.macro_child.fw.dropout')
     def test_model_nhwc(self, dropout, batch_norm, conv2d, matmul, _print):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
@@ -180,8 +180,8 @@ class TestMacroChild(unittest.TestCase):
                             enas_layer.assert_called_with(1, ['final_path', 'enas_layer', 'enas_layer'], 18, 24, True, mc.weights, False)
                             global_avg_pool.assert_called_with('enas_layer')
                             dropout.assert_called_with('gap', 0.9)
-                            create_weight.assert_called_with(False, 'generic_model/fc/', "w", [3, 10], None)
-                            matmul.assert_called_with("dropout", "w")
+                            create_weight.assert_called_with(False, 'generic_model/fc/', "w", [dropout().get_shape().__getitem__(), 10], None)
+                            matmul.assert_called_with(dropout(), "w")
 
     @patch('src.cifar10.macro_child.print')
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
@@ -208,7 +208,7 @@ class TestMacroChild(unittest.TestCase):
                                 factorized_reduction.assert_called_with('enas_layer', get_c(), 24, 2, True, mc.weights, False)
                                 global_avg_pool.assert_called_with('enas_layer')
                                 dropout.assert_called_with('global_avg_pool', 0.9)
-                                create_weight.assert_called_with(False, 'generic_model/fc/', "w", [get_c(), 10], None)
+                                create_weight.assert_called_with(False, 'generic_model/fc/', "w", [3, 10], None)
                                 matmul.assert_called_with(dropout.return_value, 'fw.create_weight')
 
     @patch('src.cifar10.macro_child.print')
@@ -238,7 +238,7 @@ class TestMacroChild(unittest.TestCase):
                                 factorized_reduction.assert_called_with('enas_layer', get_c(), 48, 2, True, mc.weights, False)
                                 global_avg_pool.assert_called_with('enas_layer')
                                 dropout.assert_called_with('global_avg_pool', 0.9)
-                                create_weight.assert_called_with(False, 'generic_model/fc/', "w", [get_c(), 10], None)
+                                create_weight.assert_called_with(False, 'generic_model/fc/', "w", [3, 10], None)
                                 matmul.assert_called_with(dropout.return_value, 'fw.create_weight')
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init_nhwc)
