@@ -226,8 +226,10 @@ class MicroChild(Child):
               x = self._enas_layer(
                 layer_id, layers, self.normal_arc, out_filters, weights, reuse)
             else:
+              hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
+              c = [self.data_format.get_C(layers[0]), self.data_format.get_C(layers[1])]
               x = self._fixed_layer(
-                layer_id, layers, self.normal_arc, out_filters, 1, is_training,
+                layer_id, layers, self.normal_arc, hw, c, out_filters, 1, is_training,
                 weights, reuse, normal_or_reduction_cell="normal")
           else:
             out_filters *= 2
@@ -237,8 +239,10 @@ class MicroChild(Child):
               x = self._enas_layer(
                 layer_id, layers, self.reduce_arc, out_filters, weights, reuse)
             else:
+              hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
+              c = [self.data_format.get_C(layers[0]), self.data_format.get_C(layers[1])]
               x = self._fixed_layer(
-                layer_id, layers, self.reduce_arc, out_filters, 2, is_training,
+                layer_id, layers, self.reduce_arc, hw, c, out_filters, 2, is_training,
                 weights, reuse, normal_or_reduction_cell="reduction")
           print("Layer {0:>2d}: {1}".format(layer_id, x))
           layers = [layers[-1], x]
@@ -449,7 +453,7 @@ class MicroChild(Child):
         MicroChild.Operator.MaxPooling,
         MicroChild.Operator.Identity][op_id](child, num_input_chan, out_filters, x_stride, is_training, weights, reuse, scope, layer_id)
 
-  def _fixed_layer(self, layer_id, prev_layers, arc, out_filters, stride,
+  def _fixed_layer(self, layer_id, prev_layers, arc, hw, c, out_filters, stride,
                    is_training, weights, reuse, normal_or_reduction_cell="normal"):
     """
     Args:
@@ -459,9 +463,6 @@ class MicroChild(Child):
 
     assert len(prev_layers) == 2
     layers = [prev_layers[0], prev_layers[1]]
-
-    hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
-    c = [self.data_format.get_C(layers[0]), self.data_format.get_C(layers[1])]
     layers = self._maybe_calibrate_size(layers, hw, c, out_filters,
                                         is_training, weights, reuse)
 
@@ -595,7 +596,6 @@ class MicroChild(Child):
 
   def _enas_cell(self, x, curr_cell, prev_cell, op_id, num_input_chan: int, out_filters: int, weights, reuse: bool):
     """Performs an enas operation specified by op_id."""
-    assert num_input_chan == self.data_format.get_C(x)
     num_possible_inputs = curr_cell + 1
 
     with fw.name_scope("avg_pool") as scope:

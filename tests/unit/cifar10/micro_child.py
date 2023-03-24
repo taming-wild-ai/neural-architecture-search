@@ -370,14 +370,14 @@ class TestMicroChild(unittest.TestCase):
                 mc = MicroChild({}, {})
                 with patch.object(mc, '_maybe_calibrate_size', return_value=[0, 1]) as mcs:
                     with patch.object(mc.data_format, 'get_C', return_value="get_c") as get_c:
-                        with patch.object(mc, '_get_HW', return_value=32) as get_hw:
+                        with patch.object(mc, '_get_HW', return_value=32):
                             with patch.object(mc, '_apply_drop_path', return_value="adp") as adp:
                                 with patch.object(mc, '_fixed_combine', return_value="fc") as fc:
                                     with patch.object(mc.weights, 'get', return_value="fw.create_weight") as create_weight:
                                         layer1 = mock.MagicMock(name='layer1')
                                         layer2 = mock.MagicMock(name='layer2')
-                                        self.assertEqual("fc", mc._fixed_layer(0, [layer1, layer2], [0, 0, 0, 0, 0, 1, 0, 1, 0, 2, 0, 2, 0, 3, 0, 3, 0, 4, 0, 4], 24, 1, True, mc.weights, False))
-                                        mcs.assert_called_with([layer1, layer2], [32, 32], ['get_c', 'get_c'], 24, True, mc.weights, False)
+                                        self.assertEqual("fc", mc._fixed_layer(0, [layer1, layer2], [0, 0, 0, 0, 0, 1, 0, 1, 0, 2, 0, 2, 0, 3, 0, 3, 0, 4, 0, 4], [32, 32], [3, 3], 24, 1, True, mc.weights, False))
+                                        mcs.assert_called_with([layer1, layer2], [32, 32], [3, 3], 24, True, mc.weights, False)
                                         get_c.assert_called_with('batch_norm1batch_norm1')
                                         create_weight.assert_called_with(False, 'cell_4/y_conv/', "w", [1, 1, 'get_c', 24], None)
                                         relu.assert_called_with(0)
@@ -399,14 +399,12 @@ class TestMicroChild(unittest.TestCase):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
-            with patch.object(mc.data_format, 'get_C', return_value="get_c") as get_c:
                 with patch.object(mc, '_enas_conv', return_value="ec") as ec:
                     with patch.object(mc.weights, 'get', return_value="fw.create_weight") as create_weight:
-                        mc._enas_cell(None, 0, 1, 0, get_c(), 24, mc.weights, False)
+                        mc._enas_cell(None, 0, 1, 0, 3, 24, mc.weights, False)
                         avg_pool2d.assert_called_with(None, [3, 3], [1, 1], "SAME", data_format="channels_last")
-                        get_c.assert_called_with(None)
-                        create_weight.assert_called_with(False, 'x_conv/', "w", [1, 'get_c' * 24], None)
-                        reshape.assert_called_with('w', [1, 1, 'get_c', 24])
+                        create_weight.assert_called_with(False, 'x_conv/', "w", [1, 72], None)
+                        reshape.assert_called_with('w', [1, 1, 3, 24])
                         relu.assert_called_with(None)
                         conv2d.assert_called_with("relu", 'reshape', strides=[1, 1, 1, 1], padding="SAME", data_format="NHWC")
                         batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
