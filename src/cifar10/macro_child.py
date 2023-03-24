@@ -566,8 +566,6 @@ class MacroChild(Child):
     if start_idx is None:
       assert self.fixed_arc is not None, "you screwed up!"
 
-    assert num_input_chan == self.data_format.get_C(inputs), f"num_input_chan = {num_input_chan}, self.data_format.get_C(inputs) = {self.data_format.get_C(inputs)}"
-
     with fw.name_scope("inp_conv_1") as scope:
       inp_conv_1 = Child.InputConv(
         weights,

@@ -474,15 +474,13 @@ class TestMacroChild(unittest.TestCase):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
             with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
-                with patch.object(mc.data_format, 'get_C', return_value=3) as get_C:
-                    mc.fixed_arc = "0 3 0 0 1 0"
-                    input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
-                    mc._conv_branch(input_tensor, 24, True, 0, 3, 24, mc.weights, False)
-                    conv2d.assert_called_with('relu', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NHWC')
-                    batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
-                    relu.assert_called_with("batch_norm")
-                    create_weight.assert_called_with(False, 'out_conv_24/', 'w', [24, 24, 3, 0], None)
-                    get_C.assert_called_with(input_tensor)
+                mc.fixed_arc = "0 3 0 0 1 0"
+                input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
+                mc._conv_branch(input_tensor, 24, True, 0, 3, 24, mc.weights, False)
+                conv2d.assert_called_with('relu', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NHWC')
+                batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
+                relu.assert_called_with("batch_norm")
+                create_weight.assert_called_with(False, 'out_conv_24/', 'w', [24, 24, 3, 0], None)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     @patch('src.cifar10.macro_child.fw.conv2d', return_value="conv2d")
@@ -493,16 +491,14 @@ class TestMacroChild(unittest.TestCase):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
             with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
-                with patch.object(mc.data_format, 'get_C', return_value=3) as get_C:
-                    mc.fixed_arc = "0 3 0 0 1 0"
-                    input_tensor = tf.constant(np.ndarray((4, 3, 32, 32)), name="hashable")
-                    mc._conv_branch(input_tensor, 24, True, 0, 3, 24, mc.weights, False)
-                    create_weight.assert_any_call(False, 'inp_conv_1/', "w", [1, 1, 3, 24], None)
-                    conv2d.assert_called_with('relu', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
-                    batch_norm1.assert_called_with('conv2d', True, mc.data_format, mc.weights, 24)
-                    relu.assert_called_with("batch_norm")
-                    create_weight.assert_called_with(False, 'out_conv_24/', "w", [24, 24, 3, 0], None)
-                    get_C.assert_called_with(input_tensor)
+                mc.fixed_arc = "0 3 0 0 1 0"
+                input_tensor = tf.constant(np.ndarray((4, 3, 32, 32)), name="hashable")
+                mc._conv_branch(input_tensor, 24, True, 0, 3, 24, mc.weights, False)
+                create_weight.assert_any_call(False, 'inp_conv_1/', "w", [1, 1, 3, 24], None)
+                conv2d.assert_called_with('relu', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
+                batch_norm1.assert_called_with('conv2d', True, mc.data_format, mc.weights, 24)
+                relu.assert_called_with("batch_norm")
+                create_weight.assert_called_with(False, 'out_conv_24/', "w", [24, 24, 3, 0], None)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     @patch('src.cifar10.macro_child.fw.conv2d', return_value="conv2d")

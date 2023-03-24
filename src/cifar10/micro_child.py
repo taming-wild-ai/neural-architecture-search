@@ -177,7 +177,6 @@ class MicroChild(Child):
   class Dropout(LayeredModel):
     def __init__(self, data_format, is_training, keep_prob, weights, reuse, scope: str, num_input_chan: int):
       def matmul(x):
-        assert num_input_chan == data_format.get_C(x)
         return fw.matmul(
           x,
           weights.get(
@@ -346,7 +345,7 @@ class MicroChild(Child):
 
     return x
 
-  def _fixed_combine(self, layers, used, out_filters, is_training,
+  def _fixed_combine(self, layers, used, c, out_hw: int, out_filters, is_training,
                      normal_or_reduction_cell="normal"):
     """Adjust if necessary.
 
@@ -355,8 +354,6 @@ class MicroChild(Child):
       used: a numpy tensor, [0] means not used.
     """
 
-    out_hw = min([self._get_HW(layer)
-                  for i, layer in enumerate(layers) if used[i] == 0])
     out = []
 
     with fw.name_scope("final_combine") as scope:
@@ -366,7 +363,7 @@ class MicroChild(Child):
           if hw > out_hw:
             assert hw == out_hw * 2, ("i_hw={0} != {1}=o_hw".format(hw, out_hw))
             with fw.name_scope("calibrate_{0}".format(i)) as scope:
-              x = self._factorized_reduction(layer, self.data_format.get_C(layer), out_filters, 2, is_training)
+              x = self._factorized_reduction(layer, c[i], out_filters, 2, is_training)
           else:
             x = layer
           out.append(x)
@@ -473,7 +470,6 @@ class MicroChild(Child):
       layers[1] = lb(layers[1])
 
     used = np.zeros([self.num_cells + 2], dtype=np.int32)
-    f_sizes = [3, 5]
     for cell_id in range(self.num_cells):
       with fw.name_scope("cell_{}".format(cell_id)) as scope:
         x_id = arc[4 * cell_id]
@@ -495,7 +491,9 @@ class MicroChild(Child):
 
         out = x + y
         layers.append(out)
-    out = self._fixed_combine(layers, used, out_filters, is_training,
+    c = [self.data_format.get_C(layer) for layer in layers]
+    out_hw = min([self._get_HW(layer) for i, layer in enumerate(layers) if used[i] == 0])
+    out = self._fixed_combine(layers, used, c, out_hw, out_filters, is_training,
                               normal_or_reduction_cell)
 
     return out
