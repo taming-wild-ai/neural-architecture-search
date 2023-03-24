@@ -123,7 +123,6 @@ class MacroChild(Child):
   class Dropout(LayeredModel):
     def __init__(self, data_format, is_training, keep_prob, weights, reuse, scope, num_inp_chan):
       def matmul(x):
-        assert num_inp_chan == x.get_shape()[1], f"num_inp_chan = {num_inp_chan} but x.get_shape()[1] = {x.get_shape()[1]}"
         return fw.matmul(
           x,
           weights.get(
@@ -144,6 +143,7 @@ class MacroChild(Child):
         stem_conv = Child.StemConv(weights, reuse, scope, self.out_filters, is_training, self.data_format)
 
       layers = [stem_conv(images)]
+      layers_chans = [self.out_filters]
 
       if self.whole_channels:
         start_idx = 0
@@ -155,10 +155,13 @@ class MacroChild(Child):
       for layer_id in range(self.num_layers):
         with fw.name_scope("layer_{0}".format(layer_id)):
           if self.fixed_arc is None:
-            x = self._enas_layer(layer_id, layers, start_idx, out_filters, is_training, weights, reuse)
+            x = self._enas_layer(layer_id, layers, start_idx, self.data_format.get_C(layers[-1]), out_filters, is_training, weights, reuse)
+            layers.append(x)
+            layers_chans.append(...)
           else:
             x = self._fixed_layer(layer_id, layers, start_idx, out_filters, is_training, weights, reuse)
-          layers.append(x)
+            layers.append(x)
+            layers_chans.append(...)
           if layer_id in self.pool_layers:
             if self.fixed_arc is not None:
               out_filters *= 2
@@ -217,7 +220,7 @@ class MacroChild(Child):
         lambda x: batch_norm(x, is_training, data_format, weights),
         fw.relu]
 
-  def _enas_layer(self, layer_id, prev_layers, start_idx, out_filters, is_training: bool, weights, reuse: bool):
+  def _enas_layer(self, layer_id, prev_layers, start_idx, num_input_chan: int, out_filters: int, is_training: bool, weights, reuse: bool):
     """
     Args:
       layer_id: current layer
@@ -228,13 +231,14 @@ class MacroChild(Child):
     """
 
     inputs = prev_layers[-1]
+    assert self.data_format.get_C(inputs) == num_input_chan, f"self.data_format.get_C(inputs) = {self.data_format.get_C(inputs)}, num_input_chan = {num_input_chan}"
     with fw.name_scope("conv_1") as scope:
       input_conv = Child.InputConv(
         weights,
         reuse,
         scope,
         1,
-        self.data_format.get_C(inputs),
+        num_input_chan,
         self.out_filters,
         is_training,
         self.data_format)
