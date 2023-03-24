@@ -121,7 +121,7 @@ class MacroChild(Child):
 
 
   class Dropout(LayeredModel):
-    def __init__(self, data_format, is_training, keep_prob, weights, reuse, scope, num_inp_chan):
+    def __init__(self, data_format, is_training, keep_prob, weights, reuse, scope: str, num_inp_chan: int):
       def matmul(x):
         return fw.matmul(
           x,
@@ -231,7 +231,6 @@ class MacroChild(Child):
     """
 
     inputs = prev_layers[-1]
-    assert self.data_format.get_C(inputs) == num_input_chan, f"self.data_format.get_C(inputs) = {self.data_format.get_C(inputs)}, num_input_chan = {num_input_chan}"
     with fw.name_scope("conv_1") as scope:
       input_conv = Child.InputConv(
         weights,
@@ -331,7 +330,7 @@ class MacroChild(Child):
                                     lambda: fw.zeros_like(prev_layers[i])))
         res_layers.append(out)
         x = fw.add_n(res_layers)
-        out = batch_norm(x, is_training, self.data_format, weights, self.data_format.get_C(x))
+        out = batch_norm(x, is_training, self.data_format, weights, num_input_chan)
 
     return out
 

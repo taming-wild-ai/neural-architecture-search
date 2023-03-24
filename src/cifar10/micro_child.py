@@ -178,15 +178,16 @@ class MicroChild(Child):
 
 
   class Dropout(LayeredModel):
-    def __init__(self, data_format, is_training, keep_prob, weights, reuse, scope):
+    def __init__(self, data_format, is_training, keep_prob, weights, reuse, scope: str, num_input_chan: int):
       def matmul(x):
+        assert num_input_chan == data_format.get_C(x)
         return fw.matmul(
           x,
           weights.get(
             reuse,
             scope,
             "w",
-            [data_format.get_C(x), 10],
+            [num_input_chan, 10],
             None))
       self.layers = [
         fw.relu,
@@ -215,14 +216,6 @@ class MicroChild(Child):
       # the first two inputs
       with fw.name_scope("stem_conv") as scope:
         stem_conv = Child.StemConv(weights, reuse, scope, self.out_filters * 3, is_training, self.data_format)
-      with fw.name_scope("fc") as scope:
-        dropout = MicroChild.Dropout(
-          self.data_format,
-          is_training,
-          self.keep_prob,
-          weights,
-          reuse,
-          scope)
 
       with fw.name_scope("stem_conv") as scope:
         x = stem_conv(images)
@@ -300,6 +293,14 @@ class MicroChild(Child):
           print("Aux head uses {0} params".format(self.num_aux_vars))
 
       with fw.name_scope("fc") as scope:
+        dropout = MicroChild.Dropout(
+          self.data_format,
+          is_training,
+          self.keep_prob,
+          weights,
+          reuse,
+          scope,
+          self.data_format.get_C(x))
         x = dropout(x)
     return x
 
