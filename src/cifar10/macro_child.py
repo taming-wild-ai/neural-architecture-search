@@ -123,13 +123,14 @@ class MacroChild(Child):
   class Dropout(LayeredModel):
     def __init__(self, data_format, is_training, keep_prob, weights, reuse, scope, num_inp_chan):
       def matmul(x):
+        assert num_inp_chan == x.get_shape()[1], f"num_inp_chan = {num_inp_chan} but x.get_shape()[1] = {x.get_shape()[1]}"
         return fw.matmul(
           x,
           weights.get(
             reuse,
             scope,
             "w",
-            [x.get_shape()[1], 10],
+            [num_inp_chan, 10],
             None))
       self.layers = [data_format.global_avg_pool]
       if is_training:

@@ -171,7 +171,7 @@ class TestMacroChild(unittest.TestCase):
             mc.name = "generic_model"
             mc.keep_prob = 0.9
             with patch.object(mc.data_format, 'global_avg_pool', return_value='gap') as global_avg_pool:
-                with patch.object(mc.data_format, 'get_C', return_value=3):
+                with patch.object(mc.data_format, 'get_C', return_value=dropout().get_shape().__getitem__()):
                     with patch.object(mc, '_enas_layer', return_value="enas_layer") as enas_layer:
                         with patch.object(mc.weights, 'get', return_value='w') as create_weight:
                             mc._model({}, True, mc.weights)
@@ -199,7 +199,7 @@ class TestMacroChild(unittest.TestCase):
                 with patch.object(mc, '_enas_layer', return_value="enas_layer") as enas_layer:
                     with patch.object(mc, '_factorized_reduction', return_value="factorized_reduction") as factorized_reduction:
                         with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
-                            with patch.object(mc.data_format, 'get_C') as get_c:
+                            with patch.object(mc.data_format, 'get_C', return_value=3) as get_c:
                                 mc._model({}, True, mc.weights)
                                 create_weight.assert_any_call(False, 'generic_model/stem_conv/', "w", [3, 3, 3, 24], None)
                                 conv2d.assert_called_with({}, 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
@@ -229,7 +229,7 @@ class TestMacroChild(unittest.TestCase):
                 with patch.object(mc, '_fixed_layer', return_value="enas_layer") as fixed_layer:
                     with patch.object(mc, '_factorized_reduction', return_value="factorized_reduction") as factorized_reduction:
                         with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
-                            with patch.object(mc.data_format, 'get_C') as get_c:
+                            with patch.object(mc.data_format, 'get_C', return_value=3) as get_c:
                                 mc._model({}, True, mc.weights)
                                 create_weight.assert_any_call(False, 'generic_model/stem_conv/', "w", [3, 3, 3, 24], None)
                                 conv2d.assert_called_with({}, 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
