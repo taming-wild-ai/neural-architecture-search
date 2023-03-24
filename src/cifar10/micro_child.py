@@ -151,11 +151,8 @@ class MicroChild(Child):
         lambda x: batch_norm(x, is_training, data_format, weights, out_filters)]
 
 
-  def _maybe_calibrate_size(self, layers, out_filters, is_training, weights, reuse):
+  def _maybe_calibrate_size(self, layers, hw, c, out_filters, is_training, weights, reuse):
     """Makes sure layers[0] and layers[1] have the same shapes."""
-
-    hw = [self._get_HW(layer) for layer in layers]
-    c = [self.data_format.get_C(layer) for layer in layers]
 
     with fw.name_scope("calibrate") as scope:
       x = layers[0]
@@ -465,7 +462,10 @@ class MicroChild(Child):
 
     assert len(prev_layers) == 2
     layers = [prev_layers[0], prev_layers[1]]
-    layers = self._maybe_calibrate_size(layers, out_filters,
+
+    hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
+    c = [self.data_format.get_C(layers[0]), self.data_format.get_C(layers[1])]
+    layers = self._maybe_calibrate_size(layers, hw, c, out_filters,
                                         is_training, weights, reuse)
 
     with fw.name_scope("layer_base") as scope:
@@ -743,7 +743,9 @@ class MicroChild(Child):
     """
 
     assert len(prev_layers) == 2, "need exactly 2 inputs"
-    layers = self._maybe_calibrate_size([prev_layers[0], prev_layers[1]], out_filters, True, weights, reuse)
+    hw = [self._get_HW(prev_layers[0]), self._get_HW(prev_layers[1])]
+    c = [self.data_format.get_C(prev_layers[0]), self.data_format.get_C(prev_layers[1])]
+    layers = self._maybe_calibrate_size([prev_layers[0], prev_layers[1]], hw, c, out_filters, True, weights, reuse)
     used = []
     for cell_id in range(self.num_cells):
       prev_layers = fw.stack(layers, axis=0)
