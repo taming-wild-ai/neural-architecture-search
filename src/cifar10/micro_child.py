@@ -465,9 +465,8 @@ class MicroChild(Child):
     layers = [prev_layers[0], prev_layers[1]]
     layers = self._maybe_calibrate_size(layers, hw, c, out_filters,
                                         is_training, weights, reuse)
-
     with fw.name_scope("layer_base") as scope:
-      lb = MicroChild.LayerBase(weights, reuse, scope, self.data_format.get_C(layers[1]), out_filters, is_training, self.data_format)
+      lb = MicroChild.LayerBase(weights, reuse, scope, out_filters, out_filters, is_training, self.data_format)
       layers[1] = lb(layers[1])
 
     used = np.zeros([self.num_cells + 2], dtype=np.int32)
@@ -479,7 +478,7 @@ class MicroChild(Child):
         x = layers[x_id]
         x_stride = stride if x_id in [0, 1] else 1
         with fw.name_scope("x_conv") as scope:
-          op = MicroChild.Operator.new(x_op, self, self.data_format.get_C(x), out_filters, x_stride, is_training, weights, reuse, scope, layer_id)
+          op = MicroChild.Operator.new(x_op, self, out_filters, out_filters, x_stride, is_training, weights, reuse, scope, layer_id)
           x = op(x)
         y_id = arc[4 * cell_id + 2]
         used[y_id] += 1
@@ -487,12 +486,12 @@ class MicroChild(Child):
         y = layers[y_id]
         y_stride = stride if y_id in [0, 1] else 1
         with fw.name_scope("y_conv") as scope:
-          op = MicroChild.Operator.new(y_op, self, self.data_format.get_C(y), out_filters, y_stride, is_training, weights, reuse, scope, layer_id)
+          op = MicroChild.Operator.new(y_op, self, out_filters, out_filters, y_stride, is_training, weights, reuse, scope, layer_id)
           y = op(y)
 
         out = x + y
         layers.append(out)
-    c = [self.data_format.get_C(layer) for layer in layers]
+    c = [out_filters] * len(layers)
     out_hw = min([self._get_HW(layer) for i, layer in enumerate(layers) if used[i] == 0])
     out = self._fixed_combine(layers, used, c, out_hw, out_filters, is_training,
                               normal_or_reduction_cell)
