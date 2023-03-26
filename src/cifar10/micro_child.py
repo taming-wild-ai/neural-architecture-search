@@ -610,8 +610,8 @@ class MicroChild(Child):
       x = ec1(x)
 
     out = [
-      self._enas_conv(x, curr_cell, prev_cell, 3, out_filters, weights, reuse),
-      self._enas_conv(x, curr_cell, prev_cell, 5, out_filters, weights, reuse),
+      self._enas_conv(x, curr_cell, prev_cell, 3, self.data_format.get_C(x), out_filters, weights, reuse),
+      self._enas_conv(x, curr_cell, prev_cell, 5, self.data_format.get_C(x), out_filters, weights, reuse),
       avg_pool,
       max_pool,
       x,
@@ -670,7 +670,7 @@ class MicroChild(Child):
       self.layers = [
         lambda x: inner(x, weights, reuse, scope, num_possible_inputs, filter_size, prev_cell, num_input_chan, out_filters, data_format)]
 
-  def _enas_conv(self, x, curr_cell, prev_cell, filter_size, out_filters, weights, reuse: bool,
+  def _enas_conv(self, x, curr_cell, prev_cell, filter_size, num_input_chan: int, out_filters: int, weights, reuse: bool,
                  stack_conv=2):
     """Performs an enas convolution specified by the relevant parameters."""
 
@@ -679,7 +679,7 @@ class MicroChild(Child):
       for conv_id in range(stack_conv):
         with fw.name_scope("stack_{0}".format(conv_id)) as scope:
           # create params and pick the correct path
-          ec = MicroChild.ENASConv(weights, reuse, scope, num_possible_inputs, filter_size, prev_cell, self.data_format.get_C(x), out_filters, self.data_format)
+          ec = MicroChild.ENASConv(weights, reuse, scope, num_possible_inputs, filter_size, prev_cell, num_input_chan, out_filters, self.data_format)
           x = ec(x)
     return x
 
