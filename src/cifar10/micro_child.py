@@ -501,19 +501,22 @@ class MicroChild(Child):
 
   class MaxPool(LayeredModel):
     def __init__(self, data_format, num_input_chan: int, out_filters: int, reuse: bool, scope: str, curr_cell, prev_cell: int, weights):
-      def inner(x):
-        if num_input_chan != out_filters:
+      self.layers = [
+        lambda x: fw.max_pool2d(x, [3, 3], [1, 1], 'SAME', data_format=data_format.actual)]
+      if num_input_chan != out_filters:
+        w = weights.get(
+          reuse,
+          scope,
+          'w',
+          [curr_cell + 1, num_input_chan * out_filters],
+          None)
+        def inner(x):
           with fw.name_scope("conv"):
             return batch_norm(
               fw.conv2d(
                 fw.relu(x),
                 fw.reshape(
-                  weights.get(
-                    reuse,
-                    scope,
-                    'w',
-                    [curr_cell + 1, num_input_chan * out_filters],
-                    None)[prev_cell],
+                  w[prev_cell],
                   [1, 1, num_input_chan, out_filters]),
                 strides=[1, 1, 1, 1],
                 padding="SAME",
@@ -521,28 +524,27 @@ class MicroChild(Child):
               True,
               data_format,
               weights)
-        else:
-          return x
-      self.layers = [
-        lambda x: fw.max_pool2d(x, [3, 3], [1, 1], 'SAME', data_format=data_format.actual),
-        inner]
+        self.layers.append(inner)
 
 
   class AvgPool(LayeredModel):
     def __init__(self, data_format, num_input_chan: int, out_filters: int, reuse: bool, scope: str, curr_cell, prev_cell: int, weights):
-      def inner(x):
-        if num_input_chan != out_filters:
+      self.layers = [
+        lambda x: fw.avg_pool2d(x, [3, 3], [1, 1], 'SAME', data_format=data_format.actual)]
+      if num_input_chan != out_filters:
+        w = weights.get(
+          reuse,
+          scope,
+          'w',
+          [curr_cell + 1, num_input_chan * out_filters],
+          None)
+        def inner(x):
           with fw.name_scope("conv"):
             return batch_norm(
               fw.conv2d(
                 fw.relu(x),
                 fw.reshape(
-                  weights.get(
-                    reuse,
-                    scope,
-                    'w',
-                    [curr_cell + 1, num_input_chan * out_filters],
-                    None)[prev_cell],
+                  w[prev_cell],
                   [1, 1, num_input_chan, out_filters]),
                 strides=[1, 1, 1, 1],
                 padding="SAME",
@@ -550,48 +552,35 @@ class MicroChild(Child):
               True,
               data_format,
               weights)
-        else:
-          return x
-      self.layers = [
-        lambda x: fw.avg_pool2d(x, [3, 3], [1, 1], 'SAME', data_format=data_format.actual),
-        inner]
+        self.layers.append(inner)
 
 
   class ENASCell(LayeredModel):
-    @staticmethod
-    def inner(x, data_format, num_input_chan: int, out_filters: int, weights, reuse: bool, scope: str, num_possible_inputs: int, prev_cell: int):
-      if num_input_chan != out_filters:
-        return batch_norm(
-          fw.conv2d(
-            fw.relu(x),
-            fw.reshape(
-              weights.get(
-                reuse,
-                scope,
-                "w",
-                [num_possible_inputs, num_input_chan * out_filters],
-                None)[prev_cell],
-              [1, 1, num_input_chan, out_filters]),
-            strides=[1, 1, 1, 1],
-            padding="SAME",
-            data_format=data_format.name),
-          True,
-          data_format,
-          weights)
-      else:
-        return x
-
     def __init__(self, data_format, num_input_chan: int, out_filters: int, weights, reuse: bool, scope: str, num_possible_inputs: int, prev_cell: int):
-      self.layers = [lambda x: MicroChild.ENASCell.inner(
-        x,
-        data_format,
-        num_input_chan,
-        out_filters,
-        weights,
-        reuse,
-        scope,
-        num_possible_inputs,
-        prev_cell)]
+      self.layers = []
+      if num_input_chan != out_filters:
+        w = weights.get(
+          reuse,
+          scope,
+          "w",
+          [num_possible_inputs, num_input_chan * out_filters],
+          None)
+        def inner(x):
+          return batch_norm(
+            fw.conv2d(
+              fw.relu(x),
+              fw.reshape(
+                w[prev_cell],
+                [1, 1, num_input_chan, out_filters]),
+              strides=[1, 1, 1, 1],
+              padding="SAME",
+              data_format=data_format.name),
+            True,
+            data_format,
+            weights)
+        self.layers.append(inner)
+      else:
+        self.layers.append(lambda x: x)
 
   def _enas_cell(self, x, curr_cell, prev_cell, op_id, num_input_chan: int, out_filters: int, weights, reuse: bool):
     """Performs an enas operation specified by op_id."""
@@ -635,29 +624,26 @@ class MicroChild(Child):
           scope,
           "scale", [num_possible_inputs, out_filters],
           fw.ones_init())[prev_cell]
-
-      def inner(x, weights, reuse: bool, scope: str, num_possible_inputs: int, filter_size: int, prev_cell: int, num_input_chan: int, out_filters: int, data_format):
-        w_depthwise = fw.reshape(
-          weights.get(
-            reuse,
-            scope,
-            "w_depth",
-            [num_possible_inputs, filter_size * filter_size * num_input_chan], None)[prev_cell, :],
-          [filter_size, filter_size, num_input_chan, 1])
-
-        w_pointwise = fw.reshape(
-          weights.get(
-            reuse,
-            scope,
-            "w_point",
-            [num_possible_inputs, num_input_chan * out_filters], None)[prev_cell, :],
-          [1, 1, num_input_chan, out_filters])
-
+      weight_depthwise = weights.get(
+        reuse,
+        scope,
+        "w_depth",
+        [num_possible_inputs, filter_size * filter_size * num_input_chan], None)[prev_cell, :]
+      weight_pointwise = weights.get(
+        reuse,
+        scope,
+        "w_point",
+        [num_possible_inputs, num_input_chan * out_filters], None)[prev_cell, :]
+      def inner(x):
         return fw.fused_batch_norm(
           fw.separable_conv2d(
             fw.relu(x),
-            depthwise_filter=w_depthwise,
-            pointwise_filter=w_pointwise,
+            depthwise_filter=fw.reshape(
+              weight_depthwise,
+              [filter_size, filter_size, num_input_chan, 1]),
+            pointwise_filter=fw.reshape(
+              weight_pointwise,
+              [1, 1, num_input_chan, out_filters]),
             strides=[1, 1, 1, 1],
             padding="SAME",
             data_format=data_format.name),
@@ -667,8 +653,7 @@ class MicroChild(Child):
           data_format=data_format.name,
           is_training=True)[0]
 
-      self.layers = [
-        lambda x: inner(x, weights, reuse, scope, num_possible_inputs, filter_size, prev_cell, num_input_chan, out_filters, data_format)]
+      self.layers = [inner]
 
   def _enas_conv(self, x, curr_cell, prev_cell, filter_size, num_input_chan: int, out_filters: int, weights, reuse: bool,
                  stack_conv=2):
