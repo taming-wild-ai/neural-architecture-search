@@ -398,7 +398,7 @@ class TestMicroChild(unittest.TestCase):
                 mc = MicroChild({}, {})
                 with patch.object(mc, '_enas_conv', return_value="ec") as ec:
                     with patch.object(mc.weights, 'get', return_value="fw.create_weight") as create_weight:
-                        with patch.object(mc.data_format, 'get_C') as get_c:
+                        with patch.object(mc.data_format, 'get_C', return_value=24) as get_c:
                             mc._enas_cell(None, 0, 1, 0, 3, 24, mc.weights, False)
                             avg_pool2d.assert_called_with(None, [3, 3], [1, 1], "SAME", data_format="channels_last")
                             create_weight.assert_called_with(False, 'x_conv/', "w", [1, 72], None)
@@ -406,7 +406,7 @@ class TestMicroChild(unittest.TestCase):
                             relu.assert_called_with(None)
                             conv2d.assert_called_with("relu", 'reshape', strides=[1, 1, 1, 1], padding="SAME", data_format="NHWC")
                             batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
-                            ec.assert_called_with('batch_norm', 0, 1, 5, get_c(), 24, mc.weights, False)
+                            ec.assert_called_with('batch_norm', 0, 1, 5, 24, mc.weights, False)
                             stack.assert_called_with(['ec', 'ec', 'batch_norm', 'batch_norm', 'batch_norm'], axis=0)
 
     @patch('src.cifar10.micro_child.fw.ones_init', return_value="ones")
@@ -421,10 +421,10 @@ class TestMicroChild(unittest.TestCase):
                 mc = MicroChild({}, {})
                 with patch.object(mc.weights, 'get') as create_weight:
                     create_weight().__getitem__ = mock.MagicMock()
-                    mc._enas_conv(None, 0, 0, 3, 3, 24, mc.weights, False)
+                    mc._enas_conv(None, 0, 0, 3, 24, mc.weights, False)
                     create_weight.assert_any_call(False, 'conv_3x3/stack_1/bn/', 'scale', [2, 24], 'ones')
-                    create_weight.assert_called_with(False, 'conv_3x3/stack_1/bn/', 'w_point', [2, 3 * 24], None)
-                    reshape.assert_called_with(create_weight().__getitem__(), [1, 1, 3, 24])
+                    create_weight.assert_called_with(False, 'conv_3x3/stack_1/bn/', 'w_point', [2, 576], None)
+                    reshape.assert_called_with(create_weight().__getitem__(), [1, 1, 24, 24])
                     relu.assert_called_with('f')
                     s_conv.assert_called_with('relu', depthwise_filter='reshape', pointwise_filter='reshape', strides=[1, 1, 1, 1], padding="SAME", data_format="NHWC")
                     fbn.assert_called_with('s_conv2d', create_weight().__getitem__(), create_weight().__getitem__(), epsilon=1e-05, data_format='NHWC', is_training=True)
