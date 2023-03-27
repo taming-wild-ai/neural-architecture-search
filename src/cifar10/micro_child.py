@@ -223,8 +223,10 @@ class MicroChild(Child):
         with fw.name_scope("layer_{0}".format(layer_id)) as scope:
           if layer_id not in self.pool_layers:
             if self.fixed_arc is None:
+              hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
+              c = [self.data_format.get_C(layers[0]), self.data_format.get_C(layers[1])]
               x = self._enas_layer(
-                layer_id, layers, self.normal_arc, out_filters, weights, reuse)
+                layer_id, layers, self.normal_arc, hw, c, out_filters, weights, reuse)
             else:
               hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
               c = [self.data_format.get_C(layers[0]), self.data_format.get_C(layers[1])]
@@ -236,8 +238,10 @@ class MicroChild(Child):
             if self.fixed_arc is None:
               x = self._factorized_reduction(x, self.data_format.get_C(x), out_filters, 2, is_training, weights, reuse)
               layers = [layers[-1], x]
+              hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
+              c = [self.data_format.get_C(layers[0]), self.data_format.get_C(layers[1])]
               x = self._enas_layer(
-                layer_id, layers, self.reduce_arc, out_filters, weights, reuse)
+                layer_id, layers, self.reduce_arc, hw, c, out_filters, weights, reuse)
             else:
               hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
               c = [self.data_format.get_C(layers[0]), self.data_format.get_C(layers[1])]
@@ -714,7 +718,7 @@ class MicroChild(Child):
           lambda x: fw.reshape(x, [-1])]
 
 
-  def _enas_layer(self, layer_id, prev_layers, arc, out_filters, weights, reuse):
+  def _enas_layer(self, layer_id, prev_layers, arc, hw, c, out_filters, weights, reuse):
     """
     Args:
       layer_id: current layer
@@ -724,8 +728,6 @@ class MicroChild(Child):
     """
 
     assert len(prev_layers) == 2, "need exactly 2 inputs"
-    hw = [self._get_HW(prev_layers[0]), self._get_HW(prev_layers[1])]
-    c = [self.data_format.get_C(prev_layers[0]), self.data_format.get_C(prev_layers[1])]
     layers = self._maybe_calibrate_size([prev_layers[0], prev_layers[1]], hw, c, out_filters, True, weights, reuse)
     used = []
     for cell_id in range(self.num_cells):
