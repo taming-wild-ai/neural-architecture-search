@@ -143,36 +143,38 @@ class MacroChild(Child):
         stem_conv = Child.StemConv(weights, reuse, scope, self.out_filters, is_training, self.data_format)
 
       layers = [stem_conv(images)]
-      layers_chans = [self.out_filters]
+      out_filters = self.out_filters
+      layers_channels = [out_filters]
 
       if self.whole_channels:
         start_idx = 0
       else:
         start_idx = self.num_branches
 
-      out_filters = self.out_filters
-
       for layer_id in range(self.num_layers):
         with fw.name_scope("layer_{0}".format(layer_id)):
           if self.fixed_arc is None:
-            x = self._enas_layer(layer_id, layers, start_idx, self.data_format.get_C(layers[-1]), out_filters, is_training, weights, reuse)
+            x = self._enas_layer(layer_id, layers, start_idx, out_filters, out_filters, is_training, weights, reuse)
             layers.append(x)
-            layers_chans.append(...)
+            layers_channels.append(out_filters)
           else:
-            x = self._fixed_layer(layer_id, layers, start_idx, self.data_format.get_C(layers[-1]), out_filters, is_training, weights, reuse)
+            x = self._fixed_layer(layer_id, layers, start_idx, out_filters, out_filters, is_training, weights, reuse)
             layers.append(x)
-            layers_chans.append(...)
+            layers_channels.append(out_filters)
           if layer_id in self.pool_layers:
             if self.fixed_arc is not None:
               out_filters *= 2
             with fw.name_scope("pool_at_{0}".format(layer_id)):
               pooled_layers = []
+              pooled_layers_channels = []
               for i, layer in enumerate(layers):
                 with fw.name_scope("from_{0}".format(i)):
                   x = self._factorized_reduction(
-                    layer, self.data_format.get_C(layer), out_filters, 2, is_training, weights, reuse)
+                    layer, layers_channels[i], out_filters, 2, is_training, weights, reuse)
                 pooled_layers.append(x)
+                pooled_layers_channels.append(out_filters)
               layers = pooled_layers
+              layers_channels = pooled_layers_channels
         if self.whole_channels:
           start_idx += 1 + layer_id
         else:
@@ -187,7 +189,7 @@ class MacroChild(Child):
           weights,
           reuse,
           scope,
-          self.data_format.get_C(x))
+          layers_channels[-1])
         x = dropout(x)
     return x
 

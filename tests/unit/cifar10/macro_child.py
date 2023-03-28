@@ -166,7 +166,6 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.child.batch_norm', return_value="final_path")
     @patch('src.cifar10.macro_child.fw.dropout')
     def test_model_nhwc(self, dropout, batch_norm, conv2d, matmul, _print):
-        channels = dropout().get_shape().__getitem__()
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
             mc.name = "generic_model"
@@ -178,10 +177,10 @@ class TestMacroChild(unittest.TestCase):
                             mc._model({}, True, mc.weights)
                             create_weight.assert_any_call(False, 'generic_model/stem_conv/', "w", [3, 3, 3, 24], None)
                             conv2d.assert_called_with({}, 'w', [1, 1, 1, 1], 'SAME', data_format='NHWC')
-                            enas_layer.assert_called_with(1, ['final_path', 'enas_layer', 'enas_layer'], 18, channels, 24, True, mc.weights, False)
+                            enas_layer.assert_called_with(1, ['final_path', 'enas_layer', 'enas_layer'], 18, 24, 24, True, mc.weights, False)
                             global_avg_pool.assert_called_with('enas_layer')
                             dropout.assert_called_with('gap', 0.9)
-                            create_weight.assert_called_with(False, 'generic_model/fc/', "w", [channels, 10], None)
+                            create_weight.assert_called_with(False, 'generic_model/fc/', "w", [24, 10], None)
                             matmul.assert_called_with(dropout(), "w")
 
     @patch('src.cifar10.macro_child.print')
@@ -200,17 +199,16 @@ class TestMacroChild(unittest.TestCase):
                 with patch.object(mc, '_enas_layer', return_value="enas_layer") as enas_layer:
                     with patch.object(mc, '_factorized_reduction', return_value="factorized_reduction") as factorized_reduction:
                         with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
-                            with patch.object(mc.data_format, 'get_C', return_value=3) as get_c:
-                                mc._model({}, True, mc.weights)
-                                create_weight.assert_any_call(False, 'generic_model/stem_conv/', "w", [3, 3, 3, 24], None)
-                                conv2d.assert_called_with({}, 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
-                                batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights, 24)
-                                enas_layer.assert_called_with(1, ['factorized_reduction', 'factorized_reduction', 'enas_layer'], 18, 3, 24, True, mc.weights, False)
-                                factorized_reduction.assert_called_with('enas_layer', get_c(), 24, 2, True, mc.weights, False)
-                                global_avg_pool.assert_called_with('enas_layer')
-                                dropout.assert_called_with('global_avg_pool', 0.9)
-                                create_weight.assert_called_with(False, 'generic_model/fc/', "w", [3, 10], None)
-                                matmul.assert_called_with(dropout.return_value, 'fw.create_weight')
+                            mc._model({}, True, mc.weights)
+                            create_weight.assert_any_call(False, 'generic_model/stem_conv/', "w", [3, 3, 3, 24], None)
+                            conv2d.assert_called_with({}, 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
+                            batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights, 24)
+                            enas_layer.assert_called_with(1, ['factorized_reduction', 'factorized_reduction', 'enas_layer'], 18, 24, 24, True, mc.weights, False)
+                            factorized_reduction.assert_called_with('enas_layer', 24, 24, 2, True, mc.weights, False)
+                            global_avg_pool.assert_called_with('enas_layer')
+                            dropout.assert_called_with('global_avg_pool', 0.9)
+                            create_weight.assert_called_with(False, 'generic_model/fc/', "w", [24, 10], None)
+                            matmul.assert_called_with(dropout.return_value, 'fw.create_weight')
 
     @patch('src.cifar10.macro_child.print')
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
@@ -230,17 +228,16 @@ class TestMacroChild(unittest.TestCase):
                 with patch.object(mc, '_fixed_layer', return_value="enas_layer") as fixed_layer:
                     with patch.object(mc, '_factorized_reduction', return_value="factorized_reduction") as factorized_reduction:
                         with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
-                            with patch.object(mc.data_format, 'get_C', return_value=3) as get_c:
-                                mc._model({}, True, mc.weights)
-                                create_weight.assert_any_call(False, 'generic_model/stem_conv/', "w", [3, 3, 3, 24], None)
-                                conv2d.assert_called_with({}, 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
-                                batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights, 24)
-                                fixed_layer.assert_called_with(1, ['factorized_reduction', 'factorized_reduction', 'enas_layer'], 1, 3, 48, True, mc.weights, False)
-                                factorized_reduction.assert_called_with('enas_layer', get_c(), 48, 2, True, mc.weights, False)
-                                global_avg_pool.assert_called_with('enas_layer')
-                                dropout.assert_called_with('global_avg_pool', 0.9)
-                                create_weight.assert_called_with(False, 'generic_model/fc/', "w", [3, 10], None)
-                                matmul.assert_called_with(dropout.return_value, 'fw.create_weight')
+                            mc._model({}, True, mc.weights)
+                            create_weight.assert_any_call(False, 'generic_model/stem_conv/', "w", [3, 3, 3, 24], None)
+                            conv2d.assert_called_with({}, 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
+                            batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights, 24)
+                            fixed_layer.assert_called_with(1, ['factorized_reduction', 'factorized_reduction', 'enas_layer'], 1, 48, 48, True, mc.weights, False)
+                            factorized_reduction.assert_called_with('enas_layer', 24, 48, 2, True, mc.weights, False)
+                            global_avg_pool.assert_called_with('enas_layer')
+                            dropout.assert_called_with('global_avg_pool', 0.9)
+                            create_weight.assert_called_with(False, 'generic_model/fc/', "w", [48, 10], None)
+                            matmul.assert_called_with(dropout.return_value, 'fw.create_weight')
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init_nhwc)
     @patch('src.cifar10.macro_child.Child.InputConv')
