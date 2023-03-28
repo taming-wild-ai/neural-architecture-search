@@ -731,18 +731,18 @@ class MicroChild(Child):
     layers = self._maybe_calibrate_size([prev_layers[0], prev_layers[1]], hw, c, out_filters, True, weights, reuse)
     used = []
     for cell_id in range(self.num_cells):
-      prev_layers = fw.stack(layers, axis=0)
+      prev_layers = fw.stack(layers, axis=0) # Always 2, N, H, W, C or 2, N, C, H, W
       with fw.name_scope("cell_{0}".format(cell_id)) as scope:
         with fw.name_scope("x") as scope:
-          x_id = arc[4 * cell_id]
+          x_id = arc[4 * cell_id] # always in {0, 1}
           x = prev_layers[x_id, :, :, :, :]
-          x = self._enas_cell(x, cell_id, x_id, arc[4 * cell_id + 1], self.data_format.get_C(x), out_filters, weights, reuse)
+          x = self._enas_cell(x, cell_id, x_id, arc[4 * cell_id + 1], out_filters, out_filters, weights, reuse)
           x_used = fw.one_hot(x_id, depth=self.num_cells + 2, dtype=fw.int32)
 
         with fw.name_scope("y") as scope:
-          y_id = arc[4 * cell_id + 2]
+          y_id = arc[4 * cell_id + 2] # always in {0, 1}
           y = prev_layers[y_id, :, :, :, :]
-          y = self._enas_cell(y, cell_id, y_id, arc[4 * cell_id + 3], self.data_format.get_C(y), out_filters, weights, reuse)
+          y = self._enas_cell(y, cell_id, y_id, arc[4 * cell_id + 3], out_filters, out_filters, weights, reuse)
           y_used = fw.one_hot(y_id, depth=self.num_cells + 2, dtype=fw.int32)
 
         out = x + y
