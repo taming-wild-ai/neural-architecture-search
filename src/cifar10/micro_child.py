@@ -87,7 +87,10 @@ class MicroChild(Child):
 
 
   def _factorized_reduction(self, x, num_input_chan: int, out_filters: int, stride, is_training: bool, weights, reuse: bool):
-    """Reduces the shape of x without information loss due to striding."""
+    """
+    Reduces the shape of x without information loss due to striding.
+    Output channels/filters: out_filters // 2 * 2
+    """
     assert out_filters % 2 == 0, (
         "Need even number of filters when using this factorized reduction.")
     if stride == 1:
@@ -203,7 +206,10 @@ class MicroChild(Child):
 
 
   def _model(self, weights, images, is_training, reuse=False):
-    """Compute the logits given the images."""
+    """
+    Compute the logits given the images.
+    Input channels: 3
+    """
 
     if self.fixed_arc is None:
       is_training = True
@@ -212,10 +218,11 @@ class MicroChild(Child):
       # the first two inputs
       with fw.name_scope("stem_conv") as scope:
         stem_conv = Child.StemConv(weights, reuse, scope, self.out_filters * 3, is_training, self.data_format)
-
+      x_chan = self.out_filters * 3
       with fw.name_scope("stem_conv") as scope:
         x = stem_conv(images)
       layers = [x, x]
+      layers_channels = [x_chan, x_chan]
 
       # building layers in the micro space
       out_filters = self.out_filters
@@ -224,32 +231,32 @@ class MicroChild(Child):
           if layer_id not in self.pool_layers:
             if self.fixed_arc is None:
               hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
-              c = [self.data_format.get_C(layers[0]), self.data_format.get_C(layers[1])]
               x = self._enas_layer(
-                layer_id, layers, self.normal_arc, hw, c, out_filters, weights, reuse)
+                layer_id, layers, self.normal_arc, hw, layers_channels, out_filters, weights, reuse)
+              x_chan = out_filters
             else:
               hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
-              c = [self.data_format.get_C(layers[0]), self.data_format.get_C(layers[1])]
-              x = self._fixed_layer(
-                layer_id, layers, self.normal_arc, hw, c, out_filters, 1, is_training,
+              x, x_chan = self._fixed_layer(
+                layer_id, layers, self.normal_arc, hw, layers_channels, out_filters, 1, is_training,
                 weights, reuse, normal_or_reduction_cell="normal")
           else:
             out_filters *= 2
             if self.fixed_arc is None:
-              x = self._factorized_reduction(x, self.data_format.get_C(x), out_filters, 2, is_training, weights, reuse)
+              x = self._factorized_reduction(x, x_chan, out_filters, 2, is_training, weights, reuse)
               layers = [layers[-1], x]
+              layers_channels = [layers_channels[-1], out_filters]
               hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
-              c = [self.data_format.get_C(layers[0]), self.data_format.get_C(layers[1])]
               x = self._enas_layer(
-                layer_id, layers, self.reduce_arc, hw, c, out_filters, weights, reuse)
+                layer_id, layers, self.reduce_arc, hw, layers_channels, out_filters, weights, reuse)
+              x_chan = out_filters
             else:
               hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
-              c = [self.data_format.get_C(layers[0]), self.data_format.get_C(layers[1])]
-              x = self._fixed_layer(
-                layer_id, layers, self.reduce_arc, hw, c, out_filters, 2, is_training,
+              x, x_chan = self._fixed_layer(
+                layer_id, layers, self.reduce_arc, hw, layers_channels, out_filters, 2, is_training,
                 weights, reuse, normal_or_reduction_cell="reduction")
           print("Layer {0:>2d}: {1}".format(layer_id, x))
           layers = [layers[-1], x]
+          layers_channels = [layers_channels[-1], x_chan]
 
         # auxiliary heads
         self.num_aux_vars = 0
@@ -259,7 +266,10 @@ class MicroChild(Child):
           print("Using aux_head at layer {0}".format(layer_id))
           with fw.name_scope("aux_head") as scope:
             aux_logits = fw.avg_pool2d(
-              fw.relu(x), [5, 5], [3, 3], "VALID",
+              fw.relu(x),
+              [5, 5],
+              [3, 3],
+              "VALID",
               data_format=self.data_format.actual)
             with fw.name_scope("proj") as scope:
               inp_conv = Child.InputConv(
@@ -267,7 +277,7 @@ class MicroChild(Child):
                 reuse,
                 scope,
                 1,
-                self.data_format.get_C(aux_logits),
+                x_chan,
                 128,
                 is_training,
                 self.data_format)
@@ -280,7 +290,7 @@ class MicroChild(Child):
                 reuse,
                 scope,
                 hw,
-                self.data_format.get_C(aux_logits),
+                128,
                 768,
                 True,
                 self.data_format)
@@ -304,7 +314,7 @@ class MicroChild(Child):
           weights,
           reuse,
           scope,
-          self.data_format.get_C(x))
+          x_chan)
         x = dropout(x)
     return x
 
@@ -463,6 +473,9 @@ class MicroChild(Child):
     Args:
       prev_layers: cache of previous layers. for skip connections
       is_training: for batch_norm
+    Returns:
+      Output layer
+      Number of output channels
     """
 
     assert len(prev_layers) == 2
@@ -496,11 +509,14 @@ class MicroChild(Child):
         out = x + y
         layers.append(out)
     c = [out_filters] * len(layers)
-    out_hw = min([self._get_HW(layer) for i, layer in enumerate(layers) if used[i] == 0])
+    hws = []
+    for i, layer in enumerate(layers):
+      if used[i] == 0:
+        hws.append(self._get_HW(layer))
+    out_hw = min(hws)
     out = self._fixed_combine(layers, used, c, out_hw, out_filters, is_training,
                               normal_or_reduction_cell)
-
-    return out
+    return out, out_filters // 2 * 2 * len(hws)
 
 
   class MaxPool(LayeredModel):
@@ -674,6 +690,9 @@ class MicroChild(Child):
 
   class ENASLayer(LayeredModel):
     def __init__(self, weights, reuse: bool, scope:str, num_cells: int, out_filters: int, indices: list[int], num_outs, data_format, prev_layers: list[int]):
+      """
+      Output channels/filters: out_filters
+      """
       filters = fw.reshape(
         fw.gather(
           weights.get(
@@ -725,6 +744,7 @@ class MicroChild(Child):
       prev_layers: cache of previous layers. for skip connections
       start_idx: where to start looking at. technically, we can infer this
         from layer_id, but why bother...
+    Output channels: out_filters
     """
 
     assert len(prev_layers) == 2, "need exactly 2 inputs"

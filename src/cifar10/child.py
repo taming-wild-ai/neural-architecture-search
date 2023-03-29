@@ -422,6 +422,9 @@ class Child(object):
 
 
   class FactorizedReduction(LayeredModel):
+    """
+    Output channels: num_input_chan
+    """
     def __init__(self, is_training, data_format, weights, num_input_chan):
       def inner(x):
         return batch_norm(x, is_training, data_format, weights, num_input_chan)
@@ -458,6 +461,9 @@ class Child(object):
 
   class StemConv(LayeredModel):
     def __init__(self, weights, reuse, scope, out_filters, is_training, data_format):
+      """
+      Output channels (filters): out_filters
+      """
       w = weights.get(reuse, scope, "w", [3, 3, 3, out_filters], None)
       self.layers = [
         lambda x: fw.conv2d(
@@ -470,6 +476,9 @@ class Child(object):
 
 
   class InputConv(LayeredModel):
+    """
+    Output channels/filters: out_filters
+    """
     def __init__(self, weights, reuse, scope, hw, num_inp_chan: int, out_filters: int, is_training: bool, data_format):
       def conv2d(x):
         return fw.conv2d(

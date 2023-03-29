@@ -10,6 +10,9 @@ def drop_path(x, keep_prob):
     dtype=fw.float32))
 
 def batch_norm(x, is_training, data_format, weights, num_chan: int, name="bn", decay=0.9, epsilon=1e-5):
+  """
+  Output channels/filters: num_chan
+  """
   shape = [num_chan]
 
   with fw.name_scope(name) as scope:
