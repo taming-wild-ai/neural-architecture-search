@@ -810,14 +810,11 @@ class MicroChild(Child):
     else:
       train_loss = loss
 
-    tf_variables = [
-      var for var in fw.trainable_variables() if (
-        var.name.startswith(self.name) and "aux_head" not in var.name)]
-    print("Model has {0} params".format(count_model_params(tf_variables)))
+    print("Model has {0} params".format(count_model_params(self.tf_variables())))
 
     train_op, lr, grad_norm, optimizer = get_train_ops(
       train_loss,
-      tf_variables,
+      self.tf_variables(),
       self.global_step,
       self.learning_rate,
       clip_mode=self.clip_mode,

@@ -401,6 +401,9 @@ class Child(object):
   def _model(self, images, is_training, reuse=None):
     raise NotImplementedError("Abstract method")
 
+  def tf_variables(self):
+    return [var for var in fw.trainable_variables() if var.name.startswith(self.name) and "aux_head" not in var.name]
+
 
   class PathConv(LayeredModel):
     def __init__(self, weights, reuse: bool, scope: str, input_chan: int, out_filters: int, is_training, data_format):

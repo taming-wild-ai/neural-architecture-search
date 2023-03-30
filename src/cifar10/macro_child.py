@@ -691,14 +691,12 @@ class MacroChild(Child):
     loss = loss_model(logits)
     train_acc = train_model(logits)
 
-    tf_variables = [var
-        for var in fw.trainable_variables() if var.name.startswith(self.name)]
-    print("Model has {} params".format(count_model_params(tf_variables)))
+    print("Model has {} params".format(count_model_params(self.tf_variables())))
 
     global_step = fw.get_or_create_global_step()
     train_op, lr, grad_norm, optimizer = get_train_ops(
       loss,
-      tf_variables,
+      self.tf_variables(),
       global_step,
       self.learning_rate,
       clip_mode=self.clip_mode,
