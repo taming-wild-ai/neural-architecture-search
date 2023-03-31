@@ -279,7 +279,7 @@ class TestMacroChild(unittest.TestCase):
                         conv_branch.assert_called_with(input_tensor, 5, True, 3, 24, 24, mc.weights, False, start_idx=0, separable=True)
                         case.assert_called()
                         batch_norm.assert_called_with('add_n', True, mc.data_format, mc.weights, get_c())
-                        create_weight.assert_not_called()
+                        create_weight.assert_called_with(False, 'conv_1/', 'w', [1, 1, 3, 24], None)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init_nhwc)
     @patch('src.cifar10.macro_child.fw.reshape', return_value="reshape")

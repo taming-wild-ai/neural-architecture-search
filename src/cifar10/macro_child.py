@@ -234,7 +234,16 @@ class MacroChild(Child):
 
     inputs = prev_layers[-1]
     with fw.name_scope("conv_1") as scope:
-      input_conv = Child.InputConv(
+      input_conv4 = Child.InputConv(
+        weights,
+        reuse,
+        scope,
+        1,
+        num_input_chan,
+        self.out_filters,
+        is_training,
+        self.data_format)
+      input_conv5 = Child.InputConv(
         weights,
         reuse,
         scope,
@@ -267,12 +276,12 @@ class MacroChild(Child):
       if self.num_branches >= 5:
         with fw.name_scope("branch_4"):
           y = self._pool_branch(inputs, out_filters, "avg",
-                                input_conv, start_idx=0)
+                                input_conv4, start_idx=0)
         branches[fw.equal(count, 4)] = lambda: y
       if self.num_branches >= 6:
         with fw.name_scope("branch_5"):
           y = self._pool_branch(inputs, out_filters, "max",
-                                input_conv, start_idx=0)
+                                input_conv5, start_idx=0)
         branches[fw.equal(count, 5)] = lambda: y
       out = fw.case(branches, default=lambda: fw.constant(0, fw.float32),
                     exclusive=True)
@@ -298,11 +307,11 @@ class MacroChild(Child):
       if self.num_branches >= 5:
         with fw.name_scope("branch_4"):
           branches.append(self._pool_branch(inputs, count[9],
-                                            "avg", input_conv, start_idx=count[8]))
+                                            "avg", input_conv4, start_idx=count[8]))
       if self.num_branches >= 6:
         with fw.name_scope("branch_5"):
           branches.append(self._pool_branch(inputs, count[11],
-                                            "max", input_conv, start_idx=count[10]))
+                                            "max", input_conv5, start_idx=count[10]))
 
       with fw.name_scope("final_conv") as scope:
         inp = prev_layers[-1]
@@ -349,16 +358,6 @@ class MacroChild(Child):
     """
 
     inputs = prev_layers[-1]
-    with fw.name_scope("conv_1") as scope:
-      input_conv = Child.InputConv(
-        weights,
-        reuse,
-        scope,
-        1,
-        num_input_chan,
-        self.out_filters,
-        is_training,
-        self.data_format)
     if self.whole_channels:
       inp_c = num_input_chan
 
@@ -398,15 +397,35 @@ class MacroChild(Child):
         branches.append(
           self._conv_branch(inputs, 5, is_training, count[7], separable=True))
       if self.num_branches >= 5:
+        with fw.name_scope("conv_1") as scope:
+          input_conv4 = Child.InputConv(
+            weights,
+            reuse,
+            scope,
+            1,
+            num_input_chan,
+            self.out_filters,
+            is_training,
+            self.data_format)
         with fw.name_scope("branch_4"):
           total_out_channels += count[9]
           branches.append(
-            self._pool_branch(inputs, count[9], "avg", input_conv))
+            self._pool_branch(inputs, count[9], "avg", input_conv4))
       if self.num_branches >= 6:
+        with fw.name_scope("conv_1") as scope:
+          input_conv5 = Child.InputConv(
+            weights,
+            reuse,
+            scope,
+            1,
+            num_input_chan,
+            self.out_filters,
+            is_training,
+            self.data_format)
         with fw.name_scope("branch_5"):
           total_out_channels += count[11]
           branches.append(
-            self._pool_branch(inputs, count[11], "max", input_conv))
+            self._pool_branch(inputs, count[11], "max", input_conv5))
 
       with fw.name_scope("final_conv") as scope:
         branches = self.data_format.fixed_layer(branches)

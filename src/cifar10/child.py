@@ -407,21 +407,22 @@ class Child(object):
 
   class PathConv(LayeredModel):
     def __init__(self, weights, reuse: bool, scope: str, input_chan: int, out_filters: int, is_training, data_format):
+      w = weights.get(
+        reuse,
+        scope,
+        "w",
+        [1, 1, input_chan, out_filters],
+        None)
       def conv2d(x):
         return fw.conv2d(
           x,
-          weights.get(
-            reuse,
-            scope,
-            "w",
-            [1, 1, input_chan, out_filters],
-            None),
+          w,
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name)
-      self.layers = [
-        conv2d,
-        lambda x: batch_norm(x, is_training, data_format, weights)]
+      def bn(x):
+        return batch_norm(x, is_training, data_format, weights)
+      self.layers = [conv2d, bn]
 
 
   class FactorizedReduction(LayeredModel):
@@ -429,37 +430,41 @@ class Child(object):
     Output channels: num_input_chan
     """
     def __init__(self, is_training, data_format, weights, num_input_chan):
-      def inner(x):
+      def concat(x):
+        return fw.concat(values=x, axis=data_format.concat_axis())
+      def bn(x):
         return batch_norm(x, is_training, data_format, weights, num_input_chan)
-      self.layers = [
-        lambda x: fw.concat(values=x, axis=data_format.concat_axis()),
-        inner]
+      self.layers = [concat, bn]
 
 
   class Conv1x1(LayeredModel):
     def __init__(self, weights, reuse: bool, scope: str, inp_c, out_filters, is_training: bool, data_format):
-      self.layers = [
-        fw.relu,
-        lambda x: fw.conv2d(
+      w = weights.get(reuse, scope, "w", [1, 1, inp_c, out_filters], None)
+      def layer2(x):
+        return fw.conv2d(
           x,
-          weights.get(reuse, scope, "w", [1, 1, inp_c, out_filters], None),
+          w,
           [1, 1, 1, 1],
           "SAME",
-          data_format=data_format.name),
-        lambda x: batch_norm(x, is_training, data_format, weights, out_filters)]
+          data_format=data_format.name)
+      def layer3(x):
+        return batch_norm(x, is_training, data_format, weights, out_filters)
+      self.layers = [fw.relu, layer2, layer3]
 
 
   class ConvNxN(LayeredModel):
     def __init__(self, weights, reuse: bool, scope: str, filter_size: int, out_filters, data_format, is_training: bool):
-      self.layers = [
-        fw.relu,
-        lambda x: fw.conv2d(
+      w = weights.get(reuse, scope, "w", [filter_size, filter_size, out_filters, out_filters], None)
+      def layer2(x):
+        return fw.conv2d(
           x,
-          weights.get(reuse, scope, "w", [filter_size, filter_size, out_filters, out_filters], None),
+          w,
           [1, 1, 1, 1],
           "SAME",
-          data_format=data_format.name),
-        lambda x: batch_norm(x, is_training, data_format, weights, out_filters)]
+          data_format=data_format.name)
+      def layer3(x):
+        return batch_norm(x, is_training, data_format, weights, out_filters)
+      self.layers = [fw.relu, layer2, layer3]
 
 
   class StemConv(LayeredModel):
@@ -468,14 +473,16 @@ class Child(object):
       Output channels (filters): out_filters
       """
       w = weights.get(reuse, scope, "w", [3, 3, 3, out_filters], None)
-      self.layers = [
-        lambda x: fw.conv2d(
+      def conv2d(x):
+        return fw.conv2d(
           x,
           w,
           [1, 1, 1, 1],
           "SAME",
-          data_format=data_format.name),
-        lambda x: batch_norm(x, is_training, data_format, weights, out_filters)]
+          data_format=data_format.name)
+      def bn(x):
+        return batch_norm(x, is_training, data_format, weights, out_filters)
+      self.layers = [conv2d, bn]
 
 
   class InputConv(LayeredModel):
@@ -483,15 +490,16 @@ class Child(object):
     Output channels/filters: out_filters
     """
     def __init__(self, weights, reuse, scope, hw, num_inp_chan: int, out_filters: int, is_training: bool, data_format):
+      w = weights.get(
+        reuse,
+        scope,
+        "w",
+        [hw, hw, num_inp_chan, out_filters],
+        None)
       def conv2d(x):
         return fw.conv2d(
           x,
-          weights.get(
-            reuse,
-            scope,
-            "w",
-            [hw, hw, num_inp_chan, out_filters],
-            None),
+          w,
           [1, 1, 1, 1],
           'SAME',
           data_format=data_format.name)
