@@ -179,15 +179,16 @@ class MicroChild(Child):
 
   class Dropout(LayeredModel):
     def __init__(self, data_format, is_training, keep_prob, weights, reuse, scope: str, num_input_chan: int):
+      w = weights.get(
+        reuse,
+        scope,
+        "w",
+        [num_input_chan, 10],
+        None)
       def matmul(x):
         return fw.matmul(
           x,
-          weights.get(
-            reuse,
-            scope,
-            "w",
-            [num_input_chan, 10],
-            None))
+          w)
       self.layers = [
         fw.relu,
         data_format.global_avg_pool]
@@ -197,12 +198,11 @@ class MicroChild(Child):
 
 
   class FullyConnected(LayeredModel):
-    def __init__(self, data_format, weights, reuse, scope):
+    def __init__(self, data_format, weights, reuse, scope, num_input_chan):
+      w = weights.get(reuse, scope, "w", [num_input_chan, 10], None)
       self.layers = [
         data_format.global_avg_pool,
-        lambda x: fw.matmul(
-          x,
-          weights.get(reuse, scope, "w", [x.get_shape()[1], 10], None))]
+        lambda x: fw.matmul(x, w)]
 
 
   def _model(self, weights, images, is_training, reuse=False):
@@ -297,7 +297,7 @@ class MicroChild(Child):
               aux_logits = inp_conv(aux_logits)
 
             with fw.name_scope("fc") as scope:
-              fc = MicroChild.FullyConnected(self.data_format, weights, reuse, scope)
+              fc = MicroChild.FullyConnected(self.data_format, weights, reuse, scope, 768)
               self.aux_logits = fc(aux_logits)
 
           aux_head_variables = [

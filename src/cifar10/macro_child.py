@@ -68,19 +68,21 @@ class MacroChild(Child):
         "w",
         [1, 1, num_input_chan, out_filters // 2],
         None)
-      self.layers = [
-        lambda x: fw.avg_pool(
+      def avg_pool(x):
+        return fw.avg_pool(
           x,
           [1, 1, 1, 1],
           stride_spec,
           "VALID",
-          data_format=data_format.name),
-        lambda x: fw.conv2d(
+          data_format=data_format.name)
+      def conv2d(x):
+        return fw.conv2d(
           x,
           w,
           [1, 1, 1, 1],
           "SAME", # Only difference from MicroChild.SkipPath
-          data_format=data_format.name)]
+          data_format=data_format.name)
+      self.layers = [avg_pool, conv2d]
 
 
   def _factorized_reduction(self, x, num_input_chan: int, out_filters: int, stride, is_training: bool, weights, reuse: bool):
@@ -122,15 +124,14 @@ class MacroChild(Child):
 
   class Dropout(LayeredModel):
     def __init__(self, data_format, is_training, keep_prob, weights, reuse, scope: str, num_inp_chan: int):
+      w = weights.get(
+        reuse,
+        scope,
+        "w",
+        [num_inp_chan, 10],
+        None)
       def matmul(x):
-        return fw.matmul(
-          x,
-          weights.get(
-            reuse,
-            scope,
-            "w",
-            [num_inp_chan, 10],
-            None))
+        return fw.matmul(x, w)
       self.layers = [data_format.global_avg_pool]
       if is_training:
         self.layers += [lambda x: fw.dropout(x, keep_prob)]
@@ -208,8 +209,8 @@ class MacroChild(Child):
         "w",
         [num_branches * out_filters, out_filters],
         None)
-      self.layers = [
-        lambda x: fw.conv2d(
+      def conv2d(x):
+        return fw.conv2d(
           x,
           fw.reshape(
             fw.boolean_mask(
@@ -218,8 +219,12 @@ class MacroChild(Child):
               [1, 1, -1, out_filters]),
           [1, 1, 1, 1],
           'SAME',
-          data_format=data_format.name),
-        lambda x: batch_norm(x, is_training, data_format, weights),
+          data_format=data_format.name)
+      def bn(x):
+        return batch_norm(x, is_training, data_format, weights)
+      self.layers = [
+        conv2d,
+        bn,
         fw.relu]
 
   def _enas_layer(self, layer_id, prev_layers, start_idx, num_input_chan: int, out_filters: int, is_training: bool, weights, reuse: bool):
@@ -470,15 +475,16 @@ class MacroChild(Child):
         "w",
         [filter_size, filter_size, inp_c, count],
         None)
-      self.layers = [
-        lambda x: fw.conv2d(
+      def conv2d(x):
+        return fw.conv2d(
           x,
           w,
           [1, 1, 1, 1],
           "SAME",
-          data_format=data_format.name),
-        lambda x: batch_norm(x, is_training, data_format, weights),
-        fw.relu]
+          data_format=data_format.name)
+      def bn(x):
+        return batch_norm(x, is_training, data_format, weights)
+      self.layers = [conv2d, bn, fw.relu]
 
 
   class SeparableConv(LayeredModel):
@@ -495,17 +501,18 @@ class MacroChild(Child):
         "w_point",
         [1, 1, out_filters * ch_mul, count],
         None)
-      self.layers = [
-        lambda x: fw.separable_conv2d(
+      def sep_conv2d(x):
+        return fw.separable_conv2d(
           x,
           w_depth,
           w_point,
           data_format,
           strides=[1, 1, 1, 1],
           padding="SAME",
-          data_format=data_format.name),
-        lambda x: batch_norm(x, is_training, data_format, weights),
-        fw.relu]
+          data_format=data_format.name)
+      def bn(x):
+        return batch_norm(x, is_training, data_format, weights)
+      self.layers = [sep_conv2d, bn, fw.relu]
 
 
   class SeparableConvMasked(LayeredModel):
@@ -523,8 +530,8 @@ class MacroChild(Child):
         "w_point",
         [out_filters, out_filters * ch_mul],
         None)
-      self.layers = [
-        lambda x: fw.separable_conv2d(
+      def sep_conv2d(x):
+        return fw.separable_conv2d(
           x,
           w_depth,
           fw.reshape(
@@ -534,15 +541,16 @@ class MacroChild(Child):
             [1, 1, out_filters * ch_mul, count]),
           strides=[1, 1, 1, 1],
           padding="SAME",
-          data_format=data_format.name),
-        lambda x: batch_norm_with_mask(
+          data_format=data_format.name)
+      def bn_with_mask(x):
+        return batch_norm_with_mask(
           x,
           is_training,
           fw.logical_and(start_idx <= self.mask, self.mask < start_idx + count),
           out_filters,
           weights,
-          data_format=data_format.name),
-        fw.relu]
+          data_format=data_format.name)
+      self.layers = [sep_conv2d, bn_with_mask, fw.relu]
 
 
   class OutConvMasked(LayeredModel):
@@ -554,8 +562,8 @@ class MacroChild(Child):
         "w",
         [filter_size, filter_size, out_filters, out_filters],
         None)
-      self.layers = [
-        lambda x: fw.conv2d(
+      def conv2d(x):
+        return fw.conv2d(
           x,
           fw.transpose(
             fw.transpose(
@@ -564,14 +572,18 @@ class MacroChild(Child):
             [1, 2, 3, 0]),
           [1, 1, 1, 1],
           "SAME",
-          data_format=data_format.name),
-        lambda x: batch_norm_with_mask(
+          data_format=data_format.name)
+      def bn_with_mask(x):
+        return batch_norm_with_mask(
           x,
           is_training,
           fw.logical_and(start_idx <= self.mask, self.mask < start_idx + count),
           out_filters,
           weights,
-          data_format=data_format.name),
+          data_format=data_format.name)
+      self.layers = [
+        conv2d,
+        bn_with_mask,
         fw.relu]
 
 
