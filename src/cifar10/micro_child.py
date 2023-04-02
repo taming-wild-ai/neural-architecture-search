@@ -140,41 +140,56 @@ class MicroChild(Child):
         fw.to_float(self.global_step + 1) / fw.to_float(self.num_train_steps)) * (1.0 - (1.0 - float(layer_id + 1) / (self.num_layers + 2) * (1.0 - self.drop_path_keep_prob))))
 
 
-  class CalibrateSize(LayeredModel):
-    def __init__(self, weights, reuse: bool, scope: str, inp_c: int, out_filters: int, is_training: bool, data_format):
-      w = weights.get(reuse, scope, "w", [1, 1, inp_c, out_filters], None)
-      self.layers = [
-        fw.relu,
-        lambda x: fw.conv2d(
-          x,
-          w,
-          [1, 1, 1, 1],
-          "SAME",
-          data_format=data_format.name),
-        lambda x: batch_norm(x, is_training, data_format, weights, out_filters)]
+  class CalibrateSize(object):
+    def __init__(self, child, hw, c, out_filters, is_training: bool, weights, reuse: bool):
+      with fw.name_scope("calibrate") as scope:
+        if hw[0] != hw[1]:
+          assert hw[0] == 2 * hw[1], f"hw[0] = {hw[0]}, hw[1] = {hw[1]}"
+          with fw.name_scope("pool_x") as scope:
+            self.layers_x = [
+              fw.relu,
+              lambda x: child._factorized_reduction(x, c[0], out_filters, 2, is_training, weights, reuse)]
+        elif c[0] != out_filters:
+          with fw.name_scope("pool_x") as scope:
+            self.layers_x = [
+              Child.Conv1x1(
+                weights,
+                reuse,
+                scope,
+                c[0],
+                out_filters,
+                is_training,
+                child.data_format)]
+        else:
+          self.layers_x = []
+        if c[1] != out_filters:
+          with fw.name_scope("pool_y") as scope:
+            w = weights.get(reuse, scope, "w", [1, 1, c[1], out_filters], None)
+            self.layers_y = [
+              fw.relu,
+              lambda x: fw.conv2d(
+                x,
+                w,
+                [1, 1, 1, 1],
+                "SAME",
+                data_format=child.data_format.name),
+              lambda x: batch_norm(x, is_training, child.data_format, weights, out_filters)]
+        else:
+          self.layers_y = []
 
-
-  def _maybe_calibrate_size(self, layers, hw, c, out_filters, is_training, weights, reuse):
-    """Makes sure layers[0] and layers[1] have the same shapes."""
-
-    with fw.name_scope("calibrate") as scope:
+    def __call__(self, layers):
       x = layers[0]
-      if hw[0] != hw[1]:
-        assert hw[0] == 2 * hw[1], f"hw[0] = {hw[0]}, hw[1] = {hw[1]}"
-        with fw.name_scope("pool_x") as scope:
-          x = fw.relu(x)
-          x = self._factorized_reduction(x, c[0], out_filters, 2, is_training, weights, reuse)
-      elif c[0] != out_filters:
-        with fw.name_scope("pool_x") as scope:
-          conv = Child.Conv1x1(weights, reuse, scope, c[0], out_filters, is_training, self.data_format)
-          x = conv(x)
-
       y = layers[1]
-      if c[1] != out_filters:
+
+      with fw.name_scope("calibrate") as scope:
+        with fw.name_scope("pool_x") as scope:
+          for layer in self.layers_x:
+            x = layer(x)
         with fw.name_scope("pool_y") as scope:
-          cs = MicroChild.CalibrateSize(weights, reuse, scope, c[1], out_filters, is_training, self.data_format)
-          y = cs(y)
-    return [x, y]
+          for layer in self.layers_y:
+            y = layer(y)
+
+      return [x, y]
 
 
   class Dropout(LayeredModel):
@@ -480,8 +495,8 @@ class MicroChild(Child):
 
     assert len(prev_layers) == 2
     layers = [prev_layers[0], prev_layers[1]]
-    layers = self._maybe_calibrate_size(layers, hw, c, out_filters,
-                                        is_training, weights, reuse)
+    cs = MicroChild.CalibrateSize(self, hw, c, out_filters, is_training, weights, reuse)
+    layers = cs(layers)
     with fw.name_scope("layer_base") as scope:
       lb = MicroChild.LayerBase(weights, reuse, scope, out_filters, out_filters, is_training, self.data_format)
       layers[1] = lb(layers[1])
@@ -748,7 +763,8 @@ class MicroChild(Child):
     """
 
     assert len(prev_layers) == 2, "need exactly 2 inputs"
-    layers = self._maybe_calibrate_size([prev_layers[0], prev_layers[1]], hw, c, out_filters, True, weights, reuse)
+    cs = MicroChild.CalibrateSize(self, hw, c, out_filters, True, weights, reuse)
+    layers = cs([prev_layers[0], prev_layers[1]])
     used = []
     for cell_id in range(self.num_cells):
       prev_layers = fw.stack(layers, axis=0) # Always 2, N, H, W, C or 2, N, C, H, W
