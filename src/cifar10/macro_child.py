@@ -292,7 +292,7 @@ class MacroChild(Child):
                     exclusive=True)
 
       self.data_format.set_shape(out, inp_h, inp_w, out_filters)
-    else:
+    else: # not self.whole_channels
       count = self.sample_arc[start_idx:start_idx + 2 * self.num_branches]
       branches = []
       with fw.name_scope("branch_0"):
@@ -313,7 +313,7 @@ class MacroChild(Child):
           branches.append(pb(inputs))
       if self.num_branches >= 6:
         with fw.name_scope("branch_5"):
-          pb = MacroChild.PoolBranch(self, count[11], "max", input_conv4, count[10])
+          pb = MacroChild.PoolBranch(self, count[11], "max", input_conv5, count[10])
           branches.append(pb(inputs))
 
       with fw.name_scope("final_conv") as scope:
