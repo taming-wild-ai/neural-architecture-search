@@ -280,13 +280,13 @@ class MacroChild(Child):
         branches[fw.equal(count, 3)] = lambda: y
       if self.num_branches >= 5:
         with fw.name_scope("branch_4"):
-          y = self._pool_branch(inputs, out_filters, "avg",
-                                input_conv4, start_idx=0)
+          pb = MacroChild.PoolBranch(self, out_filters, "avg", input_conv4, 0)
+          y = pb(inputs)
         branches[fw.equal(count, 4)] = lambda: y
       if self.num_branches >= 6:
         with fw.name_scope("branch_5"):
-          y = self._pool_branch(inputs, out_filters, "max",
-                                input_conv5, start_idx=0)
+          pb = MacroChild.PoolBranch(self, out_filters, "max", input_conv5, 0)
+          y = pb(inputs)
         branches[fw.equal(count, 5)] = lambda: y
       out = fw.case(branches, default=lambda: fw.constant(0, fw.float32),
                     exclusive=True)
@@ -309,12 +309,12 @@ class MacroChild(Child):
         branches.append(cb(inputs))
       if self.num_branches >= 5:
         with fw.name_scope("branch_4"):
-          branches.append(self._pool_branch(inputs, count[9],
-                                            "avg", input_conv4, start_idx=count[8]))
+          pb = MacroChild.PoolBranch(self, count[9], "avg", input_conv4, count[8])
+          branches.append(pb(inputs))
       if self.num_branches >= 6:
         with fw.name_scope("branch_5"):
-          branches.append(self._pool_branch(inputs, count[11],
-                                            "max", input_conv5, start_idx=count[10]))
+          pb = MacroChild.PoolBranch(self, count[11], "max", input_conv4, count[10])
+          branches.append(pb(inputs))
 
       with fw.name_scope("final_conv") as scope:
         inp = prev_layers[-1]
@@ -414,8 +414,8 @@ class MacroChild(Child):
             self.data_format)
         with fw.name_scope("branch_4"):
           total_out_channels += count[9]
-          branches.append(
-            self._pool_branch(inputs, count[9], "avg", input_conv4))
+          pb = MacroChild.PoolBranch(self, count[9], "avg", input_conv4)
+          branches.append(pb(inputs))
       if self.num_branches >= 6:
         with fw.name_scope("conv_1") as scope:
           input_conv5 = Child.InputConv(
@@ -429,8 +429,8 @@ class MacroChild(Child):
             self.data_format)
         with fw.name_scope("branch_5"):
           total_out_channels += count[11]
-          branches.append(
-            self._pool_branch(inputs, count[11], "max", input_conv5))
+          pb = MacroChild.PoolBranch(self, count[11], "max", input_conv5)
+          branches.append(pb(inputs))
 
       with fw.name_scope("final_conv") as scope:
         branches = self.data_format.fixed_layer(branches)
@@ -661,34 +661,40 @@ class MacroChild(Child):
             self.layers += [out_conv]
 
 
-  def _pool_branch(self, inputs, count, avg_or_max: str, input_conv, start_idx=None):
-    """
-    Args:
-      start_idx: where to start taking the output channels. if None, assuming
-        fixed_arc mode
-      count: how many output_channels to take.
-    """
+  class PoolBranch(LayeredModel):
+    def __init__(self, child, count, avg_or_max: str, input_conv, start_idx=None):
+      """
+      Args:
+        start_idx: where to start taking the output channels. if None, assuming
+          fixed_arc mode
+        count: how many output_channels to take.
+      """
+      if start_idx is None:
+        assert child.fixed_arc is not None, "you screwed up!"
 
-    if start_idx is None:
-      assert self.fixed_arc is not None, "you screwed up!"
+      def layer0(x):
+        with fw.name_scope("conv_1"):
+          return input_conv(x)
 
-    with fw.name_scope("conv_1") as scope:
-      x = input_conv(inputs)
+      self.layers = [layer0]
 
-    with fw.name_scope("pool"):
+      def avg_pool2d(x):
+        with fw.name_scope("pool"):
+          return fw.avg_pool2d(x, [3, 3], [1, 1], "SAME", data_format=child.data_format.actual)
+
+      def max_pool2d(x):
+        with fw.name_scope("pool"):
+          return fw.max_pool2d(x, [3, 3], [1, 1], "SAME", data_format=child.data_format.actual)
+
       if avg_or_max == "avg":
-        x = fw.avg_pool2d(
-          x, [3, 3], [1, 1], "SAME", data_format=self.data_format.actual)
+        self.layers.append(avg_pool2d)
       elif avg_or_max == "max":
-        x = fw.max_pool2d(
-          x, [3, 3], [1, 1], "SAME", data_format=self.data_format.actual)
+        self.layers.append(max_pool2d)
       else:
-        raise ValueError("Unknown pool {}".format(avg_or_max))
+        raise ValueError(f"Unknown pool {avg_or_max}")
 
       if start_idx is not None:
-        x = self.data_format.pool_branch(x, start_idx, count)
-
-    return x
+        self.layers.append(lambda x: child.data_format.pool_branch(x, start_idx, count))
 
 
   class LossModel(LayeredModel):
