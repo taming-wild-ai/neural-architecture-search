@@ -263,20 +263,20 @@ class MacroChild(Child):
       count = self.sample_arc[start_idx]
       branches = {}
       with fw.name_scope("branch_0"):
-        y = self._conv_branch(inputs, 3, is_training, out_filters, num_input_chan, out_filters,
-                              weights, reuse, start_idx=0)
+        cb = MacroChild.ConvBranch(self, 3, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, False)
+        y = cb(inputs)
         branches[fw.equal(count, 0)] = lambda: y
       with fw.name_scope("branch_1"):
-        y = self._conv_branch(inputs, 3, is_training, out_filters, num_input_chan, out_filters,
-                              weights, reuse, start_idx=0, separable=True)
+        cb = MacroChild.ConvBranch(self, 3, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, True)
+        y = cb(inputs)
         branches[fw.equal(count, 1)] = lambda: y
       with fw.name_scope("branch_2"):
-        y = self._conv_branch(inputs, 5, is_training, out_filters, num_input_chan, out_filters,
-                              weights, reuse, start_idx=0)
+        cb = MacroChild.ConvBranch(self, 5, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, False)
+        y = cb(inputs)
         branches[fw.equal(count, 2)] = lambda: y
       with fw.name_scope("branch_3"):
-        y = self._conv_branch(inputs, 5, is_training, num_input_chan, out_filters, out_filters,
-                              weights, reuse, start_idx=0, separable=True)
+        cb = MacroChild.ConvBranch(self, 5, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, True)
+        y = cb(inputs)
         branches[fw.equal(count, 3)] = lambda: y
       if self.num_branches >= 5:
         with fw.name_scope("branch_4"):
@@ -296,19 +296,17 @@ class MacroChild(Child):
       count = self.sample_arc[start_idx:start_idx + 2 * self.num_branches]
       branches = []
       with fw.name_scope("branch_0"):
-        branches.append(self._conv_branch(inputs, 3, is_training, count[1], num_input_chan,
-                                          out_filters, start_idx=count[0]))
+        cb = MacroChild.ConvBranch(self, 3, is_training, count[1], num_input_chan, out_filters, weights, reuse, 1, count[0], False)
+        branches.append(cb(inputs))
       with fw.name_scope("branch_1"):
-        branches.append(self._conv_branch(inputs, 3, is_training, count[3], num_input_chan,
-                                          out_filters, start_idx=count[2],
-                                          separable=True))
+        cb = MacroChild.ConvBranch(self, 3, is_training, count[3], num_input_chan, out_filters, weights, reuse, 1, count[2], True)
+        branches.append(cb(inputs))
       with fw.name_scope("branch_2"):
-        branches.append(self._conv_branch(inputs, 5, is_training, count[5], num_input_chan,
-                                          out_filters, start_idx=count[4]))
+        cb = MacroChild.ConvBranch(self, 5, is_training, count[5], num_input_chan, out_filters, weights, reuse, 1, count[4], False)
+        branches.append(cb(inputs))
       with fw.name_scope("branch_3"):
-        branches.append(self._conv_branch(inputs, 5, is_training, count[7], num_input_chan,
-                                          out_filters, start_idx=count[6],
-                                          separable=True))
+        cb = MacroChild.ConvBranch(self, 5, is_training, count[7], num_input_chan, out_filters, weights, reuse, 1, count[6], True)
+        branches.append(cb(inputs))
       if self.num_branches >= 5:
         with fw.name_scope("branch_4"):
           branches.append(self._pool_branch(inputs, count[9],
@@ -389,18 +387,20 @@ class MacroChild(Child):
       total_out_channels = 0
       with fw.name_scope("branch_0"):
         total_out_channels += count[1]
-        branches.append(self._conv_branch(inputs, 3, is_training, count[1]))
+        cb = MacroChild.ConvBranch(self, 3, is_training, count[1], num_input_chan, out_filters, weights, reuse, 1, count[1], False)
+        branches.append(cb(inputs))
       with fw.name_scope("branch_1"):
         total_out_channels += count[3]
-        branches.append(
-          self._conv_branch(inputs, 3, is_training, count[3], separable=True))
+        cb = MacroChild.ConvBranch(self, 3, is_training, count[3], num_input_chan, out_filters, weights, reuse, 1, count[3], True)
+        branches.append(cb(inputs))
       with fw.name_scope("branch_2"):
         total_out_channels += count[5]
-        branches.append(self._conv_branch(inputs, 5, is_training, count[5]))
+        cb = MacroChild.ConvBranch(self, 5, is_training, count[5], num_input_chan, out_filters, weights, reuse, 1, count[5], False)
+        branches.append(cb(inputs))
       with fw.name_scope("branch_3"):
         total_out_channels += count[7]
-        branches.append(
-          self._conv_branch(inputs, 5, is_training, count[7], separable=True))
+        cb = MacroChild.ConvBranch(self, 5, is_training, count[7], num_input_chan, out_filters, weights, reuse, 1, count[7], True)
+        branches.append(cb(inputs))
       if self.num_branches >= 5:
         with fw.name_scope("conv_1") as scope:
           input_conv4 = Child.InputConv(
@@ -587,82 +587,79 @@ class MacroChild(Child):
         fw.relu]
 
 
-  def _conv_branch(self, inputs, filter_size, is_training: bool, count, num_input_chan: int, out_filters: int,
-                   weights, reuse: bool, ch_mul=1, start_idx=None, separable=False):
-    """
-    Args:
-      start_idx: where to start taking the output channels. if None, assuming
-        fixed_arc mode
-      count: how many output_channels to take.
-    """
-
-    if start_idx is None:
-      assert self.fixed_arc is not None, "you screwed up!"
-
-    with fw.name_scope("inp_conv_1") as scope:
-      inp_conv_1 = Child.InputConv(
-        weights,
-        reuse,
-        scope,
-        1,
-        num_input_chan,
-        out_filters,
-        is_training,
-        self.data_format)
-      x = inp_conv_1(inputs)
-
-    with fw.name_scope("out_conv_{}".format(filter_size)) as scope:
+  class ConvBranch(LayeredModel):
+    def __init__(self, child, filter_size, is_training: bool, count, num_input_chan: int, out_filters: int, weights, reuse: bool, ch_mul: int, start_idx, separable: bool):
+      """
+      Args:
+        start_idx: where to start taking the output channels. if None, assuming
+          fixed_arc mode
+        count: how many output_channels to take.
+      """
       if start_idx is None:
-        if separable:
-          sep_conv = MacroChild.SeparableConv(
-            weights,
-            reuse,
-            scope,
-            filter_size,
-            out_filters,
-            ch_mul,
-            count,
-            self.data_format,
-            is_training)
-          x = sep_conv(x)
+        assert child.fixed_arc is not None, "you screwed up!"
+      with fw.name_scope("inp_conv_1") as scope:
+        inp_conv_1 = Child.InputConv(
+          weights,
+          reuse,
+          scope,
+          1,
+          num_input_chan,
+          out_filters,
+          is_training,
+          child.data_format)
+        self.layers = [inp_conv_1]
+      with fw.name_scope("out_conv_{}".format(filter_size)) as scope:
+        if start_idx is None:
+          if separable:
+            sep_conv = MacroChild.SeparableConv(
+              weights,
+              reuse,
+              scope,
+              filter_size,
+              out_filters,
+              ch_mul,
+              count,
+              child.data_format,
+              is_training)
+            self.layers += [sep_conv]
+          else:
+            out_conv = MacroChild.OutConv(
+              weights,
+              reuse,
+              scope,
+              filter_size,
+              num_input_chan,
+              count,
+              child.data_format,
+              is_training)
+            self.layers += [out_conv]
         else:
-          out_conv = MacroChild.OutConv(
-            weights,
-            reuse,
-            scope,
-            filter_size,
-            num_input_chan,
-            count,
-            self.data_format,
-            is_training)
-          x = out_conv(x)
-      else:
-        if separable:
-          sep_conv = MacroChild.SeparableConvMasked(
-            weights,
-            reuse,
-            scope,
-            filter_size,
-            out_filters,
-            ch_mul,
-            start_idx,
-            count,
-            self.data_format,
-            is_training)
-          x = sep_conv(x)
-        else:
-          out_conv = MacroChild.OutConvMasked(
-            weights,
-            reuse,
-            scope,
-            filter_size,
-            out_filters,
-            start_idx,
-            count,
-            self.data_format,
-            is_training)
-          x = out_conv(x)
-    return x
+          if separable:
+            sep_conv = MacroChild.SeparableConvMasked(
+              weights,
+              reuse,
+              scope,
+              filter_size,
+              out_filters,
+              ch_mul,
+              start_idx,
+              count,
+              child.data_format,
+              is_training)
+            self.layers += [sep_conv]
+          else:
+            out_conv = MacroChild.OutConvMasked(
+              weights,
+              reuse,
+              scope,
+              filter_size,
+              out_filters,
+              start_idx,
+              count,
+              child.data_format,
+              is_training)
+            self.layers += [out_conv]
+
 
   def _pool_branch(self, inputs, count, avg_or_max: str, input_conv, start_idx=None):
     """
