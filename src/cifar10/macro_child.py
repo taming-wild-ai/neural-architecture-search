@@ -729,15 +729,13 @@ class MacroChild(Child):
 
     global_step = fw.get_or_create_global_step()
     train_op, lr, grad_norm, optimizer = get_train_ops(
-      loss,
-      self.tf_variables(),
       global_step,
       self.learning_rate,
       clip_mode=self.clip_mode,
       l2_reg=self.l2_reg,
       num_train_batches=self.num_train_batches,
       optim_algo=self.optim_algo)
-    return loss, train_acc, global_step, train_op, lr, grad_norm, optimizer
+    return loss, train_acc, global_step, train_op(loss, self.tf_variables()), lr, grad_norm(loss, self.tf_variables()), optimizer
 
 
   class ValidationPredictions(LayeredModel):

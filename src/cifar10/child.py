@@ -329,14 +329,14 @@ class Child(object):
       print(var)
 
     self.global_step = fw.Variable(0, dtype=fw.int32, name="global_step")
-    self.train_op, self.lr, self.grad_norm, self.optimizer = get_train_ops(
-      self.loss,
-      tf_variables,
+    train_op, self.lr, grad_norm, self.optimizer = get_train_ops(
       self.global_step,
       self.learning_rate,
       clip_mode=self.clip_mode,
       l2_reg=self.l2_reg,
       optim_algo=self.optim_algo)
+    self.train_op = train_op(self.loss, tf_variables)
+    self.grad_norm = grad_norm(self.loss, tf_variables)
 
   def _build_valid(self, model, weights, x, y):
     """ always overridden """

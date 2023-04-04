@@ -281,8 +281,6 @@ class GradientCalculator(object):
 
 
 def get_train_ops(
-    loss,
-    tf_variables,
     train_step,
     updater,
     clip_mode=None,
@@ -316,9 +314,9 @@ def get_train_ops(
         else:
           retval[v.name] = fw.sqrt(fw.reduce_sum(g ** 2))
       return retval
-    return train_op(loss, tf_variables), learning_rate, grad_norm(loss, tf_variables), opt, grad_norms(loss, tf_variables)
+    return train_op, learning_rate, grad_norm, opt, grad_norms
   else:
-    return train_op(loss, tf_variables), learning_rate, grad_norm(loss, tf_variables), opt
+    return train_op, learning_rate, grad_norm, opt
 
 
 class LayeredModel(object):

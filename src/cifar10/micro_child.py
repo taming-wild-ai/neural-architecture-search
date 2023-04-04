@@ -829,8 +829,6 @@ class MicroChild(Child):
     print("Model has {0} params".format(count_model_params(self.tf_variables())))
 
     train_op, lr, grad_norm, optimizer = get_train_ops(
-      train_loss,
-      self.tf_variables(),
       self.global_step,
       self.learning_rate,
       clip_mode=self.clip_mode,
@@ -841,7 +839,7 @@ class MicroChild(Child):
     mca = MicroChild.Accuracy(y)
     train_acc = mca(logits)
 
-    return loss, train_acc, train_op, lr, grad_norm, optimizer
+    return loss, train_acc, train_op(train_loss, self.tf_variables()), lr, grad_norm(train_loss, self.tf_variables()), optimizer
 
   # override
   def _build_valid(self, model, weights, x, y):

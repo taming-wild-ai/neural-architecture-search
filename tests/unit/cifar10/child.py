@@ -89,13 +89,16 @@ class TestChild(unittest.TestCase):
 
     @patch('src.cifar10.child.fw.reduce_sum', return_value="reduce_sum")
     @patch('src.cifar10.child.fw.to_int32', return_value="to_int32")
-    @patch('src.cifar10.child.get_train_ops', return_value=(1, 2, 3, 4))
+    @patch('src.cifar10.child.get_train_ops')
     @patch('src.cifar10.child.fw.equal', return_value="equal")
     @patch('src.cifar10.child.fw.argmax', return_value="argmax")
     @patch('src.cifar10.child.fw.reduce_mean', return_value="reduce_mean")
     @patch('src.cifar10.child.fw.sparse_softmax_cross_entropy_with_logits', return_value="sscewl")
     @patch('src.cifar10.child.print')
     def test_build_train(self, print, sscewl, reduce_mean, argmax, equal, get_train_ops, to_int32, reduce_sum):
+        train_op = mock.MagicMock(name='train_op')
+        grad_norm = mock.MagicMock(name='grad_norm')
+        get_train_ops.return_value = (train_op, 2, grad_norm, 4)
         x_train = {
             "train": np.ndarray((1, 32, 32, 3)),
             "valid": np.ndarray((1, 32, 32, 3)),
@@ -116,7 +119,7 @@ class TestChild(unittest.TestCase):
                         reduce_mean.assert_called_with('sscewl')
                         argmax.assert_called_with('model', axis=1)
                         equal.assert_called_with('to_int32', y_train)
-                        get_train_ops.assert_called_with('reduce_mean', [], m.global_step, m.learning_rate, clip_mode=m.clip_mode, l2_reg=m.l2_reg, optim_algo=m.optim_algo)
+                        get_train_ops.assert_called_with(m.global_step, m.learning_rate, clip_mode=m.clip_mode, l2_reg=m.l2_reg, optim_algo=m.optim_algo)
                         to_int32.assert_called_with('equal')
                         reduce_sum.assert_called_with('to_int32')
 

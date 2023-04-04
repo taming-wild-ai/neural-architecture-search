@@ -29,7 +29,10 @@ class TestUtils(unittest.TestCase):
         var = tf.ones((1))
         mock_momentum = mock.MagicMock()
         with patch('src.cifar10.child.fw.Optimizer.Momentum', return_value=mock_momentum) as mom:
-            get_train_ops(0.0, [var], 0, LearningRate.new(False, 0.1, 2, 10000, 0.1, 5, 6, 7, 8, 9), get_grad_norms=True, optim_algo=Optimizer.new("momentum", False, 1, 1), clip_mode=ClipMode.new("global", 0.0), num_train_batches=1)
+            train_op, _lr, grad_norm, _opt, grad_norms = get_train_ops(0, LearningRate.new(False, 0.1, 2, 10000, 0.1, 5, 6, 7, 8, 9), get_grad_norms=True, optim_algo=Optimizer.new("momentum", False, 1, 1), clip_mode=ClipMode.new("global", 0.0), num_train_batches=1)
+            train_op(0.0, [var])
+            grad_norm(0.0, [var])
+            grad_norms(0.0, [var])
             add_n.assert_called_with([reduce_sum()])
             gradients.assert_called_with(1e-4, [var])
             global_norm.assert_called_with([0.0])
@@ -51,7 +54,10 @@ class TestUtils(unittest.TestCase):
         mock_adam = mock.MagicMock()
         with patch('src.utils.fw.Optimizer.Adam', return_value=mock_adam) as mom:
             var = tf.ones((1))
-            get_train_ops(0.0, [var], 0, LearningRate.new(False, 0.1, 2, 10000, 0.1, 5, 6, 7, 8, 9), get_grad_norms=True, optim_algo=Optimizer.new("adam", False, 1, 1), clip_mode=ClipMode.new("global", 0.0), num_train_batches=1)
+            train_op, _lr, grad_norm, _opt, grad_norms = get_train_ops(0, LearningRate.new(False, 0.1, 2, 10000, 0.1, 5, 6, 7, 8, 9), get_grad_norms=True, optim_algo=Optimizer.new("adam", False, 1, 1), clip_mode=ClipMode.new("global", 0.0), num_train_batches=1)
+            train_op(0.0, [var])
+            grad_norm(0.0, [var])
+            grad_norms(0.0, [var])
             add_n.assert_called_with([reduce_sum()])
             gradients.assert_called_with(1e-4, [var])
             global_norm.assert_called_with([0.0])
@@ -80,15 +86,16 @@ class TestUtils(unittest.TestCase):
                 'src.utils.fw.Optimizer.SyncReplicas',
                 return_value=mock_sro) as sro:
                 var = tf.ones((1))
-                get_train_ops(
-                    0.0,
-                    [var],
+                train_op, _lr, grad_norm, _opt, grad_norms = get_train_ops(
                     0,
                     LearningRate.new(True, 1, 2, 3, 4, 5, 6, 7, 8, 9),
                     optim_algo=Optimizer.new("sgd", True, 1, 1),
                     clip_mode=ClipMode.new("norm", 0.0),
                     num_train_batches=1,
                     get_grad_norms=True)
+                train_op(0.0, [var])
+                grad_norm(0.0, [var])
+                grad_norms(0.0, [var])
                 add_n.assert_called_with([reduce_sum()])
                 gradients.assert_called_with(1e-4, [var])
                 global_norm.assert_called_with([0.0])

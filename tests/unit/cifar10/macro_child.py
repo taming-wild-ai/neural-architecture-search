@@ -675,8 +675,11 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.macro_child.fw.sparse_softmax_cross_entropy_with_logits', return_value="sscewl")
     @patch('src.cifar10.macro_child.fw.reduce_mean', return_value="reduce_mean")
     @patch('src.cifar10.macro_child.fw.argmax', return_value=10)
-    @patch('src.cifar10.macro_child.get_train_ops', return_value=(1, 2, 3, 4))
+    @patch('src.cifar10.macro_child.get_train_ops')
     def test_build_train(self, get_train_ops, argmax, reduce_mean, sscewl, print, to_int32, equal, reduce_sum, global_step):
+        train_op = mock.MagicMock(name='train_op')
+        grad_norm = mock.MagicMock(name='grad_norm')
+        get_train_ops.return_value = (train_op, 2, grad_norm, 4)
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
             mc.x_train = 1
@@ -695,7 +698,7 @@ class TestMacroChild(unittest.TestCase):
             mc.num_replicas = None
             mc.name = "macro_child"
             with patch.object(mc, '_model', return_value="model") as model:
-                self.assertEqual(('reduce_mean', 'reduce_sum', 'global_step', 1, 2, 3, 4), mc._build_train(mc._model, mc.weights, mc.x_train, mc.y_train))
+                self.assertEqual(('reduce_mean', 'reduce_sum', 'global_step', train_op(), 2, grad_norm(), 4), mc._build_train(mc._model, mc.weights, mc.x_train, mc.y_train))
                 print.assert_any_call("-" * 80)
                 print.assert_any_call("Build train graph")
                 print.assert_called_with("Model has 0 params")
@@ -705,7 +708,7 @@ class TestMacroChild(unittest.TestCase):
                 global_step.assert_called_with
                 reduce_sum.assert_called_with('to_int32')
                 argmax.assert_called_with("model", axis=1)
-                get_train_ops.assert_called_with('reduce_mean', [], 'global_step', mc.learning_rate, clip_mode=None, l2_reg=mc.l2_reg, num_train_batches=310, optim_algo=None)
+                get_train_ops.assert_called_with('global_step', mc.learning_rate, clip_mode=None, l2_reg=mc.l2_reg, num_train_batches=310, optim_algo=None)
                 to_int32.assert_called_with('equal')
                 equal.assert_called_with('to_int32', 2)
 
