@@ -306,15 +306,17 @@ def get_train_ops(
     global_step=train_step)
 
   if get_grad_norms:
-    grad_norms = {}
-    for v, g in zip(tf_variables, grads(loss, tf_variables)):
-      if v is None or g is None:
-        continue
-      if isinstance(g, fw.IndexedSlices):
-        grad_norms[v.name] = fw.sqrt(fw.reduce_sum(g.values ** 2))
-      else:
-        grad_norms[v.name] = fw.sqrt(fw.reduce_sum(g ** 2))
-    return train_op(loss, tf_variables), learning_rate, grad_norm(loss, tf_variables), opt, grad_norms
+    def grad_norms(loss, tf_variables):
+      retval = {}
+      for v, g in zip(tf_variables, grads(loss, tf_variables)):
+        if v is None or g is None:
+          continue
+        if isinstance(g, fw.IndexedSlices):
+          retval[v.name] = fw.sqrt(fw.reduce_sum(g.values ** 2))
+        else:
+          retval[v.name] = fw.sqrt(fw.reduce_sum(g ** 2))
+      return retval
+    return train_op(loss, tf_variables), learning_rate, grad_norm(loss, tf_variables), opt, grad_norms(loss, tf_variables)
   else:
     return train_op(loss, tf_variables), learning_rate, grad_norm(loss, tf_variables), opt
 
