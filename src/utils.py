@@ -296,29 +296,27 @@ def get_train_ops(
     clip_mode: "global", "norm", or None.
     moving_average: store the moving average of parameters
   """
-  gc = GradientCalculator(l2_reg)
-
-  grads = gc(loss, tf_variables)
-  grad_norm = fw.global_norm(grads)
+  grads = GradientCalculator(l2_reg)
+  grad_norm = lambda l, v: fw.global_norm(grads(l, v))
 
   learning_rate = updater.update(num_train_batches, train_step)
   opt = optim_algo.get(learning_rate, moving_average)
-  train_op = opt.apply_gradients(
-    zip(clip_mode.clip(grads), tf_variables),
+  train_op = lambda l, v: opt.apply_gradients(
+    zip(clip_mode.clip(grads(l, v)), v),
     global_step=train_step)
 
   if get_grad_norms:
     grad_norms = {}
-    for v, g in zip(tf_variables, grads):
+    for v, g in zip(tf_variables, grads(loss, tf_variables)):
       if v is None or g is None:
         continue
       if isinstance(g, fw.IndexedSlices):
         grad_norms[v.name] = fw.sqrt(fw.reduce_sum(g.values ** 2))
       else:
         grad_norms[v.name] = fw.sqrt(fw.reduce_sum(g ** 2))
-    return train_op, learning_rate, grad_norm, opt, grad_norms
+    return train_op(loss, tf_variables), learning_rate, grad_norm(loss, tf_variables), opt, grad_norms
   else:
-    return train_op, learning_rate, grad_norm, opt
+    return train_op(loss, tf_variables), learning_rate, grad_norm(loss, tf_variables), opt
 
 
 class LayeredModel(object):

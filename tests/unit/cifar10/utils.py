@@ -95,7 +95,7 @@ class TestUtils(unittest.TestCase):
                 sqrt.assert_called_with(reduce_sum())
                 max.assert_not_called()
                 exp_decay.assert_not_called()
-                zip.assert_called_with([var], [0.0])
+                zip.assert_any_call([var], [0.0])
                 less.assert_not_called()
                 ge.assert_called()
                 cond.assert_called()
