@@ -317,8 +317,7 @@ class MacroChild(Child):
           branches.append(pb(inputs))
 
       with fw.name_scope("final_conv") as scope:
-        inp = prev_layers[-1]
-        branches = self.data_format.enas_layer(inp, branches)
+        branches = self.data_format.enas_layer(inputs, branches)
         final_conv = MacroChild.FinalConv(
           self.num_branches,
           count,
@@ -337,16 +336,39 @@ class MacroChild(Child):
         skip_start = start_idx + 2 * self.num_branches
       skip = self.sample_arc[skip_start: skip_start + layer_id]
       with fw.name_scope("skip"):
-        res_layers = []
-        for i in range(layer_id):
-          res_layers.append(fw.cond(fw.equal(skip[i], 1),
-                                    lambda: prev_layers[i],
-                                    lambda: fw.zeros_like(prev_layers[i])))
-        res_layers.append(out)
-        x = fw.add_n(res_layers)
-        out = batch_norm(x, is_training, self.data_format, weights, num_input_chan)
+        ele = MacroChild.ENASSkipLayers(layer_id, skip, is_training, self.data_format, weights, num_input_chan)
+        out = ele(out, prev_layers)
 
     return out
+
+
+  class ENASSkipLayers(object):
+    def __init__(self, layer_id, skip, is_training, data_format, weights, num_input_chan):
+      def skip_connections(prev_layers):
+        res_layers = []
+        for i in range(layer_id):
+          res_layers.append(
+            fw.cond(
+              fw.equal(skip[i], 1),
+              lambda: prev_layers[i],
+              lambda: fw.zeros_like(prev_layers[i])))
+        return res_layers
+
+      def append_input(res_layers, x):
+        res_layers.append(x)
+        return res_layers
+
+      self.layers = [
+        skip_connections,
+        append_input,
+        lambda res_layers: fw.add_n(res_layers),
+        lambda x: batch_norm(x, is_training, data_format, weights, num_input_chan)]
+
+    def __call__(self, x, prev_layers):
+      res_layers = self.layers[0](prev_layers)
+      res_layers = self.layers[1](res_layers, x)
+      x =          self.layers[2](res_layers)
+      return       self.layers[3](x)
 
 
   def _fixed_layer(
@@ -717,13 +739,11 @@ class MacroChild(Child):
 
   # override
   def _build_train(self, model, weights, x, y):
-    loss_model = MacroChild.LossModel(y)
-    train_model = MacroChild.TrainModel(y)
+    loss = MacroChild.LossModel(y)
+    train_acc = MacroChild.TrainModel(y)
     print("-" * 80)
     print("Build train graph")
     logits = model(x, True, weights)
-    loss = loss_model(logits)
-    train_acc = train_model(logits)
 
     print("Model has {} params".format(count_model_params(self.tf_variables())))
 
@@ -735,7 +755,7 @@ class MacroChild(Child):
       l2_reg=self.l2_reg,
       num_train_batches=self.num_train_batches,
       optim_algo=self.optim_algo)
-    return loss, train_acc, global_step, train_op(loss, self.tf_variables()), lr, grad_norm(loss, self.tf_variables()), optimizer
+    return loss(logits), train_acc(logits), global_step, train_op(loss(logits), self.tf_variables()), lr, grad_norm(loss(logits), self.tf_variables()), optimizer
 
 
   class ValidationPredictions(LayeredModel):

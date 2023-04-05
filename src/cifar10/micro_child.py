@@ -816,13 +816,12 @@ class MicroChild(Child):
     print("-" * 80)
     print("Build train graph")
     logits = model(weights, x, is_training=True)
-    mcl = MicroChild.Loss(y)
-    loss = mcl(logits)
+    loss = MicroChild.Loss(y)
 
     if self.use_aux_heads:
       self.aux_loss = fw.reduce_mean(fw.sparse_softmax_cross_entropy_with_logits(
         logits=self.aux_logits, labels=y))
-      train_loss = loss + 0.4 * self.aux_loss
+      train_loss = lambda logits: loss(logits) + 0.4 * self.aux_loss
     else:
       train_loss = loss
 
@@ -836,10 +835,9 @@ class MicroChild(Child):
       num_train_batches=self.num_train_batches,
       optim_algo=self.optim_algo)
 
-    mca = MicroChild.Accuracy(y)
-    train_acc = mca(logits)
+    train_acc = MicroChild.Accuracy(y)
 
-    return loss, train_acc, train_op(train_loss, self.tf_variables()), lr, grad_norm(train_loss, self.tf_variables()), optimizer
+    return loss(logits), train_acc(logits), train_op(train_loss(logits), self.tf_variables()), lr, grad_norm(train_loss(logits), self.tf_variables()), optimizer
 
   # override
   def _build_valid(self, model, weights, x, y):
