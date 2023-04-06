@@ -155,7 +155,26 @@ class MacroChild(Child):
       for layer_id in range(self.num_layers):
         with fw.name_scope("layer_{0}".format(layer_id)):
           if self.fixed_arc is None:
-            x = self._enas_layer(layer_id, layers, start_idx, out_filters, out_filters, is_training, weights, reuse)
+            with fw.name_scope("conv_1") as scope:
+              input_conv4 = Child.InputConv(
+                weights,
+                reuse,
+                scope,
+                1,
+                out_filters,
+                self.out_filters,
+                is_training,
+                self.data_format)
+              input_conv5 = Child.InputConv(
+                weights,
+                reuse,
+                scope,
+                1,
+                out_filters,
+                self.out_filters,
+                is_training,
+                self.data_format)
+            x = self._enas_layer(layer_id, layers, start_idx, out_filters, out_filters, is_training, weights, reuse, input_conv4, input_conv5)
             layers.append(x)
             layers_channels.append(out_filters)
           else:
@@ -227,7 +246,7 @@ class MacroChild(Child):
         bn,
         fw.relu]
 
-  def _enas_layer(self, layer_id, prev_layers, start_idx, num_input_chan: int, out_filters: int, is_training: bool, weights, reuse: bool):
+  def _enas_layer(self, layer_id, prev_layers, start_idx, num_input_chan: int, out_filters: int, is_training: bool, weights, reuse: bool, input_conv4, input_conv5):
     """
     Args:
       layer_id: current layer
@@ -238,25 +257,6 @@ class MacroChild(Child):
     """
 
     inputs = prev_layers[-1]
-    with fw.name_scope("conv_1") as scope:
-      input_conv4 = Child.InputConv(
-        weights,
-        reuse,
-        scope,
-        1,
-        num_input_chan,
-        self.out_filters,
-        is_training,
-        self.data_format)
-      input_conv5 = Child.InputConv(
-        weights,
-        reuse,
-        scope,
-        1,
-        num_input_chan,
-        self.out_filters,
-        is_training,
-        self.data_format)
     if self.whole_channels:
       inp_h, inp_w = self.data_format.get_HW(inputs)
 
