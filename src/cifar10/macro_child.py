@@ -246,7 +246,128 @@ class MacroChild(Child):
         bn,
         fw.relu]
 
-  def _enas_layer(self, layer_id, prev_layers, start_idx, num_input_chan: int, out_filters: int, is_training: bool, weights, reuse: bool, input_conv4, input_conv5):
+
+  class ENASLayerNotWholeChannels(object):
+    def __init__(self, child, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse, input_conv_avg, input_conv_max):
+
+      def branches(inputs, sample_arc):
+        count = sample_arc[start_idx:start_idx + 2 * child.num_branches]
+        branches = []
+        with fw.name_scope("branch_0"):
+          cb = MacroChild.ConvBranch(child, 3, is_training, count[1], num_input_chan, out_filters, weights, reuse, 1, count[0], False)
+          branches.append(cb(inputs))
+        with fw.name_scope("branch_1"):
+          cb = MacroChild.ConvBranch(child, 3, is_training, count[3], num_input_chan, out_filters, weights, reuse, 1, count[2], True)
+          branches.append(cb(inputs))
+        with fw.name_scope("branch_2"):
+          cb = MacroChild.ConvBranch(child, 5, is_training, count[5], num_input_chan, out_filters, weights, reuse, 1, count[4], False)
+          branches.append(cb(inputs))
+        with fw.name_scope("branch_3"):
+          cb = MacroChild.ConvBranch(child, 5, is_training, count[7], num_input_chan, out_filters, weights, reuse, 1, count[6], True)
+          branches.append(cb(inputs))
+        if child.num_branches >= 5:
+          with fw.name_scope("branch_4"):
+            pb = MacroChild.PoolBranch(child, count[9], "avg", input_conv_avg, count[8])
+            branches.append(pb(inputs))
+        if child.num_branches >= 6:
+          with fw.name_scope("branch_5"):
+            pb = MacroChild.PoolBranch(child, count[11], "max", input_conv_max, count[10])
+            branches.append(pb(inputs))
+        with fw.name_scope("final_conv") as scope:
+          branches = child.data_format.enas_layer(inputs, branches)
+          final_conv = MacroChild.FinalConv(
+            child.num_branches,
+            count,
+            weights,
+            reuse,
+            scope,
+            out_filters,
+            is_training,
+            child.data_format)
+          return final_conv(branches)
+
+      self.layers = [branches]
+      if layer_id > 0:
+        self.has_skip_layer = True
+        skip_start = start_idx + 1
+        skip = child.sample_arc[skip_start: skip_start + layer_id]
+        with fw.name_scope("skip"):
+          self.layers.append(MacroChild.ENASSkipLayers(layer_id, skip, is_training, child.data_format, weights, num_input_chan))
+      else:
+        self.has_skip_layer = False
+
+    def __call__(self, prev_layers, sample_arc):
+      inputs = prev_layers[-1]
+      out = self.layers[0](inputs, sample_arc)
+      if self.has_skip_layer:
+        return self.layers[1](out, prev_layers)
+      else:
+        return out
+
+  class ENASLayerWholeChannels(object):
+    def __init__(self, child, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse, input_conv_avg, input_conv_max):
+      self.layers = [lambda inputs: child.data_format.get_HW(inputs)]
+
+      def branches(inputs, sample_arc):
+        count = sample_arc[start_idx]
+        arms = {}
+        with fw.name_scope("branch_0"):
+          cb = MacroChild.ConvBranch(child, 3, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, False)
+          y = cb(inputs)
+          arms[fw.equal(count, 0)] = lambda: y
+        with fw.name_scope("branch_1"):
+          cb = MacroChild.ConvBranch(child, 3, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, True)
+          y = cb(inputs)
+          arms[fw.equal(count, 1)] = lambda: y
+        with fw.name_scope("branch_2"):
+          cb = MacroChild.ConvBranch(child, 5, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, False)
+          y = cb(inputs)
+          arms[fw.equal(count, 2)] = lambda: y
+        with fw.name_scope("branch_3"):
+          cb = MacroChild.ConvBranch(child, 5, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, True)
+          y = cb(inputs)
+          arms[fw.equal(count, 3)] = lambda: y
+        with fw.name_scope("branch_4"):
+          pb = MacroChild.PoolBranch(child, out_filters, "avg", input_conv_avg, 0)
+          y = pb(inputs)
+          arms[fw.equal(count, 4)] = lambda: y
+        with fw.name_scope("branch_5"):
+          pb = MacroChild.PoolBranch(child, out_filters, "max", input_conv_max, 0)
+          y = pb(inputs)
+          arms[fw.equal(count, 5)] = lambda: y
+        return fw.case(
+          arms,
+          default=lambda: fw.constant(0, fw.float32),
+          exclusive=True)
+
+      self.layers.append(branches)
+
+      def reshape(inputs, h, w):
+        child.data_format.set_shape(inputs, h, w, out_filters)
+        return inputs
+
+      self.layers.append(reshape)
+      if layer_id > 0:
+        self.has_skip_layer = True
+        skip_start = start_idx + 1
+        skip = child.sample_arc[skip_start: skip_start + layer_id]
+        with fw.name_scope("skip"):
+          self.layers.append(MacroChild.ENASSkipLayers(layer_id, skip, is_training, child.data_format, weights, num_input_chan))
+      else:
+        self.has_skip_layer = False
+
+    def __call__(self, prev_layers, sample_arc):
+      inputs = prev_layers[-1]
+      inp_h, inp_w = self.layers[0](inputs)
+      out = self.layers[1](inputs, sample_arc)
+      out = self.layers[2](out, inp_h, inp_w)
+      if self.has_skip_layer:
+        return self.layers[3](out, prev_layers)
+      else:
+        return out
+
+
+  def _enas_layer(self, layer_id, prev_layers, start_idx, num_input_chan: int, out_filters: int, is_training: bool, weights, reuse: bool, input_conv_avg, input_conv_max):
     """
     Args:
       layer_id: current layer
@@ -255,91 +376,11 @@ class MacroChild(Child):
         from layer_id, but why bother...
       is_training: for batch_norm
     """
-
-    inputs = prev_layers[-1]
     if self.whole_channels:
-      inp_h, inp_w = self.data_format.get_HW(inputs)
-
-      count = self.sample_arc[start_idx]
-      branches = {}
-      with fw.name_scope("branch_0"):
-        cb = MacroChild.ConvBranch(self, 3, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, False)
-        y = cb(inputs)
-        branches[fw.equal(count, 0)] = lambda: y
-      with fw.name_scope("branch_1"):
-        cb = MacroChild.ConvBranch(self, 3, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, True)
-        y = cb(inputs)
-        branches[fw.equal(count, 1)] = lambda: y
-      with fw.name_scope("branch_2"):
-        cb = MacroChild.ConvBranch(self, 5, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, False)
-        y = cb(inputs)
-        branches[fw.equal(count, 2)] = lambda: y
-      with fw.name_scope("branch_3"):
-        cb = MacroChild.ConvBranch(self, 5, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, True)
-        y = cb(inputs)
-        branches[fw.equal(count, 3)] = lambda: y
-      if self.num_branches >= 5:
-        with fw.name_scope("branch_4"):
-          pb = MacroChild.PoolBranch(self, out_filters, "avg", input_conv4, 0)
-          y = pb(inputs)
-        branches[fw.equal(count, 4)] = lambda: y
-      if self.num_branches >= 6:
-        with fw.name_scope("branch_5"):
-          pb = MacroChild.PoolBranch(self, out_filters, "max", input_conv5, 0)
-          y = pb(inputs)
-        branches[fw.equal(count, 5)] = lambda: y
-      out = fw.case(branches, default=lambda: fw.constant(0, fw.float32),
-                    exclusive=True)
-
-      self.data_format.set_shape(out, inp_h, inp_w, out_filters)
-    else: # not self.whole_channels
-      count = self.sample_arc[start_idx:start_idx + 2 * self.num_branches]
-      branches = []
-      with fw.name_scope("branch_0"):
-        cb = MacroChild.ConvBranch(self, 3, is_training, count[1], num_input_chan, out_filters, weights, reuse, 1, count[0], False)
-        branches.append(cb(inputs))
-      with fw.name_scope("branch_1"):
-        cb = MacroChild.ConvBranch(self, 3, is_training, count[3], num_input_chan, out_filters, weights, reuse, 1, count[2], True)
-        branches.append(cb(inputs))
-      with fw.name_scope("branch_2"):
-        cb = MacroChild.ConvBranch(self, 5, is_training, count[5], num_input_chan, out_filters, weights, reuse, 1, count[4], False)
-        branches.append(cb(inputs))
-      with fw.name_scope("branch_3"):
-        cb = MacroChild.ConvBranch(self, 5, is_training, count[7], num_input_chan, out_filters, weights, reuse, 1, count[6], True)
-        branches.append(cb(inputs))
-      if self.num_branches >= 5:
-        with fw.name_scope("branch_4"):
-          pb = MacroChild.PoolBranch(self, count[9], "avg", input_conv4, count[8])
-          branches.append(pb(inputs))
-      if self.num_branches >= 6:
-        with fw.name_scope("branch_5"):
-          pb = MacroChild.PoolBranch(self, count[11], "max", input_conv5, count[10])
-          branches.append(pb(inputs))
-
-      with fw.name_scope("final_conv") as scope:
-        branches = self.data_format.enas_layer(inputs, branches)
-        final_conv = MacroChild.FinalConv(
-          self.num_branches,
-          count,
-          weights,
-          reuse,
-          scope,
-          out_filters,
-          is_training,
-          self.data_format)
-        out = final_conv(branches)
-
-    if layer_id > 0:
-      if self.whole_channels:
-        skip_start = start_idx + 1
-      else:
-        skip_start = start_idx + 2 * self.num_branches
-      skip = self.sample_arc[skip_start: skip_start + layer_id]
-      with fw.name_scope("skip"):
-        ele = MacroChild.ENASSkipLayers(layer_id, skip, is_training, self.data_format, weights, num_input_chan)
-        out = ele(out, prev_layers)
-
-    return out
+      elwc = MacroChild.ENASLayerWholeChannels(self, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse, input_conv_avg, input_conv_max)
+    else:
+      elwc = MacroChild.ENASLayerNotWholeChannels(self, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse, input_conv_avg, input_conv_max)
+    return elwc(prev_layers, self.sample_arc)
 
 
   class ENASSkipLayers(object):
