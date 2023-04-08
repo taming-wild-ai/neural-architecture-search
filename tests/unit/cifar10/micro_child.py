@@ -388,6 +388,7 @@ class TestMicroChild(unittest.TestCase):
                                 adp.assert_called_with(max_pool2d(), 0)
                                 fc.assert_called_with([0, 'batch_norm2', 'adpadp', 'adpadp', 'adpadp', 'adpadp', 0], np_zeros(), [24] * 7, 32, 24, True, 'normal')
 
+    @patch('src.cifar10.micro_child.MicroChild.ENASConvOuter')
     @patch('src.cifar10.micro_child.fw.stack', return_value=tf.constant(np.ndarray((1, 4, 32, 32, 3))))
     @patch('src.cifar10.micro_child.batch_norm', return_value="batch_norm")
     @patch('src.cifar10.micro_child.fw.conv2d', return_value="conv2d")
@@ -395,22 +396,22 @@ class TestMicroChild(unittest.TestCase):
     @patch('src.cifar10.micro_child.fw.reshape', return_value="reshape")
     @patch('src.cifar10.micro_child.fw.max_pool2d', return_value="max_pool2d")
     @patch('src.cifar10.micro_child.fw.avg_pool2d', return_value="avg_pool2d")
-    def test_enas_cell(self, avg_pool2d, max_pool2d, reshape, relu, conv2d, batch_norm, stack):
+    def test_enas_cell(self, avg_pool2d, max_pool2d, reshape, relu, conv2d, batch_norm, stack, ec):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
-                with patch.object(mc, '_enas_conv', return_value="ec") as ec:
-                    with patch.object(mc.weights, 'get', return_value="fw.create_weight") as create_weight:
-                        with patch.object(mc.data_format, 'get_C', return_value=24) as get_c:
-                            mc._enas_cell(None, 0, 1, 0, 3, 24, mc.weights, False)
-                            avg_pool2d.assert_called_with(None, [3, 3], [1, 1], "SAME", data_format="channels_last")
-                            create_weight.assert_called_with(False, 'x_conv/', "w", [1, 72], None)
-                            reshape.assert_called_with('w', [1, 1, 3, 24])
-                            relu.assert_called_with(None)
-                            conv2d.assert_called_with("relu", 'reshape', strides=[1, 1, 1, 1], padding="SAME", data_format="NHWC")
-                            batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
-                            ec.assert_called_with('batch_norm', 0, 1, 5, 24, mc.weights, False)
-                            stack.assert_called_with(['ec', 'ec', 'batch_norm', 'batch_norm', 'batch_norm'], axis=0)
+                with patch.object(mc.weights, 'get', return_value="fw.create_weight") as create_weight:
+                    with patch.object(mc.data_format, 'get_C', return_value=24) as get_c:
+                        mc._enas_cell(None, 0, 1, 0, 3, 24, mc.weights, False)
+                        avg_pool2d.assert_called_with(None, [3, 3], [1, 1], "SAME", data_format="channels_last")
+                        create_weight.assert_called_with(False, 'x_conv/', "w", [1, 72], None)
+                        reshape.assert_called_with('w', [1, 1, 3, 24])
+                        relu.assert_called_with(None)
+                        conv2d.assert_called_with("relu", 'reshape', strides=[1, 1, 1, 1], padding="SAME", data_format="NHWC")
+                        batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights)
+                        ec.assert_called_with(mc, 0, 1, 5, 24, mc.weights, False)
+                        ec().assert_called_with('batch_norm')
+                        stack.assert_called_with([ec()(), ec()(), 'batch_norm', 'batch_norm', 'batch_norm'], axis=0)
 
     @patch('src.cifar10.micro_child.fw.ones_init', return_value="ones")
     @patch('src.cifar10.micro_child.fw.zeros_init', return_value="zeros")
@@ -424,7 +425,8 @@ class TestMicroChild(unittest.TestCase):
                 mc = MicroChild({}, {})
                 with patch.object(mc.weights, 'get') as create_weight:
                     create_weight().__getitem__ = mock.MagicMock()
-                    mc._enas_conv(None, 0, 0, 3, 24, mc.weights, False)
+                    ec = MicroChild.ENASConvOuter(mc, 0, 0, 3, 24, mc.weights, False)
+                    ec(None)
                     create_weight.assert_any_call(False, 'conv_3x3/stack_1/bn/', 'scale', [2, 24], 'ones')
                     create_weight.assert_called_with(False, 'conv_3x3/stack_1/bn/', 'w_point', [2, 576], None)
                     reshape.assert_called_with(create_weight().__getitem__(), [1, 1, 24, 24])

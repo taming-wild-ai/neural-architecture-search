@@ -632,9 +632,11 @@ class MicroChild(Child):
     with fw.name_scope("x_conv") as scope:
       ec = MicroChild.ENASCell(self.data_format, num_input_chan, out_filters, weights, reuse, scope, num_possible_inputs, prev_cell)
       x = ec(x)
+    ec3 = MicroChild.ENASConvOuter(self, curr_cell, prev_cell, 3, out_filters, weights, reuse)
+    ec5 = MicroChild.ENASConvOuter(self, curr_cell, prev_cell, 5, out_filters, weights, reuse)
     out = [
-      self._enas_conv(x, curr_cell, prev_cell, 3, out_filters, weights, reuse),
-      self._enas_conv(x, curr_cell, prev_cell, 5, out_filters, weights, reuse),
+      ec3(x),
+      ec5(x),
       avg_pool,
       max_pool,
       x,
@@ -645,7 +647,7 @@ class MicroChild(Child):
     return out
 
 
-  class ENASConv(LayeredModel):
+  class ENASConvInner(LayeredModel):
     def __init__(self, weights, reuse: bool, scope: str, num_possible_inputs: int, filter_size: int, prev_cell: int, out_filters: int, data_format):
       with fw.name_scope("bn") as scope:
         offset = weights.get(
@@ -689,18 +691,15 @@ class MicroChild(Child):
 
       self.layers = [inner]
 
-  def _enas_conv(self, x, curr_cell, prev_cell, filter_size, out_filters: int, weights, reuse: bool,
-                 stack_conv=2):
-    """Performs an enas convolution specified by the relevant parameters."""
 
-    with fw.name_scope("conv_{0}x{0}".format(filter_size)) as scope:
-      num_possible_inputs = curr_cell + 2
-      for conv_id in range(stack_conv):
-        with fw.name_scope("stack_{0}".format(conv_id)) as scope:
-          # create params and pick the correct path
-          ec = MicroChild.ENASConv(weights, reuse, scope, num_possible_inputs, filter_size, prev_cell, out_filters, self.data_format)
-          x = ec(x)
-    return x
+  class ENASConvOuter(LayeredModel):
+    def __init__(self, child, curr_cell, prev_cell, filter_size, out_filters: int, weights, reuse: bool, stack_conv=2):
+      self.layers = []
+      with fw.name_scope("conv_{0}x{0}".format(filter_size)) as scope:
+        for conv_id in range(stack_conv):
+          with fw.name_scope("stack_{0}".format(conv_id)) as scope:
+            # create params and pick the correct path
+            self.layers.append(MicroChild.ENASConvInner(weights, reuse, scope, curr_cell + 2, filter_size, prev_cell, out_filters, child.data_format))
 
 
   class ENASLayer(LayeredModel):
