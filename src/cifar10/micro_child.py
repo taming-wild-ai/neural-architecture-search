@@ -590,7 +590,7 @@ class MicroChild(Child):
         self.layers.append(inner)
 
 
-  class ENASCell(LayeredModel):
+  class ENASCellInner(LayeredModel):
     def __init__(self, data_format, num_input_chan: int, out_filters: int, weights, reuse: bool, scope: str, num_possible_inputs: int, prev_cell: int):
       self.layers = []
       if num_input_chan != out_filters:
@@ -617,34 +617,27 @@ class MicroChild(Child):
       else:
         self.layers.append(lambda x: x)
 
-  def _enas_cell(self, x, curr_cell, prev_cell, op_id, num_input_chan: int, out_filters: int, weights, reuse: bool):
+
+  class ENASCell(object):
     """Performs an enas operation specified by op_id."""
-    num_possible_inputs = curr_cell + 1
+    def __init__(self, child, curr_cell, prev_cell, num_input_chan: int, out_filters: int, weights, reuse: bool):
+      with fw.name_scope("avg_pool") as scope:
+        self.ap = MicroChild.AvgPool(child.data_format, num_input_chan, out_filters, reuse, scope, curr_cell, prev_cell, weights)
+      with fw.name_scope("max_pool") as scope:
+        self.mp = MicroChild.MaxPool(child.data_format, num_input_chan, out_filters, reuse, scope, curr_cell, prev_cell, weights)
+      with fw.name_scope("x_conv") as scope:
+        self.ec = MicroChild.ENASCellInner(child.data_format, num_input_chan, out_filters, weights, reuse, scope, curr_cell + 1, prev_cell)
+      self.ec3 = MicroChild.ENASConvOuter(child, curr_cell, prev_cell, 3, out_filters, weights, reuse)
+      self.ec5 = MicroChild.ENASConvOuter(child, curr_cell, prev_cell, 5, out_filters, weights, reuse)
 
-    with fw.name_scope("avg_pool") as scope:
-      ap = MicroChild.AvgPool(self.data_format, num_input_chan, out_filters, reuse, scope, curr_cell, prev_cell, weights)
-      avg_pool = ap(x)
-
-    with fw.name_scope("max_pool") as scope:
-      mp = MicroChild.MaxPool(self.data_format, num_input_chan, out_filters, reuse, scope, curr_cell, prev_cell, weights)
-      max_pool = mp(x)
-
-    with fw.name_scope("x_conv") as scope:
-      ec = MicroChild.ENASCell(self.data_format, num_input_chan, out_filters, weights, reuse, scope, num_possible_inputs, prev_cell)
-      x = ec(x)
-    ec3 = MicroChild.ENASConvOuter(self, curr_cell, prev_cell, 3, out_filters, weights, reuse)
-    ec5 = MicroChild.ENASConvOuter(self, curr_cell, prev_cell, 5, out_filters, weights, reuse)
-    out = [
-      ec3(x),
-      ec5(x),
-      avg_pool,
-      max_pool,
-      x,
-    ]
-
-    out = fw.stack(out, axis=0)
-    out = out[op_id, :, :, :, :]
-    return out
+    def __call__(self, x, op_id):
+      with fw.name_scope("avg_pool") as scope:
+        avg_pool = self.ap(x)
+      with fw.name_scope("max_pool") as scope:
+        max_pool = self.mp(x)
+      with fw.name_scope("x_conv") as scope:
+        x = self.ec(x)
+      return fw.stack([self.ec3(x), self.ec5(x), avg_pool, max_pool, x], axis=0)[op_id, :, :, :, :]
 
 
   class ENASConvInner(LayeredModel):
@@ -771,13 +764,15 @@ class MicroChild(Child):
         with fw.name_scope("x") as scope:
           x_id = arc[4 * cell_id] # always in {0, 1}
           x = prev_layers[x_id, :, :, :, :]
-          x = self._enas_cell(x, cell_id, x_id, arc[4 * cell_id + 1], out_filters, out_filters, weights, reuse)
+          ec = MicroChild.ENASCell(self, cell_id, x_id, out_filters, out_filters, weights, reuse)
+          x = ec(x, arc[4 * cell_id + 1])
           x_used = fw.one_hot(x_id, depth=self.num_cells + 2, dtype=fw.int32)
 
         with fw.name_scope("y") as scope:
           y_id = arc[4 * cell_id + 2] # always in {0, 1}
           y = prev_layers[y_id, :, :, :, :]
-          y = self._enas_cell(y, cell_id, y_id, arc[4 * cell_id + 3], out_filters, out_filters, weights, reuse)
+          ec = MicroChild.ENASCell(self, cell_id, y_id, out_filters, out_filters, weights, reuse)
+          y = ec(y, arc[4 * cell_id + 3])
           y_used = fw.one_hot(y_id, depth=self.num_cells + 2, dtype=fw.int32)
 
         out = x + y
