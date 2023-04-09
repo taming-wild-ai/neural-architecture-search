@@ -330,7 +330,8 @@ class TestMicroChild(unittest.TestCase):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
                 with patch.object(mc.weights, 'get', return_value="fw.create_weight") as create_weight:
-                    mc._fixed_conv(None, 3, 3, 24, 1, True, mc.weights, False)
+                    fc = MicroChild.FixedConv(mc, 3, 3, 24, 1, True, mc.weights, False)
+                    fc(None)
                     create_weight.assert_called_with(False, 'sep_conv_1/', "w_point", [1, 1, 3, 24], None)
                     relu.assert_called_with("batch_norm")
                     s_conv2d.assert_called_with("relu", depthwise_filter="fw.create_weight", pointwise_filter="fw.create_weight", strides=[1, 1, 1, 1], padding="SAME", data_format="NHWC")

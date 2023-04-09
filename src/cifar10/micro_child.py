@@ -349,34 +349,33 @@ class MicroChild(Child):
         lambda x: batch_norm(x, is_training, data_format, weights, out_filters)]
 
 
-  def _fixed_conv(self, x, f_size, num_input_chan: int, out_filters: int, stride, is_training, weights, reuse,
-                  stack_convs=2):
+  class FixedConv(LayeredModel):
     """Apply fixed convolution.
 
     Args:
       stacked_convs: number of separable convs to apply.
     """
+    def __init__(self, child, f_size, num_input_chan: int, out_filters: int, stride, is_training:bool, weights, reuse:bool, stack_convs=2):
+      self.layers = []
+      for conv_id in range(stack_convs):
+        if 0 == conv_id:
+          strides = child.data_format.get_strides(stride)
+        else:
+          strides = [1, 1, 1, 1]
 
-    for conv_id in range(stack_convs):
-      if conv_id == 0:
-        strides = self.data_format.get_strides(stride)
-      else:
-        strides = [1, 1, 1, 1]
+        with fw.name_scope(f"sep_conv_{conv_id}") as scope:
+          self.layers.append(
+            MicroChild.SeparableConv(
+              weights,
+              reuse,
+              scope,
+              f_size,
+              child.data_format,
+              num_input_chan,
+              out_filters,
+              strides,
+              is_training))
 
-      with fw.name_scope("sep_conv_{}".format(conv_id)) as scope:
-        sep_conv = MicroChild.SeparableConv(
-          weights,
-          reuse,
-          scope,
-          f_size,
-          self.data_format,
-          num_input_chan,
-          out_filters,
-          strides,
-          is_training)
-        x = sep_conv(x)
-
-    return x
 
   def _fixed_combine(self, layers, used, c, out_hw: int, out_filters, is_training,
                      normal_or_reduction_cell="normal"):
@@ -437,14 +436,14 @@ class MicroChild(Child):
     class SeparableConv3x3(LayeredModel):
       def __init__(self, child, num_input_chan, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
         self.layers = [
-          lambda x: child._fixed_conv(x, 3, num_input_chan, out_filters, x_stride, is_training, weights, reuse),
+          MicroChild.FixedConv(child, 3, num_input_chan, out_filters, x_stride, is_training, weights, reuse),
           lambda x: MicroChild.Operator.inner2(x, child, is_training, layer_id)]
 
 
     class SeparableConv5x5(LayeredModel):
       def __init__(self, child, num_input_chan, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
         self.layers = [
-          lambda x: child._fixed_conv(x, 5, num_input_chan, out_filters, x_stride, is_training, weights, reuse),
+          MicroChild.FixedConv(child, 5, num_input_chan, out_filters, x_stride, is_training, weights, reuse),
           lambda x: MicroChild.Operator.inner2(x, child, is_training, layer_id)]
 
 
