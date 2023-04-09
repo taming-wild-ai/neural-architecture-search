@@ -218,12 +218,13 @@ class TestMicroChild(unittest.TestCase):
                             batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights, 24)
                             fr.assert_called_with('relu', 3, 24, 2, True, mc.weights, False)
 
+    @patch('src.cifar10.micro_child.MicroChild.ENASLayer', return_value=mock.MagicMock(return_value=mock.MagicMock(return_value='el')))
     @patch('src.cifar10.micro_child.fw.matmul')
     @patch('src.cifar10.micro_child.fw.relu', return_value="relu")
     @patch('src.cifar10.child.batch_norm')
     @patch('src.cifar10.micro_child.fw.conv2d', return_value='conv2d')
     @patch('src.cifar10.micro_child.print')
-    def test_model_nhwc(self, print, conv2d, batch_norm, relu, matmul):
+    def test_model_nhwc(self, print, conv2d, batch_norm, relu, matmul, el):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
@@ -232,54 +233,56 @@ class TestMicroChild(unittest.TestCase):
                 mc.normal_arc = None
                 mc.keep_prob = None
                 with patch.object(mc, '_factorized_reduction') as fr:
-                    with patch.object(mc, '_enas_layer') as el:
-                        el_result = el()
-                        with patch.object(mc, 'data_format') as data_format:
-                            with patch.object(mc.weights, 'get', return_value="fw.create_weight") as create_weight:
-                                mc._model(mc.weights, {}, True)
-                                create_weight.assert_called_with(False, 'MicroChild/fc/', "w", [96, 10], None)
-                                conv2d.assert_called_with({}, "fw.create_weight", [1, 1, 1, 1], 'SAME', data_format=data_format.name)
-                                batch_norm.assert_called_with("conv2d", True, data_format, mc.weights, 72)
-                                fr.assert_called_with(el_result, 48, 96, 2, True, mc.weights, False)
-                                el.assert_called_with(3, [el_result, el_result], None, [el_result.get_shape().__getitem__(), el_result.get_shape().__getitem__()], [96, 96], 96, mc.weights, False)
-                                data_format.global_avg_pool.assert_called_with('relu')
-                                relu.assert_called_with(el_result)
-                                matmul.assert_called_with(data_format.global_avg_pool(), 'fw.create_weight')
+                    el_result = el()
+                    with patch.object(mc, 'data_format') as data_format:
+                        with patch.object(mc.weights, 'get', return_value="fw.create_weight") as create_weight:
+                            mc._model(mc.weights, {}, True)
+                            create_weight.assert_called_with(False, 'MicroChild/fc/', "w", [96, 10], None)
+                            conv2d.assert_called_with({}, "fw.create_weight", [1, 1, 1, 1], 'SAME', data_format=data_format.name)
+                            batch_norm.assert_called_with("conv2d", True, data_format, mc.weights, 72)
+                            fr.assert_called_with(el_result(), 48, 96, 2, True, mc.weights, False)
+                            el.assert_called_with(mc, None, [el_result().get_shape().__getitem__(), el_result().get_shape().__getitem__()], [96, 96], 96, mc.weights, False)
+                            el().assert_any_call([el_result(), el_result()])
+                            data_format.global_avg_pool.assert_called_with('relu')
+                            relu.assert_called_with(el_result())
+                            matmul.assert_called_with(data_format.global_avg_pool(), 'fw.create_weight')
 
+    @patch('src.cifar10.micro_child.MicroChild.ENASLayer', return_value=mock.MagicMock(return_value=mock.MagicMock(return_value='el')))
     @patch('src.cifar10.micro_child.fw.matmul')
     @patch('src.cifar10.micro_child.fw.dropout', return_value="dropout")
     @patch('src.cifar10.micro_child.fw.relu', return_value="relu")
     @patch('src.cifar10.child.batch_norm')
     @patch('src.cifar10.micro_child.fw.conv2d', return_value="conv2d")
     @patch('src.cifar10.micro_child.print')
-    def test_model_nchw(self, print1, conv2d, batch_norm, relu, do, matmul):
+    def test_model_nchw(self, print1, conv2d, batch_norm, relu, do, matmul, el):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nchw):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
                 with patch.object(mc.data_format, 'global_avg_pool', return_value="gap") as gap:
                     with patch.object(mc, '_factorized_reduction') as fr:
-                        with patch.object(mc, '_enas_layer') as el:
-                            el_value = el()
-                            with patch.object(mc.data_format, 'get_C', return_value='get_c') as get_c:
-                                with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
-                                    mc.name = "MicroChild"
-                                    mc.reduce_arc = None
-                                    mc.normal_arc = None
-                                    mc.keep_prob = 0.9
-                                    mc._model(mc.weights, {}, True)
-                                    create_weight.assert_any_call(False, 'MicroChild/stem_conv/', "w", [3, 3, 3, 72], None)
-                                    conv2d.assert_called_with({}, "fw.create_weight", [1, 1, 1, 1], 'SAME', data_format="NCHW")
-                                    batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights, 72)
-                                    fr.assert_called_with(el_value, 48, 96, 2, True, mc.weights, False)
-                                    el.assert_called_with(3, [el_value, el_value], None, [el_value.get_shape().__getitem__(), el_value.get_shape().__getitem__()], [96, 96], 96, mc.weights, False)
-                                    for num in range(4):
-                                        print1.assert_any_call(f"Layer  {num}: {el_value}")
-                                    relu.assert_called_with(el_value)
-                                    gap.assert_called_with("relu")
-                                    do.assert_called_with("gap", 0.9)
-                                    create_weight.assert_called_with(False, 'MicroChild/fc/', "w", [96, 10], None)
-                                    matmul.assert_called_with('dropout', "fw.create_weight")
+                        el_value = el()
+                        with patch.object(mc.data_format, 'get_C', return_value='get_c') as get_c:
+                            with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
+                                mc.name = "MicroChild"
+                                mc.reduce_arc = None
+                                mc.normal_arc = None
+                                mc.keep_prob = 0.9
+                                mc._model(mc.weights, {}, True)
+                                create_weight.assert_any_call(False, 'MicroChild/stem_conv/', "w", [3, 3, 3, 72], None)
+                                conv2d.assert_called_with({}, "fw.create_weight", [1, 1, 1, 1], 'SAME', data_format="NCHW")
+                                batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights, 72)
+                                fr.assert_called_with(el_value(), 48, 96, 2, True, mc.weights, False)
+                                el.assert_called_with(mc, None, [el_value().get_shape().__getitem__(), el_value().get_shape().__getitem__()], [96, 96], 96, mc.weights, False)
+                                el().assert_any_call([el_value(), el_value()])
+                                for num in range(4):
+                                    print1.assert_any_call(f"Layer  {num}: {el_value()}")
+                                relu.assert_called_with(el_value())
+                                gap.assert_called_with("relu")
+                                do.assert_called_with("gap", 0.9)
+                                create_weight.assert_called_with(False, 'MicroChild/fc/', "w", [96, 10], None)
+                                matmul.assert_called_with('dropout', "fw.create_weight")
 
+    @patch('src.cifar10.micro_child.MicroChild.ENASLayer', return_value=mock.MagicMock(return_value='el'))
     @patch('src.cifar10.micro_child.fw.avg_pool2d')
     @patch('src.cifar10.micro_child.fw.matmul', return_value="matmul")
     @patch('src.cifar10.micro_child.fw.dropout', return_value="dropout")
@@ -287,38 +290,37 @@ class TestMicroChild(unittest.TestCase):
     @patch('src.cifar10.child.batch_norm', return_value="batch_norm")
     @patch('src.cifar10.micro_child.fw.conv2d', return_value="conv2d")
     @patch('src.cifar10.micro_child.print')
-    def test_model_aux_heads(self, print, conv2d, batch_norm, relu, do, matmul, avg_pool2d):
+    def test_model_aux_heads(self, print0, conv2d, batch_norm, relu, do, matmul, avg_pool2d, el):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nchw):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
             with patch.object(mc.data_format, 'global_avg_pool') as gap:
                 gap.get_shape = mock.MagicMock(return_value=[3, 3])
                 with patch.object(mc, '_factorized_reduction', return_value="fr") as fr:
-                    with patch.object(mc, '_enas_layer', return_value="el") as el:
-                        with patch.object(mc.data_format, 'get_C', return_value="get_c") as get_c:
-                            with patch.object(mc, "_get_HW", return_value="get_hw") as get_hw:
-                                with patch.object(mc.weights, "get", return_value="fw.create_weight") as create_weight:
-                                    mc.name = "MicroChild"
-                                    mc.reduce_arc = None
-                                    mc.normal_arc = None
-                                    mc.keep_prob = 0.9
-                                    mc.use_aux_heads = True
-                                    mc.aux_head_indices = [0]
-                                    mc._model(mc.weights, {}, True)
-                                    create_weight.assert_any_call(False, 'MicroChild/stem_conv/', "w", [3, 3, 3, 72], None)
-                                    conv2d.assert_called_with("relu", "fw.create_weight", [1, 1, 1, 1], 'SAME', data_format="NCHW")
-                                    batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights, 768)
-                                    fr.assert_called_with('el', 48, 96, 2, True, mc.weights, False)
-                                    el.assert_called_with(3, ['el', 'el'], None, ['get_hw', 'get_hw'], [96, 96], 96, mc.weights, False)
-                                    for num in range(4):
-                                        print.assert_any_call(f"Layer  {num}: el")
-                                    relu.assert_called_with('el')
-                                    gap.assert_called_with("relu")
-                                    do.assert_called_with(gap(), 0.9)
-                                    create_weight.assert_called_with(False, 'MicroChild/fc/', "w", [96, 10], None)
-                                    matmul.assert_called_with('dropout', "fw.create_weight")
-                                    avg_pool2d.assert_called_with("relu", [5, 5], [3, 3], "VALID", data_format="channels_first")
-                                    get_hw.assert_called_with("el")
+                    with patch.object(mc.data_format, 'get_C', return_value="get_c") as get_c:
+                        with patch.object(mc, "_get_HW", return_value="get_hw") as get_hw:
+                            with patch.object(mc.weights, "get", return_value="fw.create_weight") as create_weight:
+                                mc.name = "MicroChild"
+                                mc.reduce_arc = None
+                                mc.normal_arc = None
+                                mc.keep_prob = 0.9
+                                mc.use_aux_heads = True
+                                mc.aux_head_indices = [0]
+                                mc._model(mc.weights, {}, True)
+                                create_weight.assert_any_call(False, 'MicroChild/stem_conv/', "w", [3, 3, 3, 72], None)
+                                conv2d.assert_called_with("relu", "fw.create_weight", [1, 1, 1, 1], 'SAME', data_format="NCHW")
+                                batch_norm.assert_called_with('conv2d', True, mc.data_format, mc.weights, 768)
+                                el.assert_called_with(mc, None, ['get_hw', 'get_hw'], [96, 96], 96, mc.weights, False)
+                                fr.assert_called_with(el()(), 48, 96, 2, True, mc.weights, False)
+                                for num in range(4):
+                                    print0.assert_any_call(f"Layer  {num}: el")
+                                relu.assert_called_with('el')
+                                gap.assert_called_with("relu")
+                                do.assert_called_with(gap(), 0.9)
+                                create_weight.assert_called_with(False, 'MicroChild/fc/', "w", [96, 10], None)
+                                matmul.assert_called_with('dropout', "fw.create_weight")
+                                avg_pool2d.assert_called_with("relu", [5, 5], [3, 3], "VALID", data_format="channels_first")
+                                get_hw.assert_called_with("el")
 
     @patch('src.cifar10.micro_child.batch_norm', return_value="batch_norm")
     @patch('src.cifar10.micro_child.fw.separable_conv2d', return_value="s_conv2d")
@@ -461,7 +463,8 @@ class TestMicroChild(unittest.TestCase):
                     val = stack().__getitem__()
                     prev_layer1 = mock.MagicMock(name="prev_layer1")
                     prev_layer2 = mock.MagicMock(name="prev_layer2")
-                    mc._enas_layer(0, [prev_layer1, prev_layer2], [0, 0, 0, 0, 0, 1, 0, 1, 0, 2, 0, 2, 0, 3, 0, 3, 0, 4, 0, 4], [32, 32], [3, 3], 3, mc.weights, False)
+                    el = MicroChild.ENASLayer(mc, [0, 0, 0, 0, 0, 1, 0, 1, 0, 2, 0, 2, 0, 3, 0, 3, 0, 4, 0, 4], [32, 32], [3, 3], 3, mc.weights, False)
+                    el([prev_layer1, prev_layer2])
                     mcs.assert_called_with(mc, [32, 32], [3, 3], 3, True, mc.weights, False)
                     mcs().assert_called_with([prev_layer1, prev_layer2])
                     ec.assert_called_with(mc, 4, 0, 3, 3, mc.weights, False)
@@ -505,7 +508,8 @@ class TestMicroChild(unittest.TestCase):
                 mcs().return_value = [layer1, layer2]
                 with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
                     val = stack().__getitem__()
-                    mc._enas_layer(0, [layer1, layer2], [0, 0, 0, 0, 0, 1, 0, 1, 0, 2, 0, 2, 0, 3, 0, 3, 0, 4, 0, 4], [32, 32], [3, 3], 3, mc.weights, False)
+                    el = MicroChild.ENASLayer(mc, [0, 0, 0, 0, 0, 1, 0, 1, 0, 2, 0, 2, 0, 3, 0, 3, 0, 4, 0, 4], [32, 32], [3, 3], 3, mc.weights, False)
+                    el([layer1, layer2])
                     mcs.assert_called_with(mc, [32, 32], [3, 3], 3, True, mc.weights, False)
                     mcs().assert_called_with([layer1, layer2])
                     ec.assert_called_with(mc, 4, 0, 3, 3, mc.weights, False)

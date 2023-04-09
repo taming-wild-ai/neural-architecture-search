@@ -246,8 +246,8 @@ class MicroChild(Child):
           if layer_id not in self.pool_layers:
             if self.fixed_arc is None:
               hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
-              x = self._enas_layer(
-                layer_id, layers, self.normal_arc, hw, layers_channels, out_filters, weights, reuse)
+              el = MicroChild.ENASLayer(self, self.normal_arc, hw, layers_channels, out_filters, weights, reuse)
+              x = el(layers)
               x_chan = out_filters
             else:
               hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
@@ -261,8 +261,8 @@ class MicroChild(Child):
               layers = [layers[-1], x]
               layers_channels = [layers_channels[-1], out_filters]
               hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
-              x = self._enas_layer(
-                layer_id, layers, self.reduce_arc, hw, layers_channels, out_filters, weights, reuse)
+              el = MicroChild.ENASLayer(self, self.reduce_arc, hw, layers_channels, out_filters, weights, reuse)
+              x = el(layers)
               x_chan = out_filters
             else:
               hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
@@ -695,7 +695,7 @@ class MicroChild(Child):
             self.layers.append(MicroChild.ENASConvInner(weights, reuse, scope, curr_cell + 2, filter_size, prev_cell, out_filters, child.data_format))
 
 
-  class ENASLayer(LayeredModel):
+  class ENASLayerInner(LayeredModel):
     def __init__(self, weights, reuse: bool, scope:str, num_cells: int, out_filters: int, indices: list[int], num_outs, data_format, prev_layers: list[int]):
       """
       Output channels/filters: out_filters
@@ -711,9 +711,13 @@ class MicroChild(Child):
           indices,
           axis=0),
         [1, 1, num_outs * out_filters, out_filters])
+
+      def gather(x):
+        return fw.gather(x, indices, axis=0)
+
       self.layers = [
         lambda x: fw.stack(x, axis=0),
-        lambda x: fw.gather(x, indices, axis=0),
+        gather,
         lambda x: data_format.micro_enas(
           x,
           prev_layers[0],
@@ -744,7 +748,7 @@ class MicroChild(Child):
           lambda x: fw.reshape(x, [-1])]
 
 
-  def _enas_layer(self, layer_id, prev_layers, arc, hw, c, out_filters, weights, reuse):
+  class ENASLayer(object):
     """
     Args:
       layer_id: current layer
@@ -753,40 +757,48 @@ class MicroChild(Child):
         from layer_id, but why bother...
     Output channels: out_filters
     """
+    def __init__(self, child, arc, hw, c, out_filters, weights, reuse):
+      self.cs = MicroChild.CalibrateSize(child, hw, c, out_filters, True, weights, reuse)
 
-    assert len(prev_layers) == 2, "need exactly 2 inputs"
-    cs = MicroChild.CalibrateSize(self, hw, c, out_filters, True, weights, reuse)
-    layers = cs([prev_layers[0], prev_layers[1]])
-    used = []
-    for cell_id in range(self.num_cells):
-      prev_layers = fw.stack(layers, axis=0) # Always 2, N, H, W, C or 2, N, C, H, W
-      with fw.name_scope("cell_{0}".format(cell_id)) as scope:
-        with fw.name_scope("x") as scope:
-          x_id = arc[4 * cell_id] # always in {0, 1}
-          x = prev_layers[x_id, :, :, :, :]
-          ec = MicroChild.ENASCell(self, cell_id, x_id, out_filters, out_filters, weights, reuse)
-          x = ec(x, arc[4 * cell_id + 1])
-          x_used = fw.one_hot(x_id, depth=self.num_cells + 2, dtype=fw.int32)
+      def l0(layers):
+        used = []
+        for cell_id in range(child.num_cells):
+          prev_layers = fw.stack(layers, axis=0) # Always 2, N, H, W, C or 2, N, C, H, W
+          with fw.name_scope(f"cell_{cell_id}") as scope:
+            with fw.name_scope("x") as scope:
+              x_id = arc[4 * cell_id] # always in {0, 1}
+              x = prev_layers[x_id, :, :, :, :]
+              ec = MicroChild.ENASCell(child, cell_id, x_id, out_filters, out_filters, weights, reuse)
+              x = ec(x, arc[4 * cell_id + 1])
+              x_used = fw.one_hot(x_id, depth=child.num_cells + 2, dtype=fw.int32)
+            with fw.name_scope("y") as scope:
+              y_id = arc[4 * cell_id + 2]
+              y = prev_layers[y_id, :, :, :, :]
+              ec = MicroChild.ENASCell(child, cell_id, y_id, out_filters, out_filters, weights, reuse)
+              y = ec(y, arc[4 * cell_id + 3])
+              y_used = fw.one_hot(y_id, depth=child.num_cells + 2, dtype=fw.int32)
+            out = x + y
+            used.extend([x_used, y_used])
+            layers.append(out)
+        return prev_layers, layers, used
 
-        with fw.name_scope("y") as scope:
-          y_id = arc[4 * cell_id + 2] # always in {0, 1}
-          y = prev_layers[y_id, :, :, :, :]
-          ec = MicroChild.ENASCell(self, cell_id, y_id, out_filters, out_filters, weights, reuse)
-          y = ec(y, arc[4 * cell_id + 3])
-          y_used = fw.one_hot(y_id, depth=self.num_cells + 2, dtype=fw.int32)
+      self.l0 = l0
 
-        out = x + y
-        used.extend([x_used, y_used])
-        layers.append(out)
+      def indices(layers, prev_layers, used):
+        i = MicroChild.ENASLayerInner.Indices()
+        ixs = i(used)
+        num_outs = fw.size(ixs)
+        with fw.name_scope("final_conv") as scope:
+          el = MicroChild.ENASLayerInner(weights, reuse, scope, child.num_cells, out_filters, ixs, num_outs, child.data_format, prev_layers)
+        return el(layers)
 
-    i = MicroChild.ENASLayer.Indices()
-    indices = i(used)
-    num_outs = fw.size(indices)
+      self.indices = indices
 
-    with fw.name_scope("final_conv") as scope:
-      el = MicroChild.ENASLayer(weights, reuse, scope, self.num_cells, out_filters, indices, num_outs, self.data_format, prev_layers)
-
-    return el(layers)
+    def __call__(self, prev_layers):
+      assert 2 == len(prev_layers), "Need exactly two inputs."
+      layers = self.cs(prev_layers)
+      prev_layers, layers, used = self.l0(layers)
+      return self.indices(layers, prev_layers, used)
 
 
   class Loss(LayeredModel):
