@@ -507,3 +507,43 @@ class Child(object):
         conv2d,
         lambda x: batch_norm(x, is_training, data_format, weights, out_filters),
         fw.relu]
+
+
+  def _factorized_reduction(self, x, num_input_chan: int, out_filters: int, stride, is_training: bool, weights, reuse: bool):
+    """
+    Reduces the shape of x without information loss due to striding.
+    Output channels/filters: out_filters // 2 * 2
+    """
+    assert out_filters % 2 == 0, (
+        "Need even number of filters when using this factorized reduction.")
+    if stride == 1:
+      with fw.name_scope("path_conv") as scope:
+        fr_model = Child.PathConv(
+          weights,
+          reuse,
+          scope,
+          num_input_chan,
+          out_filters,
+          is_training,
+          self.data_format)
+        return fr_model(x)
+
+    stride_spec = self.data_format.get_strides(stride)
+    # Skip path 1
+    with fw.name_scope("path1_conv") as scope:
+      skip_path = self.SkipPath(stride_spec, self.data_format, weights, reuse, scope, num_input_chan, out_filters)
+      path1 = skip_path(x)
+
+    # Skip path 2
+    # First pad with 0"s on the right and bottom, then shift the filter to
+    # include those 0"s that were added.
+    path2 = self.data_format.factorized_reduction(x)
+    concat_axis = self.data_format.concat_axis()
+
+    with fw.name_scope("path2_conv") as scope:
+      skip_path = self.SkipPath(stride_spec, self.data_format, weights, reuse, scope, num_input_chan, out_filters)
+      path2 = skip_path(path2)
+
+    # Concat and apply BN
+    fr_model = Child.FactorizedReduction(is_training, self.data_format, weights, out_filters // 2 * 2)
+    return fr_model([path1, path2])
