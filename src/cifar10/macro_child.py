@@ -130,7 +130,8 @@ class MacroChild(Child):
                 self.out_filters,
                 is_training,
                 self.data_format)
-            x = self._enas_layer(layer_id, layers, start_idx, out_filters, out_filters, is_training, weights, reuse, input_conv4, input_conv5)
+            el = MacroChild.ENASLayer(self, layer_id, start_idx, out_filters, out_filters, is_training, weights, reuse, input_conv4, input_conv5)
+            x = el(layers)
             layers.append(x)
             layers_channels.append(out_filters)
           else:
@@ -323,7 +324,7 @@ class MacroChild(Child):
         return out
 
 
-  def _enas_layer(self, layer_id, prev_layers, start_idx, num_input_chan: int, out_filters: int, is_training: bool, weights, reuse: bool, input_conv_avg, input_conv_max):
+  def ENASLayer(self, layer_id, start_idx, num_input_chan: int, out_filters: int, is_training: bool, weights, reuse: bool, input_conv_avg, input_conv_max):
     """
     Args:
       layer_id: current layer
@@ -333,10 +334,9 @@ class MacroChild(Child):
       is_training: for batch_norm
     """
     if self.whole_channels:
-      elwc = MacroChild.ENASLayerWholeChannels(self, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse, input_conv_avg, input_conv_max)
+      return MacroChild.ENASLayerWholeChannels(self, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse, input_conv_avg, input_conv_max)
     else:
-      elwc = MacroChild.ENASLayerNotWholeChannels(self, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse, input_conv_avg, input_conv_max)
-    return elwc(prev_layers)
+      return MacroChild.ENASLayerNotWholeChannels(self, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse, input_conv_avg, input_conv_max)
 
 
   class ENASSkipLayers(object):
