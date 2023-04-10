@@ -135,7 +135,8 @@ class MacroChild(Child):
             layers.append(x)
             layers_channels.append(out_filters)
           else:
-            x = self._fixed_layer(layer_id, layers, start_idx, out_filters, out_filters, is_training, weights, reuse)
+            fl = MacroChild.FixedLayer(self, layer_id, start_idx, out_filters, out_filters, is_training, weights, reuse)
+            x = fl(layers)
             layers.append(x)
             layers_channels.append(out_filters)
           if layer_id in self.pool_layers:
@@ -524,8 +525,8 @@ class MacroChild(Child):
         return out
 
 
-  def _fixed_layer(
-      self, layer_id, prev_layers, start_idx, num_input_chan: int, out_filters: int, is_training: bool, weights, reuse: bool):
+  def FixedLayer(
+      self, layer_id, start_idx, num_input_chan: int, out_filters: int, is_training: bool, weights, reuse: bool):
     """
     Args:
       layer_id: current layer
@@ -535,10 +536,9 @@ class MacroChild(Child):
       is_training: for batch_norm
     """
     if self.whole_channels:
-      flwc = MacroChild.FixedLayerWholeChannels(self, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse)
+      return MacroChild.FixedLayerWholeChannels(self, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse)
     else:
-      flwc = MacroChild.FixedLayerNotWholeChannels(self, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse)
-    return flwc(prev_layers)
+      return MacroChild.FixedLayerNotWholeChannels(self, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse)
 
 
   class OutConv(LayeredModel):
