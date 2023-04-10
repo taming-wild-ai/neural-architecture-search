@@ -145,8 +145,8 @@ class MacroChild(Child):
               pooled_layers_channels = []
               for i, layer in enumerate(layers):
                 with fw.name_scope("from_{0}".format(i)):
-                  x = self._factorized_reduction(
-                    layer, layers_channels[i], out_filters, 2, is_training, weights, reuse)
+                  fr = Child.FactorizedReduction(self, layers_channels[i], out_filters, 2, is_training, weights, reuse)
+                  x = fr(layer)
                 pooled_layers.append(x)
                 pooled_layers_channels.append(out_filters)
               layers = pooled_layers

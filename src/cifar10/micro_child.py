@@ -111,7 +111,7 @@ class MicroChild(Child):
           with fw.name_scope("pool_x") as scope:
             self.layers_x = [
               fw.relu,
-              lambda x: child._factorized_reduction(x, c[0], out_filters, 2, is_training, weights, reuse)]
+              Child.FactorizedReduction(child, c[0], out_filters, 2, is_training, weights, reuse)]
         elif c[0] != out_filters:
           with fw.name_scope("pool_x") as scope:
             self.layers_x = [
@@ -220,7 +220,8 @@ class MicroChild(Child):
           else:
             out_filters *= 2
             if self.fixed_arc is None:
-              x = self._factorized_reduction(x, x_chan, out_filters, 2, is_training, weights, reuse)
+              fr = Child.FactorizedReduction(self, x_chan, out_filters, 2, is_training, weights, reuse)
+              x = fr(x)
               layers = [layers[-1], x]
               layers_channels = [layers_channels[-1], out_filters]
               hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
@@ -340,7 +341,7 @@ class MicroChild(Child):
               is_training))
 
 
-  def _fixed_combine(self, layers, used, c, out_hw: int, out_filters, is_training,
+  def _fixed_combine(self, layers, used, c, out_hw: int, out_filters, is_training, weights, reuse,
                      normal_or_reduction_cell="normal"):
     """Adjust if necessary.
 
@@ -358,7 +359,8 @@ class MicroChild(Child):
           if hw > out_hw:
             assert hw == out_hw * 2, ("i_hw={0} != {1}=o_hw".format(hw, out_hw))
             with fw.name_scope("calibrate_{0}".format(i)) as scope:
-              x = self._factorized_reduction(layer, c[i], out_filters, 2, is_training)
+              fr = Child.FactorizedReduction(self, c[i], out_filters, 2, is_training, weights, reuse)
+              x = fr(layer)
           else:
             x = layer
           out.append(x)
@@ -431,7 +433,7 @@ class MicroChild(Child):
         self.layers = []
         if x_stride > 1:
           assert x_stride == 2
-          self.layers.append(lambda x: child._factorized_reduction(x, num_input_chan, out_filters, 2, is_training, weights, reuse))
+          self.layers.append(Child.FactorizedReduction(child, num_input_chan, out_filters, 2, is_training, weights, reuse))
         self.layers.append(lambda x: MicroChild.Operator.inner1(x, child, num_input_chan, out_filters, weights, reuse, scope, is_training))
 
 
@@ -491,7 +493,7 @@ class MicroChild(Child):
       if used[i] == 0:
         hws.append(self._get_HW(layer))
     out_hw = min(hws)
-    out = self._fixed_combine(layers, used, c, out_hw, out_filters, is_training,
+    out = self._fixed_combine(layers, used, c, out_hw, out_filters, is_training, weights, reuse,
                               normal_or_reduction_cell)
     return out, out_filters // 2 * 2 * len(hws)
 

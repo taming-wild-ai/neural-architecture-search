@@ -425,7 +425,7 @@ class Child(object):
       self.layers = [conv2d, bn]
 
 
-  class FactorizedReduction(LayeredModel):
+  class FactorizedReductionInner(LayeredModel):
     """
     Output channels: num_input_chan
     """
@@ -509,41 +509,45 @@ class Child(object):
         fw.relu]
 
 
-  def _factorized_reduction(self, x, num_input_chan: int, out_filters: int, stride, is_training: bool, weights, reuse: bool):
-    """
-    Reduces the shape of x without information loss due to striding.
-    Output channels/filters: out_filters // 2 * 2
-    """
-    assert out_filters % 2 == 0, (
-        "Need even number of filters when using this factorized reduction.")
-    if stride == 1:
-      with fw.name_scope("path_conv") as scope:
-        fr_model = Child.PathConv(
-          weights,
-          reuse,
-          scope,
-          num_input_chan,
-          out_filters,
-          is_training,
-          self.data_format)
-        return fr_model(x)
+  class FactorizedReduction(object):
+    def __init__(self, child, num_input_chan: int, out_filters: int, stride, is_training:bool, weights, reuse: bool):
+      """
+      Reduces the shape of x without information loss due to striding.
+      Output channels/filters: out_filters // 2 * 2
+      """
+      assert 0 == out_filters % 2, "Need even number of filters when using factorized reduction."
+      self.layers = []
+      if 1 == stride:
+        self.single_layer = True
+        with fw.name_scope("path_conv") as scope:
+          fr_model = Child.PathConv(weights, reuse, scope, num_input_chan, out_filters, is_training, child.data_format)
+        def lfn(x):
+          with fw.name_scope("path_conv"):
+            return fr_model(x)
+        self.layers.append(lfn)
+      else:
+        self.single_layer = False
+        stride_spec = child.data_format.get_strides(stride)
+        with fw.name_scope('path1_conv') as scope:
+          skip_path1 = child.SkipPath(stride_spec, child.data_format, weights, reuse, scope, num_input_chan, out_filters)
+        def path1(x):
+          with fw.name_scope('path1_conv'):
+            return skip_path1(x)
+        self.layers.append(path1)
+        self.layers.append(lambda x: child.data_format.factorized_reduction(x))
+        with fw.name_scope('path2_conv') as scope:
+          skip_path2 = child.SkipPath(stride_spec, child.data_format, weights, reuse, scope, num_input_chan, out_filters)
+        def path2(x):
+          with fw.name_scope('path2_conv'):
+            return skip_path2(x)
+        self.layers.append(path2)
+        self.layers.append(Child.FactorizedReductionInner(is_training, child.data_format, weights, out_filters // 2 * 2))
 
-    stride_spec = self.data_format.get_strides(stride)
-    # Skip path 1
-    with fw.name_scope("path1_conv") as scope:
-      skip_path = self.SkipPath(stride_spec, self.data_format, weights, reuse, scope, num_input_chan, out_filters)
-      path1 = skip_path(x)
-
-    # Skip path 2
-    # First pad with 0"s on the right and bottom, then shift the filter to
-    # include those 0"s that were added.
-    path2 = self.data_format.factorized_reduction(x)
-    concat_axis = self.data_format.concat_axis()
-
-    with fw.name_scope("path2_conv") as scope:
-      skip_path = self.SkipPath(stride_spec, self.data_format, weights, reuse, scope, num_input_chan, out_filters)
-      path2 = skip_path(path2)
-
-    # Concat and apply BN
-    fr_model = Child.FactorizedReduction(is_training, self.data_format, weights, out_filters // 2 * 2)
-    return fr_model([path1, path2])
+    def __call__(self, x):
+      if self.single_layer:
+        return self.layers[0](x)
+      else:
+        path1 = self.layers[0](x)
+        path2 = self.layers[1](x)
+        path2 = self.layers[2](path2)
+        return  self.layers[3]([path1, path2])
