@@ -214,9 +214,8 @@ class MicroChild(Child):
               x_chan = out_filters
             else:
               hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
-              x, x_chan = self._fixed_layer(
-                layer_id, layers, self.normal_arc, hw, layers_channels, out_filters, 1, is_training,
-                weights, reuse, normal_or_reduction_cell="normal")
+              fl = MicroChild.FixedLayer(self, layer_id, self.normal_arc, hw, layers_channels, out_filters, 1, is_training, weights, reuse)
+              x, x_chan = fl(layers)
           else:
             out_filters *= 2
             if self.fixed_arc is None:
@@ -230,9 +229,8 @@ class MicroChild(Child):
               x_chan = out_filters
             else:
               hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
-              x, x_chan = self._fixed_layer(
-                layer_id, layers, self.reduce_arc, hw, layers_channels, out_filters, 2, is_training,
-                weights, reuse, normal_or_reduction_cell="reduction")
+              fl = MicroChild.FixedLayer(self, layer_id, self.reduce_arc, hw, layers_channels, out_filters, 2, is_training, weights, reuse)
+              x, x_chan = fl(layers)
           print("Layer {0:>2d}: {1}".format(layer_id, x))
           layers = [layers[-1], x]
           layers_channels = [layers_channels[-1], x_chan]
@@ -341,32 +339,30 @@ class MicroChild(Child):
               is_training))
 
 
-  def _fixed_combine(self, layers, used, c, out_hw: int, out_filters, is_training, weights, reuse,
-                     normal_or_reduction_cell="normal"):
-    """Adjust if necessary.
+  class FixedCombine(object):
+    def __init__(self, child, used, c, out_hw: int, out_filters: int, is_training, weights, reuse):
+      def layer_fn(layers):
+        out = []
+        with fw.name_scope('final_combine'):
+          for i, layer in enumerate(layers):
+            if used[i] == 0:
+              hw = child._get_HW(layer)
+              if hw > out_hw:
+                assert hw == out_hw * 2, f"hw ({hw}) is not two times out_hw ({out_hw})"
+                with fw.name_scope(f'calibrate_{i}'):
+                  fr = Child.FactorizedReduction(child, c[i], out_filters, 2, is_training, weights, reuse)
+                  x = fr(layer)
+              else:
+                x = layer
+              out.append(x)
+          return out
+      self.first_layer = layer_fn
+      self.last_layer = child.data_format.fixed_layer
 
-    Args:
-      layers: a list of tf tensors of size [NHWC] of [NCHW].
-      used: a numpy tensor, [0] means not used.
-    """
-
-    out = []
-
-    with fw.name_scope("final_combine") as scope:
-      for i, layer in enumerate(layers):
-        if used[i] == 0:
-          hw = self._get_HW(layer)
-          if hw > out_hw:
-            assert hw == out_hw * 2, ("i_hw={0} != {1}=o_hw".format(hw, out_hw))
-            with fw.name_scope("calibrate_{0}".format(i)) as scope:
-              fr = Child.FactorizedReduction(self, c[i], out_filters, 2, is_training, weights, reuse)
-              x = fr(layer)
-          else:
-            x = layer
-          out.append(x)
-      out = self.data_format.fixed_layer(out)
-
-    return out
+    def __call__(self, layers):
+      out = self.first_layer(layers)
+      with fw.name_scope('final_combine'):
+        return self.last_layer(out)
 
 
   class LayerBase(LayeredModel):
@@ -446,8 +442,8 @@ class MicroChild(Child):
         MicroChild.Operator.MaxPooling,
         MicroChild.Operator.Identity][op_id](child, num_input_chan, out_filters, x_stride, is_training, weights, reuse, scope, layer_id)
 
-  def _fixed_layer(self, layer_id, prev_layers, arc, hw, c, out_filters, stride,
-                   is_training, weights, reuse, normal_or_reduction_cell="normal"):
+
+  class FixedLayer(object):
     """
     Args:
       prev_layers: cache of previous layers. for skip connections
@@ -456,46 +452,57 @@ class MicroChild(Child):
       Output layer
       Number of output channels
     """
+    def __init__(self, child, layer_id, arc, hw, c, out_filters, stride, is_training, weights, reuse):
+      self.cs = MicroChild.CalibrateSize(child, hw, c, out_filters, is_training, weights, reuse)
+      with fw.name_scope("layer_base") as scope:
+        self.lb = MicroChild.LayerBase(weights, reuse, scope, out_filters, out_filters, is_training, child.data_format)
+      used = np.zeros([child.num_cells + 2], dtype=np.int32)
 
-    assert len(prev_layers) == 2
-    layers = [prev_layers[0], prev_layers[1]]
-    cs = MicroChild.CalibrateSize(self, hw, c, out_filters, is_training, weights, reuse)
-    layers = cs(layers)
-    with fw.name_scope("layer_base") as scope:
-      lb = MicroChild.LayerBase(weights, reuse, scope, out_filters, out_filters, is_training, self.data_format)
-      layers[1] = lb(layers[1])
+      def layer2(layers):
+        for cell_id in range(child.num_cells):
+          with fw.name_scope(f'cell_{cell_id}') as scope:
+            x_id = arc[4 * cell_id]
+            used[x_id] += 1
+            x_op = arc[4 * cell_id + 1]
+            x = layers[x_id]
+            x_stride = stride if x_id in [0, 1] else 1
+            with fw.name_scope("x_conv") as scope:
+              op = MicroChild.Operator.new(x_op, child, out_filters, out_filters, x_stride, is_training, weights, reuse, scope, layer_id)
+              x = op(x)
+            y_id = arc[4 * cell_id + 2]
+            used[y_id] += 1
+            y_op = arc[4 * cell_id + 3]
+            y = layers[y_id]
+            y_stride = stride if y_id in [0, 1] else 1
+            with fw.name_scope("y_conv") as scope:
+              op = MicroChild.Operator.new(y_op, child, out_filters, out_filters, y_stride, is_training, weights, reuse, scope, layer_id)
+              y = op(y)
 
-    used = np.zeros([self.num_cells + 2], dtype=np.int32)
-    for cell_id in range(self.num_cells):
-      with fw.name_scope("cell_{}".format(cell_id)) as scope:
-        x_id = arc[4 * cell_id]
-        used[x_id] += 1
-        x_op = arc[4 * cell_id + 1]
-        x = layers[x_id]
-        x_stride = stride if x_id in [0, 1] else 1
-        with fw.name_scope("x_conv") as scope:
-          op = MicroChild.Operator.new(x_op, self, out_filters, out_filters, x_stride, is_training, weights, reuse, scope, layer_id)
-          x = op(x)
-        y_id = arc[4 * cell_id + 2]
-        used[y_id] += 1
-        y_op = arc[4 * cell_id + 3]
-        y = layers[y_id]
-        y_stride = stride if y_id in [0, 1] else 1
-        with fw.name_scope("y_conv") as scope:
-          op = MicroChild.Operator.new(y_op, self, out_filters, out_filters, y_stride, is_training, weights, reuse, scope, layer_id)
-          y = op(y)
+            out = x + y
+            layers.append(out)
+        return layers
 
-        out = x + y
-        layers.append(out)
-    c = [out_filters] * len(layers)
-    hws = []
-    for i, layer in enumerate(layers):
-      if used[i] == 0:
-        hws.append(self._get_HW(layer))
-    out_hw = min(hws)
-    out = self._fixed_combine(layers, used, c, out_hw, out_filters, is_training, weights, reuse,
-                              normal_or_reduction_cell)
-    return out, out_filters // 2 * 2 * len(hws)
+      self.l2 = layer2
+
+      def layer3(layers):
+        c = [out_filters] * len(layers)
+        hws = []
+        for i, layer in enumerate(layers):
+          if used[i] == 0:
+            hws.append(child._get_HW(layer))
+        out_hw = min(hws)
+        fc = MicroChild.FixedCombine(child, used, c, out_hw, out_filters, is_training, weights, reuse)
+        return fc(layers), out_filters // 2 * 2 * len(hws)
+
+      self.l3 = layer3
+
+    def __call__(self, prev_layers):
+      assert 2 == len(prev_layers)
+      layers = self.cs(prev_layers)
+      with fw.name_scope("layer_base") as scope:
+        layers[1] = self.lb(layers[1])
+      layers = self.l2(layers)
+      return self.l3(layers)
 
 
   class MaxPool(LayeredModel):

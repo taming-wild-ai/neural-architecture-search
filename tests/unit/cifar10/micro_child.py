@@ -346,7 +346,8 @@ class TestMicroChild(unittest.TestCase):
                 mc = MicroChild({}, {})
                 with patch.object(mc, '_get_HW', return_value=32) as get_HW:
                     with patch.object(mc.data_format, 'get_C'):
-                        mc._fixed_combine([1], [0], [3], 32, 24, True, mc.weights, True)
+                        fc = MicroChild.FixedCombine(mc, [0], [3], 32, 24, True, mc.weights, True)
+                        fc([1])
                         get_HW.assert_called_with(1)
 
     @patch('src.cifar10.child.Child.FactorizedReduction')
@@ -359,11 +360,13 @@ class TestMicroChild(unittest.TestCase):
                 layer1.get_shape = mock.MagicMock(return_value=[1, 32, 32, 3])
                 layer2 = mock.MagicMock(name='layer2')
                 layer2.get_shape = mock.MagicMock(return_value=[1, 64, 64, 3])
-                mc._fixed_combine([layer1, layer2], [0, 0], [3, 3], 32, 24, True, mc.weights, True)
+                fc = MicroChild.FixedCombine(mc, [0, 0], [3, 3], 32, 24, True, mc.weights, True)
+                fc([layer1, layer2])
                 fr.assert_called_with(mc, 3, 24, 2, True, mc.weights, True)
                 fr().assert_called_with(layer2)
                 concat.assert_called_with([layer1, fr()()], axis=3)
 
+    @patch('src.cifar10.micro_child.MicroChild.FixedCombine', return_value=mock.MagicMock(return_value='fc'))
     @patch('src.cifar10.micro_child.MicroChild.CalibrateSize')
     @patch('src.cifar10.micro_child.np.zeros', return_value=np.zeros([7], dtype=np.int32))
     @patch('src.cifar10.micro_child.fw.max_pool2d')
@@ -373,27 +376,28 @@ class TestMicroChild(unittest.TestCase):
     @patch('src.cifar10.micro_child.batch_norm', return_value="batch_norm2")
     @patch('src.cifar10.micro_child.fw.conv2d', return_value="conv2d")
     @patch('src.cifar10.micro_child.fw.relu', return_value="relu")
-    def test_fixed_layer(self, relu, conv2d, batch_norm2, batch_norm1, s_conv2d, avg_pool2d, max_pool2d, np_zeros, mcs):
+    def test_fixed_layer(self, relu, conv2d, batch_norm2, batch_norm1, s_conv2d, avg_pool2d, max_pool2d, np_zeros, mcs, fc):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
                 with patch.object(mc, '_get_HW', return_value=32):
                     with patch.object(mc, '_apply_drop_path', return_value="adp") as adp:
-                        with patch.object(mc, '_fixed_combine', return_value="fc") as fc:
-                            with patch.object(mc.weights, 'get', return_value="fw.create_weight") as create_weight:
-                                layer1 = mock.MagicMock(name='layer1')
-                                layer2 = mock.MagicMock(name='layer2')
-                                mcs().return_value = [0, 0]
-                                self.assertEqual(('fc', 144), mc._fixed_layer(0, [layer1, layer2], [0, 0, 0, 0, 0, 1, 0, 1, 0, 2, 0, 2, 0, 3, 0, 3, 0, 4, 0, 4], [32, 32], [3, 3], 24, 1, True, mc.weights, False))
-                                mcs.assert_called_with(mc, [32, 32], [3, 3], 24, True, mc.weights, False)
-                                mcs().assert_called_with([layer1, layer2])
-                                create_weight.assert_called_with(False, 'cell_1/y_conv/sep_conv_1/', "w_point", [1, 1, 24, 24], None)
-                                relu.assert_called_with('batch_norm2')
-                                conv2d.assert_called_with("relu", "fw.create_weight", [1, 1, 1, 1], "SAME", data_format="NHWC")
-                                batch_norm2.assert_called_with('s_conv2d', True, mc.data_format, mc.weights, 24)
-                                s_conv2d.assert_called_with("relu", depthwise_filter="fw.create_weight", pointwise_filter="fw.create_weight", strides=[1, 1, 1, 1], padding="SAME", data_format="NHWC")
-                                adp.assert_called_with(max_pool2d(), 0)
-                                fc.assert_called_with([0, 'batch_norm2', 'adpadp', 'adpadp', 'adpadp', 'adpadp', 0], np_zeros(), [24] * 7, 32, 24, True, mc.weights, False, 'normal')
+                        with patch.object(mc.weights, 'get', return_value="fw.create_weight") as create_weight:
+                            layer1 = mock.MagicMock(name='layer1')
+                            layer2 = mock.MagicMock(name='layer2')
+                            mcs().return_value = [0, 0]
+                            fl = MicroChild.FixedLayer(mc, 0, [0, 0, 0, 0, 0, 1, 0, 1, 0, 2, 0, 2, 0, 3, 0, 3, 0, 4, 0, 4], [32, 32], [3, 3], 24, 1, True, mc.weights, False)
+                            self.assertEqual(('fc', 144), fl([layer1, layer2]))
+                            mcs.assert_called_with(mc, [32, 32], [3, 3], 24, True, mc.weights, False)
+                            mcs().assert_called_with([layer1, layer2])
+                            create_weight.assert_called_with(False, 'cell_1/y_conv/sep_conv_1/', "w_point", [1, 1, 24, 24], None)
+                            relu.assert_called_with('batch_norm2')
+                            conv2d.assert_called_with("relu", "fw.create_weight", [1, 1, 1, 1], "SAME", data_format="NHWC")
+                            batch_norm2.assert_called_with('s_conv2d', True, mc.data_format, mc.weights, 24)
+                            s_conv2d.assert_called_with("relu", depthwise_filter="fw.create_weight", pointwise_filter="fw.create_weight", strides=[1, 1, 1, 1], padding="SAME", data_format="NHWC")
+                            adp.assert_called_with(max_pool2d(), 0)
+                            fc.assert_called_with(mc, np_zeros(), [24] * 7, 32, 24, True, mc.weights, False)
+                            fc().assert_called_with([0, 'batch_norm2', 'adpadp', 'adpadp', 'adpadp', 'adpadp', 0])
 
     @patch('src.cifar10.micro_child.MicroChild.ENASConvOuter')
     @patch('src.cifar10.micro_child.fw.stack', return_value=tf.constant(np.ndarray((1, 4, 32, 32, 3))))
