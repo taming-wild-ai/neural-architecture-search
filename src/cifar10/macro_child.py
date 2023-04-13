@@ -8,7 +8,7 @@ import numpy as np
 import src.framework as fw
 
 from src.cifar10.child import Child
-from src.cifar10.image_ops import batch_norm
+from src.cifar10.image_ops import BatchNorm
 from src.cifar10.image_ops import batch_norm_with_mask
 
 from src.utils import count_model_params, get_train_ops, DEFINE_integer, LayeredModel
@@ -197,12 +197,8 @@ class MacroChild(Child):
           [1, 1, 1, 1],
           'SAME',
           data_format=data_format.name)
-      def bn(x):
-        return batch_norm(x, is_training, data_format, weights)
-      self.layers = [
-        conv2d,
-        bn,
-        fw.relu]
+      bn = BatchNorm(is_training, data_format, weights, out_filters)
+      self.layers = [conv2d, bn, fw.relu]
 
 
   class ENASLayerNotWholeChannels(object):
@@ -360,7 +356,7 @@ class MacroChild(Child):
         skip_connections,
         append_input,
         lambda res_layers: fw.add_n(res_layers),
-        lambda x: batch_norm(x, is_training, data_format, weights, num_input_chan)]
+        BatchNorm(is_training, data_format, weights, num_input_chan)]
 
     def __call__(self, x, prev_layers):
       res_layers = self.layers[0](prev_layers)
@@ -556,8 +552,7 @@ class MacroChild(Child):
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name)
-      def bn(x):
-        return batch_norm(x, is_training, data_format, weights)
+      bn = BatchNorm(is_training, data_format, weights, filter_size)
       self.layers = [conv2d, bn, fw.relu]
 
 
@@ -584,8 +579,7 @@ class MacroChild(Child):
           strides=[1, 1, 1, 1],
           padding="SAME",
           data_format=data_format.name)
-      def bn(x):
-        return batch_norm(x, is_training, data_format, weights)
+      bn = BatchNorm(is_training, data_format, weights, out_filters)
       self.layers = [sep_conv2d, bn, fw.relu]
 
 

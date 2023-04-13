@@ -7,7 +7,7 @@ from src.utils import count_model_params
 from src.utils import get_train_ops
 from src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer, DEFINE_string
 from src.utils import LearningRate, ClipMode, Optimizer, LayeredModel
-from src.cifar10.image_ops import batch_norm
+from src.cifar10.image_ops import BatchNorm
 
 DEFINE_integer("batch_size", 32, "")
 DEFINE_integer("child_cutout_size", None, "CutOut size")
@@ -55,9 +55,6 @@ class DataFormat(object):
 
     @staticmethod
     def get_N(input): return input.get_shape()[0]
-
-    @staticmethod
-    def get_C(input): return input.get_shape()[1]
 
     @staticmethod
     def get_HW(input): return input.get_shape()[2], input.get_shape()[3]
@@ -112,9 +109,6 @@ class DataFormat(object):
 
     @staticmethod
     def get_N(input): return input.get_shape()[0]
-
-    @staticmethod
-    def get_C(input): return input.get_shape()[3]
 
     @staticmethod
     def get_HW(input): return input.get_shape()[1], input.get_shape()[2]
@@ -421,7 +415,8 @@ class Child(object):
           "SAME",
           data_format=data_format.name)
       def bn(x):
-        return batch_norm(x, is_training, data_format, weights)
+        bn = BatchNorm(is_training, data_format, weights)
+        return bn(x)
       self.layers = [conv2d, bn]
 
 
@@ -432,8 +427,7 @@ class Child(object):
     def __init__(self, is_training, data_format, weights, num_input_chan):
       def concat(x):
         return fw.concat(values=x, axis=data_format.concat_axis())
-      def bn(x):
-        return batch_norm(x, is_training, data_format, weights, num_input_chan)
+      bn = BatchNorm(is_training, data_format, weights, num_input_chan)
       self.layers = [concat, bn]
 
 
@@ -447,9 +441,8 @@ class Child(object):
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name)
-      def layer3(x):
-        return batch_norm(x, is_training, data_format, weights, out_filters)
-      self.layers = [fw.relu, layer2, layer3]
+      bn = BatchNorm(is_training, data_format, weights, out_filters)
+      self.layers = [fw.relu, layer2, bn]
 
 
   class ConvNxN(LayeredModel):
@@ -462,9 +455,8 @@ class Child(object):
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name)
-      def layer3(x):
-        return batch_norm(x, is_training, data_format, weights, out_filters)
-      self.layers = [fw.relu, layer2, layer3]
+      bn = BatchNorm(is_training, data_format, weights, out_filters)
+      self.layers = [fw.relu, layer2, bn]
 
 
   class StemConv(LayeredModel):
@@ -480,8 +472,7 @@ class Child(object):
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name)
-      def bn(x):
-        return batch_norm(x, is_training, data_format, weights, out_filters)
+      bn = BatchNorm(is_training, data_format, weights, out_filters)
       self.layers = [conv2d, bn]
 
 
@@ -503,10 +494,8 @@ class Child(object):
           [1, 1, 1, 1],
           'SAME',
           data_format=data_format.name)
-      self.layers = [
-        conv2d,
-        lambda x: batch_norm(x, is_training, data_format, weights, out_filters),
-        fw.relu]
+      bn = BatchNorm(is_training, data_format, weights, out_filters)
+      self.layers = [conv2d, bn, fw.relu]
 
 
   class FactorizedReduction(object):

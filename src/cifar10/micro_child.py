@@ -9,7 +9,7 @@ import numpy as np
 import src.framework as fw
 
 from src.cifar10.child import Child
-from src.cifar10.image_ops import batch_norm
+from src.cifar10.image_ops import BatchNorm
 from src.cifar10.image_ops import drop_path
 
 from src.utils import count_model_params
@@ -128,6 +128,7 @@ class MicroChild(Child):
         if c[1] != out_filters:
           with fw.name_scope("pool_y") as scope:
             w = weights.get(reuse, scope, "w", [1, 1, c[1], out_filters], None)
+            bn = BatchNorm(is_training, child.data_format, weights, out_filters)
             self.layers_y = [
               fw.relu,
               lambda x: fw.conv2d(
@@ -136,7 +137,7 @@ class MicroChild(Child):
                 [1, 1, 1, 1],
                 "SAME",
                 data_format=child.data_format.name),
-              lambda x: batch_norm(x, is_training, child.data_format, weights, out_filters)]
+              bn]
         else:
           self.layers_y = []
 
@@ -306,9 +307,8 @@ class MicroChild(Child):
           strides=strides,
           padding="SAME",
           data_format=data_format.name)
-      self.layers = [
-        separable_conv2d,
-        lambda x: batch_norm(x, is_training, data_format, weights, out_filters)]
+      bn = BatchNorm(is_training, data_format, weights, out_filters)
+      self.layers = [separable_conv2d, bn]
 
 
   class FixedConv(LayeredModel):
@@ -368,6 +368,7 @@ class MicroChild(Child):
   class LayerBase(LayeredModel):
     def __init__(self, weights, reuse: bool, scope: str, num_input_chan: int, out_filters: int, is_training: bool, data_format):
       w = weights.get(reuse, scope, "w", [1, 1, num_input_chan, out_filters], None)
+      bn = BatchNorm(is_training, data_format, weights, out_filters)
       self.layers = [
         fw.relu,
         lambda x: fw.conv2d(
@@ -376,7 +377,7 @@ class MicroChild(Child):
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name),
-        lambda x: batch_norm(x, is_training, data_format, weights, out_filters)]
+        bn]
 
 
   class Operator(object):
@@ -516,21 +517,10 @@ class MicroChild(Child):
           'w',
           [curr_cell + 1, num_input_chan * out_filters],
           None)
-        def inner(x):
-          with fw.name_scope("conv"):
-            return batch_norm(
-              fw.conv2d(
-                fw.relu(x),
-                fw.reshape(
-                  w[prev_cell],
-                  [1, 1, num_input_chan, out_filters]),
-                strides=[1, 1, 1, 1],
-                padding="SAME",
-                data_format=data_format.name),
-              True,
-              data_format,
-              weights)
-        self.layers.append(inner)
+        with fw.name_scope('conv'):
+          bn = BatchNorm(True, data_format, weights, out_filters)
+          conv2d = lambda x: fw.conv2d(x, fw.reshape(w[prev_cell], [1, 1, num_input_chan, out_filters]), strides=[1, 1, 1, 1], padding='SAME', data_format=data_format.name)
+        self.layers += [fw.relu, conv2d, bn]
 
 
   class AvgPool(LayeredModel):
@@ -544,9 +534,12 @@ class MicroChild(Child):
           'w',
           [curr_cell + 1, num_input_chan * out_filters],
           None)
+        with fw.name_scope("conv"):
+          bn = BatchNorm(True, data_format, weights, out_filters)
+
         def inner(x):
           with fw.name_scope("conv"):
-            return batch_norm(
+            return bn(
               fw.conv2d(
                 fw.relu(x),
                 fw.reshape(
@@ -554,10 +547,7 @@ class MicroChild(Child):
                   [1, 1, num_input_chan, out_filters]),
                 strides=[1, 1, 1, 1],
                 padding="SAME",
-                data_format=data_format.name),
-              True,
-              data_format,
-              weights)
+                data_format=data_format.name))
         self.layers.append(inner)
 
 
@@ -571,20 +561,9 @@ class MicroChild(Child):
           "w",
           [num_possible_inputs, num_input_chan * out_filters],
           None)
-        def inner(x):
-          return batch_norm(
-            fw.conv2d(
-              fw.relu(x),
-              fw.reshape(
-                w[prev_cell],
-                [1, 1, num_input_chan, out_filters]),
-              strides=[1, 1, 1, 1],
-              padding="SAME",
-              data_format=data_format.name),
-            True,
-            data_format,
-            weights)
-        self.layers.append(inner)
+        conv2d = lambda x: fw.conv2d(x, fw.reshape(w[prev_cell], [1, 1, num_input_chan, out_filters]), strides=[1, 1, 1, 1], padding='SAME', data_format=data_format.name)
+        bn = BatchNorm(True, data_format, weights, out_filters)
+        self.layers += [fw.relu, conv2d, bn]
       else:
         self.layers.append(lambda x: x)
 
@@ -683,31 +662,30 @@ class MicroChild(Child):
           axis=0),
         [1, 1, num_outs * out_filters, out_filters])
 
+      stack = lambda x: fw.stack(x, axis=0)
       def gather(x):
         return fw.gather(x, indices, axis=0)
-
+      micro_enas = lambda x: data_format.micro_enas(
+        x,
+        prev_layers[0],
+        num_outs,
+        out_filters)
+      conv2d = lambda x: fw.conv2d(
+        x,
+        filters,
+        strides=[1, 1, 1, 1],
+        padding='SAME',
+        data_format = data_format.name)
+      bn = BatchNorm(True, data_format, weights, out_filters)
+      reshape = lambda x: fw.reshape(x, fw.shape(prev_layers[0]))
       self.layers = [
-        lambda x: fw.stack(x, axis=0),
+        stack,
         gather,
-        lambda x: data_format.micro_enas(
-          x,
-          prev_layers[0],
-          num_outs,
-          out_filters),
+        micro_enas,
         fw.relu,
-        lambda x: fw.conv2d(
-          x,
-          filters,
-          strides=[1, 1, 1, 1],
-          padding='SAME',
-          data_format=data_format.name),
-        lambda x: batch_norm(
-          x,
-          True,
-          data_format,
-          weights,
-          out_filters),
-        lambda x: fw.reshape(x, fw.shape(prev_layers[0]))]
+        conv2d,
+        bn,
+        reshape]
 
     class Indices(LayeredModel):
       def __init__(self):
