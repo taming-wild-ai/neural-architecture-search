@@ -74,7 +74,7 @@ class TestParameterCounts(unittest.TestCase):
                 fixed_arc +=" 0 1 1 0 0 0 1 1 1 0 1 0 0 0 1 0 1 0 0 1 1 0 0 0"
                 mc.fixed_arc = fixed_arc
                 mc.sample_arc = np.array([int(x) for x in fixed_arc.split(" ") if x])
-                mc._build_train(mc._model, mc.weights, mc.x_train, mc.y_train)
+                mc._build_train(mc.weights, mc.x_train, mc.y_train)
                 print2.assert_any_call("-" * 80)
                 print2.assert_any_call("Build model child")
                 print2.assert_any_call("Build data ops")
@@ -124,7 +124,7 @@ class TestParameterCounts(unittest.TestCase):
                 fixed_arc +=" 0 1 0 1 0 1 0 0 0 0 0 0 0 0 1 0 1 0 0 1 0 0 0"
                 fixed_arc +=" 0 1 1 0 0 0 1 1 1 0 1 0 0 0 1 0 1 0 0 1 1 0 0 0"
                 mc.sample_arc = np.array([int(x) for x in fixed_arc.split(" ") if x])
-                mc._build_train(mc._model, mc.weights, mc.x_train, mc.y_train)
+                mc._build_train(mc.weights, mc.x_train, mc.y_train)
                 print2.assert_any_call("-" * 80)
                 print2.assert_any_call("Build model child")
                 print2.assert_any_call("Build data ops")
