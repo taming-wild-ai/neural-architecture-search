@@ -189,7 +189,6 @@ class MicroChild(Child):
     Compute the logits given the images.
     Input channels: 3
     """
-
     if self.fixed_arc is None:
       is_training = True
 
@@ -202,6 +201,7 @@ class MicroChild(Child):
         x = stem_conv(images)
       layers = [x, x]
       layers_channels = [x_chan, x_chan]
+      layers_hw = [32, 32]
 
       # building layers in the micro space
       out_filters = self.out_filters
@@ -209,33 +209,33 @@ class MicroChild(Child):
         with fw.name_scope("layer_{0}".format(layer_id)) as scope:
           if layer_id not in self.pool_layers:
             if self.fixed_arc is None:
-              hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
-              el = MicroChild.ENASLayer(self, self.normal_arc, hw, layers_channels, out_filters, weights, reuse)
+              el = MicroChild.ENASLayer(self, self.normal_arc, layers_hw, layers_channels, out_filters, weights, reuse)
               x = el(layers)
               x_chan = out_filters
             else:
-              hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
-              fl = MicroChild.FixedLayer(self, layer_id, self.normal_arc, hw, layers_channels, out_filters, 1, is_training, weights, reuse)
+              fl = MicroChild.FixedLayer(self, layer_id, self.normal_arc, layers_hw, layers_channels, out_filters, 1, is_training, weights, reuse)
               x, x_chan = fl(layers)
+            x_hw = layers_hw[-1]
           else:
             out_filters *= 2
             if self.fixed_arc is None:
               fr = Child.FactorizedReduction(self, x_chan, out_filters, 2, is_training, weights, reuse)
               x = fr(x)
+              x_hw = layers_hw[-1] // 2
               layers = [layers[-1], x]
+              layers_hw = [layers_hw[-1], x_hw]
               layers_channels = [layers_channels[-1], out_filters]
-              hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
-              el = MicroChild.ENASLayer(self, self.reduce_arc, hw, layers_channels, out_filters, weights, reuse)
+              el = MicroChild.ENASLayer(self, self.reduce_arc, layers_hw, layers_channels, out_filters, weights, reuse)
               x = el(layers)
               x_chan = out_filters
             else:
-              hw = [self._get_HW(layers[0]), self._get_HW(layers[1])]
-              fl = MicroChild.FixedLayer(self, layer_id, self.reduce_arc, hw, layers_channels, out_filters, 2, is_training, weights, reuse)
+              fl = MicroChild.FixedLayer(self, layer_id, self.reduce_arc, layers_hw, layers_channels, out_filters, 2, is_training, weights, reuse)
               x, x_chan = fl(layers)
+              x_hw = layers_hw[-1] // 2
           print("Layer {0:>2d}: {1}".format(layer_id, x))
           layers = [layers[-1], x]
+          layers_hw = [layers_hw[-1], x_hw]
           layers_channels = [layers_channels[-1], x_chan]
-
         # auxiliary heads
         self.num_aux_vars = 0
         if (self.use_aux_heads and

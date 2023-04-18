@@ -234,7 +234,7 @@ class TestMicroChild(unittest.TestCase):
                         batch_norm().assert_called_with("conv2d")
                         fr.assert_called_with(mc, 48, 96, 2, True, mc.weights, False)
                         fr().assert_called_with(el_result())
-                        el.assert_called_with(mc, None, [el_result().get_shape().__getitem__(), el_result().get_shape().__getitem__()], [96, 96], 96, mc.weights, False)
+                        el.assert_called_with(mc, None, [8, 8], [96, 96], 96, mc.weights, False)
                         el().assert_any_call([el_result(), el_result()])
                         data_format.global_avg_pool.assert_called_with('relu')
                         relu.assert_called_with(el_result())
@@ -266,7 +266,7 @@ class TestMicroChild(unittest.TestCase):
                         batch_norm().assert_called_with('conv2d')
                         fr.assert_called_with(mc, 48, 96, 2, True, mc.weights, False)
                         fr().assert_called_with(el_value())
-                        el.assert_called_with(mc, None, [el_value().get_shape().__getitem__(), el_value().get_shape().__getitem__()], [96, 96], 96, mc.weights, False)
+                        el.assert_called_with(mc, None, [8, 8], [96, 96], 96, mc.weights, False)
                         el().assert_any_call([el_value(), el_value()])
                         for num in range(4):
                             print1.assert_any_call(f"Layer  {num}: {el_value()}")
@@ -304,7 +304,7 @@ class TestMicroChild(unittest.TestCase):
                         conv2d.assert_called_with("relu", "fw.create_weight", [1, 1, 1, 1], 'SAME', data_format="NCHW")
                         batch_norm.assert_called_with(True, mc.data_format, mc.weights, 768)
                         batch_norm().assert_called_with('conv2d')
-                        el.assert_called_with(mc, None, ['get_hw', 'get_hw'], [96, 96], 96, mc.weights, False)
+                        el.assert_called_with(mc, None, [8, 8], [96, 96], 96, mc.weights, False)
                         fr.assert_called_with(mc, 48, 96, 2, True, mc.weights, False)
                         fr().assert_called_with(el()())
                         for num in range(4):
@@ -315,7 +315,7 @@ class TestMicroChild(unittest.TestCase):
                         create_weight.assert_called_with(False, 'MicroChild/fc/', "w", [96, 10], None)
                         matmul.assert_called_with('dropout', "fw.create_weight")
                         avg_pool2d.assert_called_with("relu", [5, 5], [3, 3], "VALID", data_format="channels_first")
-                        get_hw.assert_called_with("el")
+                        get_hw.assert_called_with('relu')
 
     @patch('src.cifar10.micro_child.BatchNorm', return_value=mock.MagicMock(return_value="batch_norm"))
     @patch('src.cifar10.micro_child.fw.separable_conv2d', return_value="s_conv2d")
