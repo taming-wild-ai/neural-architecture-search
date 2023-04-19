@@ -457,26 +457,36 @@ class MicroChild(Child):
       self.cs = MicroChild.CalibrateSize(child, hw, c, out_filters, is_training, weights, reuse)
       with fw.name_scope("layer_base") as scope:
         self.lb = MicroChild.LayerBase(weights, reuse, scope, out_filters, out_filters, is_training, child.data_format)
+      self.x_op = {}
+      self.y_op = {}
       used = np.zeros([child.num_cells + 2], dtype=np.int32)
+      for cell_id in range(child.num_cells):
+        with fw.name_scope(f'cell_{cell_id}') as scope:
+          x_id = arc[4 * cell_id]
+          used[x_id] += 1
+          x_op = arc[4 * cell_id + 1]
+          x_stride = stride if x_id in [0, 1] else 1
+          with fw.name_scope('x_conv') as scope:
+            self.x_op[cell_id] = MicroChild.Operator.new(x_op, child, out_filters, out_filters, x_stride, is_training, weights, reuse, scope, layer_id)
+          y_id = arc[4 * cell_id + 2]
+          used[y_id] += 1
+          y_op = arc[4 * cell_id + 3]
+          y_stride = stride if y_id in [0, 1] else 1
+          with fw.name_scope('y_conv') as scope:
+            self.y_op[cell_id] = MicroChild.Operator.new(y_op, child, out_filters, out_filters, y_stride, is_training, weights, reuse, scope, layer_id)
 
       def layer2(layers):
         for cell_id in range(child.num_cells):
           with fw.name_scope(f'cell_{cell_id}') as scope:
             x_id = arc[4 * cell_id]
-            used[x_id] += 1
-            x_op = arc[4 * cell_id + 1]
             x = layers[x_id]
-            x_stride = stride if x_id in [0, 1] else 1
             with fw.name_scope("x_conv") as scope:
-              op = MicroChild.Operator.new(x_op, child, out_filters, out_filters, x_stride, is_training, weights, reuse, scope, layer_id)
+              op = self.x_op[cell_id]
               x = op(x)
             y_id = arc[4 * cell_id + 2]
-            used[y_id] += 1
-            y_op = arc[4 * cell_id + 3]
             y = layers[y_id]
-            y_stride = stride if y_id in [0, 1] else 1
             with fw.name_scope("y_conv") as scope:
-              op = MicroChild.Operator.new(y_op, child, out_filters, out_filters, y_stride, is_training, weights, reuse, scope, layer_id)
+              op = self.y_op[cell_id]
               y = op(y)
 
             out = x + y
