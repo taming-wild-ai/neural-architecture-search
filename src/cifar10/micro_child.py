@@ -214,7 +214,8 @@ class MicroChild(Child):
               x_chan = out_filters
             else:
               fl = MicroChild.FixedLayer(self, layer_id, self.normal_arc, layers_hw, layers_channels, out_filters, 1, is_training, weights, reuse)
-              x, x_chan = fl(layers)
+              x = fl(layers)
+              x_chan = fl.out_chan
             x_hw = layers_hw[-1]
           else:
             out_filters *= 2
@@ -230,7 +231,8 @@ class MicroChild(Child):
               x_chan = out_filters
             else:
               fl = MicroChild.FixedLayer(self, layer_id, self.reduce_arc, layers_hw, layers_channels, out_filters, 2, is_training, weights, reuse)
-              x, x_chan = fl(layers)
+              x = fl(layers)
+              x_chan = fl.out_chan
               x_hw = layers_hw[-1] // 2
           print("Layer {0:>2d}: {1}".format(layer_id, x))
           layers = [layers[-1], x]
@@ -459,6 +461,7 @@ class MicroChild(Child):
         self.lb = MicroChild.LayerBase(weights, reuse, scope, out_filters, out_filters, is_training, child.data_format)
       self.x_op = {}
       self.y_op = {}
+      ops = []
       used = np.zeros([child.num_cells + 2], dtype=np.int32)
       for cell_id in range(child.num_cells):
         with fw.name_scope(f'cell_{cell_id}') as scope:
@@ -474,6 +477,18 @@ class MicroChild(Child):
           y_stride = stride if y_id in [0, 1] else 1
           with fw.name_scope('y_conv') as scope:
             self.y_op[cell_id] = MicroChild.Operator.new(y_op, child, out_filters, out_filters, y_stride, is_training, weights, reuse, scope, layer_id)
+        ops.append([x_op, y_op])
+      c = [out_filters] * (child.num_cells + 2)
+      hws = []
+      for i in range(child.num_cells + 2):
+        if used[i] == 0:
+          if [0, 0] == ops[0]:  # Not sure about this check :-\
+            hws.append(hw[1] // 2)
+          else:
+            hws.append(hw[1])
+      out_hw = min(hws)
+      self.fc = MicroChild.FixedCombine(child, used, c, out_hw, out_filters, is_training, weights, reuse)
+      self.out_chan = out_filters // 2 * 2 * len(hws)
 
       def layer2(layers):
         for cell_id in range(child.num_cells):
@@ -495,25 +510,13 @@ class MicroChild(Child):
 
       self.l2 = layer2
 
-      def layer3(layers):
-        c = [out_filters] * len(layers)
-        hws = []
-        for i, layer in enumerate(layers):
-          if used[i] == 0:
-            hws.append(child._get_HW(layer))
-        out_hw = min(hws)
-        fc = MicroChild.FixedCombine(child, used, c, out_hw, out_filters, is_training, weights, reuse)
-        return fc(layers), out_filters // 2 * 2 * len(hws)
-
-      self.l3 = layer3
-
     def __call__(self, prev_layers):
       assert 2 == len(prev_layers)
       layers = self.cs(prev_layers)
       with fw.name_scope("layer_base") as scope:
         layers[1] = self.lb(layers[1])
       layers = self.l2(layers)
-      return self.l3(layers)
+      return self.fc(layers)
 
 
   class MaxPool(LayeredModel):

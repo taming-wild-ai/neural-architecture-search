@@ -379,7 +379,8 @@ class TestMicroChild(unittest.TestCase):
                             layer2 = mock.MagicMock(name='layer2')
                             mcs().return_value = [0, 0]
                             fl = MicroChild.FixedLayer(mc, 0, [0, 0, 0, 0, 0, 1, 0, 1, 0, 2, 0, 2, 0, 3, 0, 3, 0, 4, 0, 4], [32, 32], [3, 3], 24, 1, True, mc.weights, False)
-                            self.assertEqual(('fc', 144), fl([layer1, layer2]))
+                            self.assertEqual('fc', fl([layer1, layer2]))
+                            self.assertEqual(144, fl.out_chan)
                             mcs.assert_called_with(mc, [32, 32], [3, 3], 24, True, mc.weights, False)
                             mcs().assert_called_with([layer1, layer2])
                             create_weight.assert_called_with(False, 'cell_1/y_conv/sep_conv_1/', "w_point", [1, 1, 24, 24], None)
@@ -389,7 +390,7 @@ class TestMicroChild(unittest.TestCase):
                             batch_norm2().assert_called_with('s_conv2d')
                             s_conv2d.assert_called_with("relu", depthwise_filter="fw.create_weight", pointwise_filter="fw.create_weight", strides=[1, 1, 1, 1], padding="SAME", data_format="NHWC")
                             adp.assert_called_with(max_pool2d(), 0)
-                            fc.assert_called_with(mc, np_zeros(), [24] * 7, 32, 24, True, mc.weights, False)
+                            fc.assert_called_with(mc, np_zeros(), [24] * 7, 16, 24, True, mc.weights, False)
                             fc().assert_called_with([0, 'batch_norm2', 'adpadp', 'adpadp', 'adpadp', 'adpadp', 0])
 
     @patch('src.cifar10.micro_child.MicroChild.ENASConvOuter')
