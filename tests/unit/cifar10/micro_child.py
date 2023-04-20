@@ -291,31 +291,29 @@ class TestMicroChild(unittest.TestCase):
                 mc = MicroChild({}, {})
             with patch.object(mc.data_format, 'global_avg_pool') as gap:
                 gap.get_shape = mock.MagicMock(return_value=[3, 3])
-                with patch.object(mc, "_get_HW", return_value="get_hw") as get_hw:
-                    with patch.object(mc.weights, "get", return_value="fw.create_weight") as create_weight:
-                        mc.name = "MicroChild"
-                        mc.reduce_arc = None
-                        mc.normal_arc = None
-                        mc.keep_prob = 0.9
-                        mc.use_aux_heads = True
-                        mc.aux_head_indices = [0]
-                        mc._model(mc.weights, {}, True)
-                        create_weight.assert_any_call(False, 'MicroChild/stem_conv/', "w", [3, 3, 3, 72], None)
-                        conv2d.assert_called_with("relu", "fw.create_weight", [1, 1, 1, 1], 'SAME', data_format="NCHW")
-                        batch_norm.assert_called_with(True, mc.data_format, mc.weights, 768)
-                        batch_norm().assert_called_with('conv2d')
-                        el.assert_called_with(mc, None, [8, 8], [96, 96], 96, mc.weights, False)
-                        fr.assert_called_with(mc, 48, 96, 2, True, mc.weights, False)
-                        fr().assert_called_with(el()())
-                        for num in range(4):
-                            print0.assert_any_call(f"Layer  {num}: el")
-                        relu.assert_called_with('el')
-                        gap.assert_called_with("relu")
-                        do.assert_called_with(gap(), 0.9)
-                        create_weight.assert_called_with(False, 'MicroChild/fc/', "w", [96, 10], None)
-                        matmul.assert_called_with('dropout', "fw.create_weight")
-                        avg_pool2d.assert_called_with("relu", [5, 5], [3, 3], "VALID", data_format="channels_first")
-                        get_hw.assert_called_with('relu')
+                with patch.object(mc.weights, "get", return_value="fw.create_weight") as create_weight:
+                    mc.name = "MicroChild"
+                    mc.reduce_arc = None
+                    mc.normal_arc = None
+                    mc.keep_prob = 0.9
+                    mc.use_aux_heads = True
+                    mc.aux_head_indices = [0]
+                    mc._model(mc.weights, {}, True)
+                    create_weight.assert_any_call(False, 'MicroChild/stem_conv/', "w", [3, 3, 3, 72], None)
+                    conv2d.assert_called_with("relu", "fw.create_weight", [1, 1, 1, 1], 'SAME', data_format="NCHW")
+                    batch_norm.assert_called_with(True, mc.data_format, mc.weights, 768)
+                    batch_norm().assert_called_with('conv2d')
+                    el.assert_called_with(mc, None, [8, 8], [96, 96], 96, mc.weights, False)
+                    fr.assert_called_with(mc, 48, 96, 2, True, mc.weights, False)
+                    fr().assert_called_with(el()())
+                    for num in range(4):
+                        print0.assert_any_call(f"Layer  {num}: el")
+                    relu.assert_called_with('el')
+                    gap.assert_called_with("relu")
+                    do.assert_called_with(gap(), 0.9)
+                    create_weight.assert_called_with(False, 'MicroChild/fc/', "w", [96, 10], None)
+                    matmul.assert_called_with('dropout', "fw.create_weight")
+                    avg_pool2d.assert_called_with("relu", [5, 5], [3, 3], "VALID", data_format="channels_first")
 
     @patch('src.cifar10.micro_child.BatchNorm', return_value=mock.MagicMock(return_value="batch_norm"))
     @patch('src.cifar10.micro_child.fw.separable_conv2d', return_value="s_conv2d")

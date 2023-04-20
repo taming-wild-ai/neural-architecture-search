@@ -184,7 +184,128 @@ class MicroChild(Child):
         lambda x: fw.matmul(x, w)]
 
 
+  class Model(object):
+    def __init__(self, child, weights, is_training, reuse=False):
+      self.child = child
+      self.layers = {}
+      self.aux_logits = {}
+      if child.fixed_arc is None:
+        is_training = True
+      with fw.name_scope(child.name) as scope:
+        with fw.name_scope('stem_conv') as scope:
+          self.stem_conv = Child.StemConv(weights, reuse, scope, child.out_filters * 3, is_training, child.data_format)
+        x_chan = child.out_filters * 3
+        layers_channels = [x_chan, x_chan]
+        layers_hw = [32, 32]
+        out_filters = child.out_filters
+        for layer_id in range(child.num_layers + 2):
+          with fw.name_scope(f'layer_{layer_id}') as scope:
+            if layer_id not in child.pool_layers:
+              if child.fixed_arc is None:
+                self.layers[layer_id] = MicroChild.ENASLayer(child, child.normal_arc, layers_hw, layers_channels, out_filters, weights, reuse)
+                x_chan = out_filters
+              else:
+                self.layers[layer_id] = MicroChild.FixedLayer(child, layer_id, child.normal_arc, layers_hw, layers_channels, out_filters, 1, is_training, weights, reuse)
+                x_chan = self.layers[layer_id].out_chan
+              x_hw = layers_hw[-1]
+            else:
+              out_filters *= 2
+              if child.fixed_arc is None:
+                self.layers[layer_id] = [Child.FactorizedReduction(child, x_chan, out_filters, 2, is_training, weights, reuse)]
+                x_hw = layers_hw[-1] // 2
+                layers_hw = [layers_hw[-1], x_hw]
+                layers_channels = [layers_channels[-1], out_filters]
+                self.layers[layer_id].append(MicroChild.ENASLayer(child, child.reduce_arc, layers_hw, layers_channels, out_filters, weights, reuse))
+                x_chan = out_filters
+              else:
+                self.layers[layer_id] = MicroChild.FixedLayer(child, layer_id, child.reduce_arc, layers_hw, layers_channels, out_filters, 2, is_training, weights, reuse)
+                x_chan = self.layers[layer_id].out_chan
+                x_hw = layers_hw[-1] // 2
+            layers_hw = [layers_hw[-1], x_hw]
+            layers_channels = [layers_channels[-1], x_chan]
+          child.num_aux_vars = 0
+          if (child.use_aux_heads and layer_id in child.aux_head_indices and is_training):
+            print(f'Using aux_head at layer {layer_id}')
+            with fw.name_scope('aux_head') as scope:
+              self.aux_logits[layer_id] = [lambda x: fw.avg_pool2d(
+                fw.relu(x),
+                [5, 5],
+                [3, 3],
+                "VALID",
+                data_format=child.data_format.actual)]
+              with fw.name_scope('proj') as scope:
+                self.aux_logits[layer_id].append(Child.InputConv(
+                  weights,
+                  reuse,
+                  scope,
+                  1,
+                  x_chan,
+                  128,
+                  is_training,
+                  child.data_format))
+              with fw.name_scope("avg_pool") as scope:
+                self.aux_logits[layer_id].append(Child.InputConv(
+                  weights,
+                  reuse,
+                  scope,
+                  2, # self._get_HW(aux_logits)
+                  128,
+                  768,
+                  True,
+                  child.data_format))
+              with fw.name_scope('fc') as scope:
+                self.aux_logits[layer_id].append(MicroChild.FullyConnected(child.data_format, weights, reuse, scope, 768))
+        with fw.name_scope('fc') as scope:
+          self.dropout = MicroChild.Dropout(
+            child.data_format,
+            is_training,
+            child.keep_prob,
+            weights,
+            reuse,
+            scope,
+            x_chan)
+
+    def __call__(self, images):
+      with fw.name_scope(self.child.name):
+        with fw.name_scope('stem_conv') as scope:
+          x = self.stem_conv(images)
+          layers = [x, x]
+        for layer_id in range(self.child.num_layers + 2):
+          with fw.name_scope(f'layer_{layer_id}') as scope:
+            if layer_id not in self.child.pool_layers:
+              x = self.layers[layer_id](layers)
+            else:
+              if self.child.fixed_arc is None:
+                x = self.layers[layer_id][0](x)
+                layers = [layers[-1], x]
+                x = self.layers[layer_id][1](layers)
+              else:
+                x = self.layers[layer_id](layers)
+            print("Layer {0:>2d}: {1}".format(layer_id, x))
+            layers = [layers[-1], x]
+          aux_logit_fns = self.aux_logits.get(layer_id)
+          if aux_logit_fns:
+            with fw.name_scope('aux_head') as scope:
+              aux_logits = aux_logit_fns[0](x)
+              with fw.name_scope('proj') as scope:
+                aux_logits = aux_logit_fns[1](aux_logits)
+              with fw.name_scope('avg_pool') as scope:
+                aux_logits = aux_logit_fns[2](aux_logits)
+              with fw.name_scope('fc') as scope:
+                self.child.aux_logits = aux_logit_fns[3](aux_logits)
+            aux_head_variables = [
+            var for var in fw.trainable_variables() if (
+              var.name.startswith(self.child.name) and "aux_head" in var.name)]
+            num_aux_vars = count_model_params(aux_head_variables)
+            print("Aux head uses {0} params".format(num_aux_vars))
+        with fw.name_scope('fc') as scope:
+          x = self.dropout(x)
+      return x
+
+
   def _model(self, weights, images, is_training, reuse=False):
+    m = MicroChild.Model(self, weights, is_training, reuse)
+    return m(images)
     """
     Compute the logits given the images.
     Input channels: 3
@@ -264,12 +385,11 @@ class MicroChild(Child):
               aux_logits = inp_conv(aux_logits)
 
             with fw.name_scope("avg_pool") as scope:
-              hw = self._get_HW(aux_logits)
               inp_conv = Child.InputConv(
                 weights,
                 reuse,
                 scope,
-                hw,
+                2, # self._get_HW(aux_logits)
                 128,
                 768,
                 True,
