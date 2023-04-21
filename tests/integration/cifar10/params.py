@@ -151,7 +151,7 @@ class TestParameterCounts(unittest.TestCase):
                 fixed_arc = np.array([int(x) for x in mc.fixed_arc.split(" ") if x])
                 mc.normal_arc = fixed_arc[:4 * mc.num_cells]
                 mc.reduce_arc = fixed_arc[4 * mc.num_cells:]
-                mc._build_train(mc._model, mc.weights, mc.x_train, mc.y_train)
+                mc._build_train(mc.weights, mc.x_train, mc.y_train)
                 print2.assert_any_call("-" * 80)
                 print2.assert_any_call("Build model child")
                 print2.assert_any_call("Build data ops")
@@ -188,7 +188,7 @@ class TestParameterCounts(unittest.TestCase):
                 fixed_arc = np.array([int(x) for x in fixed_arc.split(" ") if x])
                 mc.normal_arc = fixed_arc[:4 * mc.num_cells]
                 mc.reduce_arc = fixed_arc[4 * mc.num_cells:]
-                mc._build_train(mc._model, mc.weights, mc.x_train, mc.y_train)
+                mc._build_train(mc.weights, mc.x_train, mc.y_train)
                 for layer_num in range(8):
                     if 2 > layer_num:
                         expected_shape = (None, 20, 32, 32)

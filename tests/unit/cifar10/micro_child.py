@@ -227,7 +227,8 @@ class TestMicroChild(unittest.TestCase):
                 el_result = el()
                 with patch.object(mc, 'data_format') as data_format:
                     with patch.object(mc.weights, 'get', return_value="fw.create_weight") as create_weight:
-                        mc._model(mc.weights, {}, True)
+                        m = MicroChild.Model(mc, mc.weights, True)
+                        m({})
                         create_weight.assert_called_with(False, 'MicroChild/fc/', "w", [96, 10], None)
                         conv2d.assert_called_with({}, "fw.create_weight", [1, 1, 1, 1], 'SAME', data_format=data_format.name)
                         batch_norm.assert_called_with(True, data_format, mc.weights, 72)
@@ -259,7 +260,8 @@ class TestMicroChild(unittest.TestCase):
                         mc.reduce_arc = None
                         mc.normal_arc = None
                         mc.keep_prob = 0.9
-                        mc._model(mc.weights, {}, True)
+                        m = MicroChild.Model(mc, mc.weights, True)
+                        m({})
                         create_weight.assert_any_call(False, 'MicroChild/stem_conv/', "w", [3, 3, 3, 72], None)
                         conv2d.assert_called_with({}, "fw.create_weight", [1, 1, 1, 1], 'SAME', data_format="NCHW")
                         batch_norm.assert_called_with(True, mc.data_format, mc.weights, 72)
@@ -298,7 +300,8 @@ class TestMicroChild(unittest.TestCase):
                     mc.keep_prob = 0.9
                     mc.use_aux_heads = True
                     mc.aux_head_indices = [0]
-                    mc._model(mc.weights, {}, True)
+                    m = MicroChild.Model(mc, mc.weights, True)
+                    m({})
                     create_weight.assert_any_call(False, 'MicroChild/stem_conv/', "w", [3, 3, 3, 72], None)
                     conv2d.assert_called_with("relu", "fw.create_weight", [1, 1, 1, 1], 'SAME', data_format="NCHW")
                     batch_norm.assert_called_with(True, mc.data_format, mc.weights, 768)
@@ -533,6 +536,7 @@ class TestMicroChild(unittest.TestCase):
                     equal.assert_called_with('add_n', 0)
                     where.assert_called_with('equal')
 
+    @patch('src.cifar10.micro_child.MicroChild.Model', return_value=mock.MagicMock(return_value='model'))
     @patch('src.cifar10.micro_child.get_train_ops')
     @patch('src.cifar10.micro_child.fw.reduce_sum', return_value="reduce_sum")
     @patch('src.cifar10.micro_child.fw.equal', return_value="equal")
@@ -541,7 +545,7 @@ class TestMicroChild(unittest.TestCase):
     @patch('src.cifar10.micro_child.fw.reduce_mean', return_value=1.0)
     @patch('src.cifar10.micro_child.fw.sparse_softmax_cross_entropy_with_logits', return_value="sscewl")
     @patch('src.cifar10.micro_child.print')
-    def test_build_train_aux_heads(self, print, sscewl, reduce_mean, argmax, to_int32, equal, reduce_sum, get_train_ops):
+    def test_build_train_aux_heads(self, print, sscewl, reduce_mean, argmax, to_int32, equal, reduce_sum, get_train_ops, model):
         train_op = mock.MagicMock(name="get_train_op")
         grad_norm = mock.MagicMock(name="grad_norm")
         get_train_ops.return_value = (train_op, 2, grad_norm, 4)
@@ -565,19 +569,20 @@ class TestMicroChild(unittest.TestCase):
                 mc.sync_replicas = None
                 mc.num_aggregate = None
                 mc.num_replicas = None
-                with patch.object(mc, '_model', return_value="model") as model:
-                    self.assertEqual((1.0, 'reduce_sum', train_op(), 2, grad_norm(), 4), mc._build_train(mc._model, mc.weights, mc.x_train, mc.y_train))
-                    print.assert_any_call('-' * 80)
-                    print.assert_any_call("Build train graph")
-                    model.assert_called_with(mc.weights, {}, is_training=True)
-                    sscewl.assert_called_with(logits='model', labels={})
-                    reduce_mean.assert_called_with("sscewl")
-                    argmax.assert_called_with("model", axis=1)
-                    to_int32.assert_called_with("equal")
-                    equal.assert_called_with("to_int32", {})
-                    reduce_sum.assert_called_with("to_int32")
-                    get_train_ops.assert_called_with(mc.global_step, mc.learning_rate, clip_mode=None, l2_reg=None, num_train_batches=1, optim_algo=None)
+                self.assertEqual((1.0, 'reduce_sum', train_op(), 2, grad_norm(), 4), mc._build_train(mc.weights, mc.x_train, mc.y_train))
+                print.assert_any_call('-' * 80)
+                print.assert_any_call("Build train graph")
+                model.assert_called_with(mc, mc.weights, True)
+                model().assert_called_with({})
+                sscewl.assert_called_with(logits='model', labels={})
+                reduce_mean.assert_called_with("sscewl")
+                argmax.assert_called_with("model", axis=1)
+                to_int32.assert_called_with("equal")
+                equal.assert_called_with("to_int32", {})
+                reduce_sum.assert_called_with("to_int32")
+                get_train_ops.assert_called_with(mc.global_step, mc.learning_rate, clip_mode=None, l2_reg=None, num_train_batches=1, optim_algo=None)
 
+    @patch('src.cifar10.micro_child.MicroChild.Model', return_value=mock.MagicMock(return_value='model'))
     @patch('src.cifar10.micro_child.get_train_ops')
     @patch('src.cifar10.micro_child.fw.reduce_sum', return_value="reduce_sum")
     @patch('src.cifar10.micro_child.fw.equal', return_value="equal")
@@ -586,7 +591,7 @@ class TestMicroChild(unittest.TestCase):
     @patch('src.cifar10.micro_child.fw.reduce_mean', return_value=1.0)
     @patch('src.cifar10.micro_child.fw.sparse_softmax_cross_entropy_with_logits', return_value="sscewl")
     @patch('src.cifar10.micro_child.print')
-    def test_build_train_no_aux_heads(self, print, sscewl, reduce_mean, argmax, to_int32, equal, reduce_sum, get_train_ops):
+    def test_build_train_no_aux_heads(self, print, sscewl, reduce_mean, argmax, to_int32, equal, reduce_sum, get_train_ops, model):
         train_op = mock.MagicMock(name="train_op")
         grad_norm = mock.MagicMock(name="grad_norm")
         get_train_ops.return_value = (train_op, 2, grad_norm, 4)
@@ -608,64 +613,67 @@ class TestMicroChild(unittest.TestCase):
                 mc.sync_replicas = None
                 mc.num_aggregate = None
                 mc.num_replicas = None
-                with patch.object(mc, '_model', return_value="model") as model:
-                    self.assertEqual((1.0, 'reduce_sum', train_op(), 2, grad_norm(), 4), mc._build_train(mc._model, mc.weights, mc.x_train, mc.y_train))
-                    print.assert_any_call('-' * 80)
-                    print.assert_any_call("Build train graph")
-                    model.assert_called_with(mc.weights, {}, is_training=True)
-                    sscewl.assert_called_with(logits="model", labels={})
-                    reduce_mean.assert_called_with("sscewl")
-                    argmax.assert_called_with("model", axis=1)
-                    to_int32.assert_called_with("equal")
-                    equal.assert_called_with("to_int32", {})
-                    reduce_sum.assert_called_with("to_int32")
-                    get_train_ops.assert_called_with(mc.global_step, mc.learning_rate, clip_mode=None, l2_reg=None, num_train_batches=1, optim_algo=None)
+                self.assertEqual((1.0, 'reduce_sum', train_op(), 2, grad_norm(), 4), mc._build_train(mc.weights, mc.x_train, mc.y_train))
+                print.assert_any_call('-' * 80)
+                print.assert_any_call("Build train graph")
+                model.assert_called_with(mc, mc.weights, True)
+                model().assert_called_with({})
+                sscewl.assert_called_with(logits="model", labels={})
+                reduce_mean.assert_called_with("sscewl")
+                argmax.assert_called_with("model", axis=1)
+                to_int32.assert_called_with("equal")
+                equal.assert_called_with("to_int32", {})
+                reduce_sum.assert_called_with("to_int32")
+                get_train_ops.assert_called_with(mc.global_step, mc.learning_rate, clip_mode=None, l2_reg=None, num_train_batches=1, optim_algo=None)
 
+    @patch('src.cifar10.micro_child.MicroChild.Model', return_value=mock.MagicMock(return_value='model'))
     @patch('src.cifar10.micro_child.fw.reduce_sum', return_value="reduce_sum")
     @patch('src.cifar10.micro_child.fw.equal', return_value="equal")
     @patch('src.cifar10.micro_child.fw.to_int32', return_value="to_int32")
     @patch('src.cifar10.micro_child.fw.argmax', return_value="argmax")
     @patch('src.cifar10.micro_child.print')
-    def test_build_valid(self, print, argmax, to_int32, equal, reduce_sum):
+    def test_build_valid(self, print, argmax, to_int32, equal, reduce_sum, model):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
             mc.x_valid = {}
             mc.y_valid = {}
-            with patch.object(mc, '_model', return_value="model") as model:
-                self.assertEqual(('to_int32', 'reduce_sum'), mc._build_valid(mc._model, mc.weights, mc.x_valid, mc.y_valid))
-                print.assert_any_call('-' * 80)
-                print.assert_any_call("Build valid graph")
-                argmax.assert_called_with("model", axis=1)
-                to_int32.assert_any_call("argmax")
-                equal.assert_any_call("to_int32", {})
-                to_int32.assert_any_call("equal")
-                reduce_sum.assert_called_with("to_int32")
-                model.assert_called_with(mc.weights, {}, False, reuse=True)
+            self.assertEqual(('to_int32', 'reduce_sum'), mc._build_valid(mc.weights, mc.x_valid, mc.y_valid))
+            print.assert_any_call('-' * 80)
+            print.assert_any_call("Build valid graph")
+            argmax.assert_called_with("model", axis=1)
+            to_int32.assert_any_call("argmax")
+            equal.assert_any_call("to_int32", {})
+            to_int32.assert_any_call("equal")
+            reduce_sum.assert_called_with("to_int32")
+            model.assert_called_with(mc, mc.weights, False, True)
+            model().assert_called_with({})
 
+    @patch('src.cifar10.micro_child.MicroChild.Model', return_value=mock.MagicMock(return_value='model'))
     @patch('src.cifar10.micro_child.fw.reduce_sum', return_value="reduce_sum")
     @patch('src.cifar10.micro_child.fw.equal', return_value="equal")
     @patch('src.cifar10.micro_child.fw.to_int32', return_value="to_int32")
     @patch('src.cifar10.micro_child.fw.argmax', return_value="argmax")
     @patch('src.cifar10.micro_child.print')
-    def test_build_test(self, print, argmax, to_int32, equal, reduce_sum):
+    def test_build_test(self, print, argmax, to_int32, equal, reduce_sum, model):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
             mc.x_test = {}
             mc.y_test = {}
-            with patch.object(mc, '_model', return_value="model") as model:
-                self.assertEqual(('to_int32', 'reduce_sum'), mc._build_test(mc._model, mc.weights, mc.x_test, mc.y_test))
-                print.assert_any_call('-' * 80)
-                print.assert_any_call("Build test graph")
-                argmax.assert_called_with("model", axis=1)
-                to_int32.assert_any_call("argmax")
-                equal.assert_any_call("to_int32", {})
-                to_int32.assert_any_call("equal")
-                reduce_sum.assert_called_with("to_int32")
-                model.assert_called_with(mc.weights, {}, False, reuse=True)
+            self.assertEqual(('to_int32', 'reduce_sum'), mc._build_test(mc._model, mc.weights, mc.x_test, mc.y_test))
+            print.assert_any_call('-' * 80)
+            print.assert_any_call("Build test graph")
+            argmax.assert_called_with("model", axis=1)
+            to_int32.assert_any_call("argmax")
+            equal.assert_any_call("to_int32", {})
+            to_int32.assert_any_call("equal")
+            reduce_sum.assert_called_with("to_int32")
+            model.assert_called_with(mc, mc.weights, False, True)
+            model().assert_called_with({})
 
     @patch('src.cifar10.child.Child.__init__')
+    @patch('src.cifar10.micro_child.MicroChild.Model', return_value=mock.MagicMock(return_value='model'))
     @patch('src.cifar10.micro_child.fw.map_fn', return_value="map_fn")
     @patch('src.cifar10.micro_child.fw.reduce_sum', return_value="reduce_sum")
     @patch('src.cifar10.micro_child.fw.equal', return_value="equal")
@@ -673,7 +681,7 @@ class TestMicroChild(unittest.TestCase):
     @patch('src.cifar10.micro_child.fw.argmax', return_value="argmax")
     @patch('src.cifar10.micro_child.fw.shuffle_batch', return_value=(tf.constant(np.ndarray((2, 32, 32, 3))), "y_valid_shuffle"))
     @patch('src.cifar10.micro_child.print')
-    def test_build_valid_rl(self, print, shuffle_batch, argmax, to_int32, equal, reduce_sum, map_fn, _Child):
+    def test_build_valid_rl(self, print, shuffle_batch, argmax, to_int32, equal, reduce_sum, map_fn, model, _Child):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
@@ -681,22 +689,22 @@ class TestMicroChild(unittest.TestCase):
                 mc.labels = { 'valid_original': np.ndarray((1)) }
                 mc.batch_size = 32
                 mc.seed = None
-                with patch.object(mc, '_model', return_value='model') as model:
-                    mc.build_valid_rl(shuffle=True)
-                    print.assert_any_call('-' * 80)
-                    print.assert_any_call('Build valid graph on shuffled data')
-                    shuffle_batch.assert_called_with(
-                        [mc.images['valid_original'], mc.labels['valid_original']],
-                        mc.batch_size,
-                        mc.seed,
-                        25000)
-                    map_fn.assert_called()
-                    model.assert_called_with(mc.weights, 'map_fn', is_training=True, reuse=True)
-                    argmax.assert_called_with("model", axis=1)
-                    to_int32.assert_any_call("argmax")
-                    equal.assert_called_with("to_int32", "y_valid_shuffle")
-                    to_int32.assert_any_call("equal")
-                    reduce_sum.assert_called_with("to_int32")
+                mc.build_valid_rl(shuffle=True)
+                print.assert_any_call('-' * 80)
+                print.assert_any_call('Build valid graph on shuffled data')
+                shuffle_batch.assert_called_with(
+                    [mc.images['valid_original'], mc.labels['valid_original']],
+                    mc.batch_size,
+                    mc.seed,
+                    25000)
+                map_fn.assert_called()
+                model.assert_called_with(mc, mc.weights, True, True)
+                model().assert_called_with('map_fn')
+                argmax.assert_called_with("model", axis=1)
+                to_int32.assert_any_call("argmax")
+                equal.assert_called_with("to_int32", "y_valid_shuffle")
+                to_int32.assert_any_call("equal")
+                reduce_sum.assert_called_with("to_int32")
 
     def test_connect_controller(self):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
@@ -708,9 +716,9 @@ class TestMicroChild(unittest.TestCase):
                             mock_controller = mock.MagicMock()
                             mock_controller.sample_arc = (None, None)
                             mc.connect_controller(mock_controller)
-                            build_train.assert_called_with(mc._model, mc.weights, mc.x_train, mc.y_train)
-                            build_valid.assert_called_with(mc._model, mc.weights, mc.x_valid, mc.y_valid)
-                            build_test.assert_called_with(mc._model, mc.weights, mc.x_test, mc.y_test)
+                            build_train.assert_called_with(mc.weights, mc.x_train, mc.y_train)
+                            build_valid.assert_called_with(mc.weights, mc.x_valid, mc.y_valid)
+                            build_test.assert_called_with(mc.weights, mc.x_test, mc.y_test)
 
 if "__main__" == "__name__":
     unittest.main()

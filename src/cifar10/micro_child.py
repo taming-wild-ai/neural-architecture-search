@@ -303,122 +303,6 @@ class MicroChild(Child):
       return x
 
 
-  def _model(self, weights, images, is_training, reuse=False):
-    m = MicroChild.Model(self, weights, is_training, reuse)
-    return m(images)
-    """
-    Compute the logits given the images.
-    Input channels: 3
-    """
-    if self.fixed_arc is None:
-      is_training = True
-
-    with fw.name_scope(self.name) as scope:
-      # the first two inputs
-      with fw.name_scope("stem_conv") as scope:
-        stem_conv = Child.StemConv(weights, reuse, scope, self.out_filters * 3, is_training, self.data_format)
-      x_chan = self.out_filters * 3
-      with fw.name_scope("stem_conv") as scope:
-        x = stem_conv(images)
-      layers = [x, x]
-      layers_channels = [x_chan, x_chan]
-      layers_hw = [32, 32]
-
-      # building layers in the micro space
-      out_filters = self.out_filters
-      for layer_id in range(self.num_layers + 2):
-        with fw.name_scope("layer_{0}".format(layer_id)) as scope:
-          if layer_id not in self.pool_layers:
-            if self.fixed_arc is None:
-              el = MicroChild.ENASLayer(self, self.normal_arc, layers_hw, layers_channels, out_filters, weights, reuse)
-              x = el(layers)
-              x_chan = out_filters
-            else:
-              fl = MicroChild.FixedLayer(self, layer_id, self.normal_arc, layers_hw, layers_channels, out_filters, 1, is_training, weights, reuse)
-              x = fl(layers)
-              x_chan = fl.out_chan
-            x_hw = layers_hw[-1]
-          else:
-            out_filters *= 2
-            if self.fixed_arc is None:
-              fr = Child.FactorizedReduction(self, x_chan, out_filters, 2, is_training, weights, reuse)
-              x = fr(x)
-              x_hw = layers_hw[-1] // 2
-              layers = [layers[-1], x]
-              layers_hw = [layers_hw[-1], x_hw]
-              layers_channels = [layers_channels[-1], out_filters]
-              el = MicroChild.ENASLayer(self, self.reduce_arc, layers_hw, layers_channels, out_filters, weights, reuse)
-              x = el(layers)
-              x_chan = out_filters
-            else:
-              fl = MicroChild.FixedLayer(self, layer_id, self.reduce_arc, layers_hw, layers_channels, out_filters, 2, is_training, weights, reuse)
-              x = fl(layers)
-              x_chan = fl.out_chan
-              x_hw = layers_hw[-1] // 2
-          print("Layer {0:>2d}: {1}".format(layer_id, x))
-          layers = [layers[-1], x]
-          layers_hw = [layers_hw[-1], x_hw]
-          layers_channels = [layers_channels[-1], x_chan]
-        # auxiliary heads
-        self.num_aux_vars = 0
-        if (self.use_aux_heads and
-            layer_id in self.aux_head_indices
-            and is_training):
-          print("Using aux_head at layer {0}".format(layer_id))
-          with fw.name_scope("aux_head") as scope:
-            aux_logits = fw.avg_pool2d(
-              fw.relu(x),
-              [5, 5],
-              [3, 3],
-              "VALID",
-              data_format=self.data_format.actual)
-            with fw.name_scope("proj") as scope:
-              inp_conv = Child.InputConv(
-                weights,
-                reuse,
-                scope,
-                1,
-                x_chan,
-                128,
-                is_training,
-                self.data_format)
-              aux_logits = inp_conv(aux_logits)
-
-            with fw.name_scope("avg_pool") as scope:
-              inp_conv = Child.InputConv(
-                weights,
-                reuse,
-                scope,
-                2, # self._get_HW(aux_logits)
-                128,
-                768,
-                True,
-                self.data_format)
-              aux_logits = inp_conv(aux_logits)
-
-            with fw.name_scope("fc") as scope:
-              fc = MicroChild.FullyConnected(self.data_format, weights, reuse, scope, 768)
-              self.aux_logits = fc(aux_logits)
-
-          aux_head_variables = [
-            var for var in fw.trainable_variables() if (
-              var.name.startswith(self.name) and "aux_head" in var.name)]
-          self.num_aux_vars = count_model_params(aux_head_variables)
-          print("Aux head uses {0} params".format(self.num_aux_vars))
-
-      with fw.name_scope("fc") as scope:
-        dropout = MicroChild.Dropout(
-          self.data_format,
-          is_training,
-          self.keep_prob,
-          weights,
-          reuse,
-          scope,
-          x_chan)
-        x = dropout(x)
-    return x
-
-
   class SeparableConv(LayeredModel):
     def __init__(self, weights, reuse, scope, filter_size, data_format, num_input_chan: int, out_filters: int, strides, is_training):
       def separable_conv2d(x):
@@ -900,10 +784,11 @@ class MicroChild(Child):
         fw.reduce_sum]
 
   # override
-  def _build_train(self, model, weights, x, y):
+  def _build_train(self, weights, x, y):
     print("-" * 80)
     print("Build train graph")
-    logits = model(weights, x, is_training=True)
+    m = MicroChild.Model(self, weights, True)
+    logits = m(x)
     loss = MicroChild.Loss(y)
 
     if self.use_aux_heads:
@@ -928,11 +813,12 @@ class MicroChild(Child):
     return loss(logits), train_acc(logits), train_op(train_loss(logits), self.tf_variables()), lr, grad_norm(train_loss(logits), self.tf_variables()), optimizer
 
   # override
-  def _build_valid(self, model, weights, x, y):
+  def _build_valid(self, weights, x, y):
     if x is not None:
       print("-" * 80)
       print("Build valid graph")
-      logits = model(weights, x, False, reuse=True)
+      m = MicroChild.Model(self, weights, False, True)
+      logits = m(x)
       predictions = fw.to_int32(fw.argmax(logits, axis=1))
       retval = (
         predictions,
@@ -945,7 +831,8 @@ class MicroChild(Child):
   def _build_test(self, model, weights, x, y):
     print("-" * 80)
     print("Build test graph")
-    logits = model(weights, x, False, reuse=True)
+    m = MicroChild.Model(self, weights, False, True)
+    logits = m(x)
     predictions = fw.to_int32(fw.argmax(logits, axis=1))
     return (
       predictions,
@@ -953,9 +840,9 @@ class MicroChild(Child):
 
 
   class ValidationRL(LayeredModel):
-    def __init__(self, model, weights, y):
+    def __init__(self, child, weights, y):
       self.layers = [
-        lambda x: model(weights, x, is_training=True, reuse=True),
+        MicroChild.Model(child, weights, True, True),
         lambda x: fw.argmax(x, axis=1),
         fw.to_int32,
         lambda x: fw.equal(x, y),
@@ -976,7 +863,7 @@ class MicroChild(Child):
         self.seed,
         25000)
 
-      vrl = MicroChild.ValidationRL(self._model, self.weights, y_valid_shuffle)
+      vrl = MicroChild.ValidationRL(self, self.weights, y_valid_shuffle)
 
       if shuffle:
         def _pre_process(x):
@@ -1000,7 +887,7 @@ class MicroChild(Child):
       self.normal_arc = fixed_arc[:4 * self.num_cells]
       self.reduce_arc = fixed_arc[4 * self.num_cells:]
 
-    self.loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train(self._model, self.weights, self.x_train, self.y_train)
-    self.valid_preds, self.valid_acc = self._build_valid(self._model, self.weights, self.x_valid, self.y_valid)
-    self.test_preds, self.test_acc = self._build_test(self._model, self.weights, self.x_test, self.y_test)
+    self.loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train(self.weights, self.x_train, self.y_train)
+    self.valid_preds, self.valid_acc = self._build_valid(self.weights, self.x_valid, self.y_valid)
+    self.test_preds, self.test_acc = self._build_test(self.weights, self.x_test, self.y_test)
     return train_op, lr, grad_norm, optimizer
