@@ -94,7 +94,8 @@ class MacroChild(Child):
       self.layers += [matmul]
 
 
-  class Model(object):
+  # Because __call__ is overridden, this superclass is just for ease of search.
+  class Model(LayeredModel):
     def __init__(self, child, is_training: bool, weights, reuse=False):
       self.child = child
       self.enas_layers = []
@@ -228,7 +229,8 @@ class MacroChild(Child):
       self.layers = [conv2d, bn, fw.relu]
 
 
-  class ENASLayerNotWholeChannels(object):
+  # Because __call__ is overridden, this superclass is just for ease of find.
+  class ENASLayerNotWholeChannels(LayeredModel):
     def __init__(self, child, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse, input_conv_avg, input_conv_max):
 
       def branches(inputs):
@@ -285,7 +287,9 @@ class MacroChild(Child):
       else:
         return out
 
-  class ENASLayerWholeChannels(object):
+
+  # Because __call__ is overridden, this superclass is just for ease of find.
+  class ENASLayerWholeChannels(LayeredModel):
     def __init__(self, child, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse, input_conv_avg, input_conv_max):
       self.layers = [lambda inputs: child.data_format.get_HW(inputs)]
 
@@ -363,7 +367,8 @@ class MacroChild(Child):
       return MacroChild.ENASLayerNotWholeChannels(self, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse, input_conv_avg, input_conv_max)
 
 
-  class ENASSkipLayers(object):
+  # Because __call__ is overridden, this superclass is just for ease of find.
+  class ENASSkipLayers(LayeredModel):
     def __init__(self, layer_id, skip, is_training, data_format, weights, num_input_chan):
       def skip_connections(prev_layers):
         res_layers = []
@@ -392,7 +397,8 @@ class MacroChild(Child):
       return       self.layers[3](x)
 
 
-  class FixedLayerNotWholeChannels(object):
+  # Because __call__ is overridden, this superclass is just for ease of find.
+  class FixedLayerNotWholeChannels(LayeredModel):
     def __init__(self, child, layer_id, start_idx, num_input_chan: int, out_filters: int, is_training: bool, weights, reuse: bool):
 
       def branches(inputs):
@@ -492,7 +498,8 @@ class MacroChild(Child):
       else:
         return out
 
-  class FixedLayerWholeChannels(object):
+  # Because __call__ is overridden, this superclass is just for ease of find.
+  class FixedLayerWholeChannels(LayeredModel):
     def __init__(self, child, layer_id, start_idx, num_input_chan: int, out_filters: int, is_training: bool, weights, reuse: bool):
       self.layers = []
       inp_c = num_input_chan
@@ -676,10 +683,7 @@ class MacroChild(Child):
           out_filters,
           weights,
           data_format=data_format.name)
-      self.layers = [
-        conv2d,
-        bn_with_mask,
-        fw.relu]
+      self.layers = [conv2d, bn_with_mask, fw.relu]
 
 
   class ConvBranch(LayeredModel):
@@ -829,7 +833,9 @@ class MacroChild(Child):
       l2_reg=self.l2_reg,
       num_train_batches=self.num_train_batches,
       optim_algo=self.optim_algo)
-    return loss(logits), train_acc(logits), global_step, train_op(loss(logits), self.tf_variables()), lr, grad_norm(loss(logits), self.tf_variables()), optimizer
+    l = loss(logits)
+    v = self.tf_variables()
+    return l, train_acc(logits), global_step, train_op(l, v), lr, grad_norm(l, v), optimizer
 
 
   class ValidationPredictions(LayeredModel):

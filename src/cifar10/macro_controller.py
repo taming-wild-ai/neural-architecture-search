@@ -275,12 +275,11 @@ class MacroController(Controller):
     for var in tf_variables:
       print(var)
 
-    return get_train_ops(
-      self.loss,
-      tf_variables,
+    train_op, lr, grad_norm, optimizer = get_train_ops(
       self.train_step,
       self.learning_rate,
       clip_mode=self.clip_mode,
       l2_reg=self.l2_reg,
       optim_algo=self.optim_algo)
+    return train_op(self.loss, tf_variables), lr, grad_norm(self.loss, tf_variables), optimizer
 

@@ -31,7 +31,7 @@ pip install -r requirements.txt
 Run the following tests to check whether you have the prerequisites to run the code.
 
 ```shell
-python -m unittest tests/prerequisites.py
+python -m unittest tests/prerequisite/prerequisites.py
 ```
 
 To run the ENAS experiments on the _macro search space_ as described in our paper, please use the following scripts:

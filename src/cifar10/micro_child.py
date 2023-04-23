@@ -103,7 +103,8 @@ class MicroChild(Child):
         fw.to_float(self.global_step + 1) / fw.to_float(self.num_train_steps)) * (1.0 - (1.0 - float(layer_id + 1) / (self.num_layers + 2) * (1.0 - self.drop_path_keep_prob))))
 
 
-  class CalibrateSize(object):
+  # Because __call__ is overridden, this superclass is just for ease of find.
+  class CalibrateSize(LayeredModel):
     def __init__(self, child, hw, c, out_filters, is_training: bool, weights, reuse: bool):
       with fw.name_scope("calibrate") as scope:
         if hw[0] != hw[1]:
@@ -184,7 +185,8 @@ class MicroChild(Child):
         lambda x: fw.matmul(x, w)]
 
 
-  class Model(object):
+  # Because __call__ is overridden, this superclass is just for ease of find.
+  class Model(LayeredModel):
     def __init__(self, child, weights, is_training, reuse=False):
       self.child = child
       self.layers = {}
@@ -359,6 +361,7 @@ class MicroChild(Child):
                   fr = Child.FactorizedReduction(child, c[i], out_filters, 2, is_training, weights, reuse)
                   x = fr(layer)
               else:
+                assert hw == out_hw
                 x = layer
               out.append(x)
           return out
@@ -450,7 +453,8 @@ class MicroChild(Child):
         MicroChild.Operator.Identity][op_id](child, num_input_chan, out_filters, x_stride, is_training, weights, reuse, scope, layer_id)
 
 
-  class FixedLayer(object):
+  # Because __call__ is overridden, this superclass is just for ease of find.
+  class FixedLayer(LayeredModel):
     """
     Args:
       prev_layers: cache of previous layers. for skip connections
@@ -585,7 +589,8 @@ class MicroChild(Child):
         self.layers.append(lambda x: x)
 
 
-  class ENASCell(object):
+  # Because __call__ is overridden, this superclass is just for ease of find.
+  class ENASCell(LayeredModel):
     """Performs an enas operation specified by op_id."""
     def __init__(self, child, curr_cell, prev_cell, num_input_chan: int, out_filters: int, weights, reuse: bool):
       with fw.name_scope("avg_pool") as scope:
@@ -598,11 +603,11 @@ class MicroChild(Child):
       self.ec5 = MicroChild.ENASConvOuter(child, curr_cell, prev_cell, 5, out_filters, weights, reuse)
 
     def __call__(self, x, op_id):
-      with fw.name_scope("avg_pool") as scope:
+      with fw.name_scope("avg_pool"):
         avg_pool = self.ap(x)
-      with fw.name_scope("max_pool") as scope:
+      with fw.name_scope("max_pool"):
         max_pool = self.mp(x)
-      with fw.name_scope("x_conv") as scope:
+      with fw.name_scope("x_conv"):
         x = self.ec(x)
       return fw.stack([self.ec3(x), self.ec5(x), avg_pool, max_pool, x], axis=0)[op_id, :, :, :, :]
 
