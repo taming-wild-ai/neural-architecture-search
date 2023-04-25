@@ -833,7 +833,7 @@ class MicroChild(Child):
     return retval
 
   # override
-  def _build_test(self, model, weights, x, y):
+  def _build_test(self, weights, x, y):
     print("-" * 80)
     print("Build test graph")
     m = MicroChild.Model(self, weights, False, True)

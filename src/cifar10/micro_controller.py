@@ -228,10 +228,9 @@ class MicroController(Controller):
 
     self.skip_rate = fw.constant(0.0, dtype=fw.float32)
 
-    return get_train_ops(
-      self.loss,
-      tf_variables,
+    train_op, lr, grad_norm, optimizer = get_train_ops(
       self.train_step,
       self.learning_rate,
       clip_mode=self.clip_mode,
       optim_algo=self.optim_algo)
+    return train_op(self.loss, tf_variables), lr, grad_norm(self.loss, tf_variables), optimizer
