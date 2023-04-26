@@ -329,7 +329,7 @@ class Child(object):
           "SAME",
           data_format=data_format.name)
       def bn(x):
-        bn = BatchNorm(is_training, data_format, weights)
+        bn = BatchNorm(is_training, data_format, weights, out_filters, reuse)
         return bn(x)
       self.layers = [conv2d, bn]
 
@@ -338,10 +338,10 @@ class Child(object):
     """
     Output channels: num_input_chan
     """
-    def __init__(self, is_training, data_format, weights, num_input_chan):
+    def __init__(self, is_training, data_format, weights, num_input_chan, reuse: bool):
       def concat(x):
         return fw.concat(values=x, axis=data_format.concat_axis())
-      bn = BatchNorm(is_training, data_format, weights, num_input_chan)
+      bn = BatchNorm(is_training, data_format, weights, num_input_chan, reuse)
       self.layers = [concat, bn]
 
 
@@ -355,7 +355,7 @@ class Child(object):
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name)
-      bn = BatchNorm(is_training, data_format, weights, out_filters)
+      bn = BatchNorm(is_training, data_format, weights, out_filters, reuse)
       self.layers = [fw.relu, layer2, bn]
 
 
@@ -369,7 +369,7 @@ class Child(object):
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name)
-      bn = BatchNorm(is_training, data_format, weights, out_filters)
+      bn = BatchNorm(is_training, data_format, weights, out_filters, reuse)
       self.layers = [fw.relu, layer2, bn]
 
 
@@ -386,7 +386,7 @@ class Child(object):
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name)
-      bn = BatchNorm(is_training, data_format, weights, out_filters)
+      bn = BatchNorm(is_training, data_format, weights, out_filters, reuse)
       self.layers = [conv2d, bn]
 
 
@@ -408,7 +408,7 @@ class Child(object):
           [1, 1, 1, 1],
           'SAME',
           data_format=data_format.name)
-      bn = BatchNorm(is_training, data_format, weights, out_filters)
+      bn = BatchNorm(is_training, data_format, weights, out_filters, reuse)
       self.layers = [conv2d, bn, fw.relu]
 
 
@@ -444,7 +444,7 @@ class Child(object):
           with fw.name_scope('path2_conv'):
             return skip_path2(x)
         self.layers.append(path2)
-        self.layers.append(Child.FactorizedReductionInner(is_training, child.data_format, weights, out_filters // 2 * 2))
+        self.layers.append(Child.FactorizedReductionInner(is_training, child.data_format, weights, out_filters // 2 * 2, reuse))
 
     def __call__(self, x):
       if self.single_layer:

@@ -22,8 +22,8 @@ class TestImageOps(unittest.TestCase):
         mock_weights.get = mock.MagicMock(return_value="get_variable")
         input_tensor = tf.constant(np.ndarray((45000, 32, 32, 3)))
         with tf.Graph().as_default():
-            self.assertEqual("identity", batch_norm(input_tensor, True, DataFormat.new("NHWC"), mock_weights, 3))
-            mock_weights.get.assert_any_call(None, 'bn/', "offset", [3], "constant")
+            self.assertEqual("identity", batch_norm(input_tensor, True, DataFormat.new("NHWC"), mock_weights, 3, True))
+            mock_weights.get.assert_any_call(True, 'bn/', "offset", [3], "constant")
             fbn.assert_called_with(input_tensor, "get_variable", "get_variable", epsilon=1e-5, data_format="NHWC", is_training=True)
             identity.assert_called_with("f")
 
@@ -34,7 +34,7 @@ class TestImageOps(unittest.TestCase):
         mock_weights = mock.MagicMock()
         mock_weights.get = mock.MagicMock(return_value="get_variable")
         input_tensor = tf.constant(np.ndarray((45000, 3, 32, 32)))
-        self.assertEqual("f", batch_norm(input_tensor, False, DataFormat.new("NCHW"), mock_weights, 3))
+        self.assertEqual("f", batch_norm(input_tensor, False, DataFormat.new("NCHW"), mock_weights, 3, True))
         mock_weights.get.assert_any_call(True, 'bn/', "offset", [3], "constant")
         mock_weights.get.assert_called_with(True, 'bn/', 'moving_variance', [3], 'constant', trainable=False)
         fbn.assert_called_with(input_tensor, "get_variable", "get_variable", mean="get_variable", variance="get_variable", epsilon=1e-5, data_format="NCHW", is_training=False)

@@ -225,7 +225,7 @@ class MacroChild(Child):
           [1, 1, 1, 1],
           'SAME',
           data_format=data_format.name)
-      bn = BatchNorm(is_training, data_format, weights, out_filters)
+      bn = BatchNorm(is_training, data_format, weights, out_filters, reuse)
       self.layers = [conv2d, bn, fw.relu]
 
 
@@ -275,7 +275,7 @@ class MacroChild(Child):
         skip_start = start_idx + 1
         skip = child.sample_arc[skip_start: skip_start + layer_id]
         with fw.name_scope("skip"):
-          self.layers.append(MacroChild.ENASSkipLayers(layer_id, skip, is_training, child.data_format, weights, num_input_chan))
+          self.layers.append(MacroChild.ENASSkipLayers(layer_id, skip, is_training, child.data_format, weights, num_input_chan, reuse))
       else:
         self.has_skip_layer = False
 
@@ -337,7 +337,7 @@ class MacroChild(Child):
         skip_start = start_idx + 1
         skip = child.sample_arc[skip_start: skip_start + layer_id]
         with fw.name_scope("skip"):
-          self.layers.append(MacroChild.ENASSkipLayers(layer_id, skip, is_training, child.data_format, weights, num_input_chan))
+          self.layers.append(MacroChild.ENASSkipLayers(layer_id, skip, is_training, child.data_format, weights, num_input_chan, reuse))
       else:
         self.has_skip_layer = False
 
@@ -369,7 +369,7 @@ class MacroChild(Child):
 
   # Because __call__ is overridden, this superclass is just for ease of find.
   class ENASSkipLayers(LayeredModel):
-    def __init__(self, layer_id, skip, is_training, data_format, weights, num_input_chan):
+    def __init__(self, layer_id, skip, is_training, data_format, weights, num_input_chan, reuse: bool):
       def skip_connections(prev_layers):
         res_layers = []
         for i in range(layer_id):
@@ -388,7 +388,7 @@ class MacroChild(Child):
         skip_connections,
         append_input,
         lambda res_layers: fw.add_n(res_layers),
-        BatchNorm(is_training, data_format, weights, num_input_chan)]
+        BatchNorm(is_training, data_format, weights, num_input_chan, reuse)]
 
     def __call__(self, x, prev_layers):
       res_layers = self.layers[0](prev_layers)
@@ -586,7 +586,7 @@ class MacroChild(Child):
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name)
-      bn = BatchNorm(is_training, data_format, weights, filter_size)
+      bn = BatchNorm(is_training, data_format, weights, filter_size, reuse)
       self.layers = [conv2d, bn, fw.relu]
 
 
@@ -613,7 +613,7 @@ class MacroChild(Child):
           strides=[1, 1, 1, 1],
           padding="SAME",
           data_format=data_format.name)
-      bn = BatchNorm(is_training, data_format, weights, out_filters)
+      bn = BatchNorm(is_training, data_format, weights, out_filters, reuse)
       self.layers = [sep_conv2d, bn, fw.relu]
 
 

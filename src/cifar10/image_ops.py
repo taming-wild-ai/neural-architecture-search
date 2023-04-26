@@ -15,10 +15,10 @@ class BatchNorm(LayeredModel):
   """
   Output channels/filters: num_chan
   """
-  def __init__(self, is_training, data_format, weights, num_chan: int, name="bn", decay=0.9, epsilon=1e-5):
+  def __init__(self, is_training, data_format, weights, num_chan: int, parent_scope_reuse: bool, name="bn", decay=0.9, epsilon=1e-5):
     shape = [num_chan]
     with fw.name_scope(name) as scope:
-      reuse = None if is_training else True
+      reuse = parent_scope_reuse if is_training else True
       offset = weights.get(reuse, scope, "offset", shape, fw.constant_initializer(0.0))
       scale = weights.get(reuse, scope, "scale", shape, fw.constant_initializer(1.0))
       moving_mean = weights.get(reuse, scope, "moving_mean", shape, fw.constant_initializer(0.0), trainable=False)
@@ -55,8 +55,8 @@ class BatchNorm(LayeredModel):
       self.layers.append(fbn)
 
 
-def batch_norm(x, is_training, data_format, weights, num_chan: int, name="bn", decay=0.9, epsilon=1e-5):
-  bn = BatchNorm(is_training, data_format, weights, num_chan, name, decay, epsilon)
+def batch_norm(x, is_training, data_format, weights, num_chan: int, reuse, name="bn", decay=0.9, epsilon=1e-5):
+  bn = BatchNorm(is_training, data_format, weights, num_chan, reuse, name, decay, epsilon)
   return bn(x)
 
 def batch_norm_with_mask(x, is_training: bool, mask, num_channels, weights, name="bn",

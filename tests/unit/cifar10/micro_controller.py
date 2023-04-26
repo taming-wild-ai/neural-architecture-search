@@ -49,10 +49,13 @@ class TestMicroController(unittest.TestCase):
     @patch('src.cifar10.micro_controller.fw.constant_initializer')
     @patch('src.cifar10.micro_controller.fw.Variable')
     @patch('src.cifar10.micro_controller.fw.random_uniform_initializer')
-    @patch('src.cifar10.micro_controller.get_train_ops', return_value=(1, 2, 3, 4))
+    @patch('src.cifar10.micro_controller.get_train_ops')
     @patch('src.cifar10.micro_controller.fw.zeros', return_value="zeros")
     @patch('src.cifar10.micro_controller.print')
     def test_build_trainer(self, print, zeros, get_train_ops, rui, variable, const, stack_lstm, tensor_array, matmul, reshape, reduce_sum, to_float, cd):
+        train_op = mock.MagicMock(name='train_op', return_value='train_op')
+        grad_norm = mock.MagicMock(name='grad_norm', return_value='grad_norm')
+        get_train_ops.return_value = (train_op, 2, grad_norm, 4)
         variable().assign_sub = mock.MagicMock(return_value='assign_sub')
         rui.__call__ = mock.MagicMock(return_value="rui")
         mock_tensor_array = mock.MagicMock()
@@ -69,12 +72,12 @@ class TestMicroController(unittest.TestCase):
                 zeros.assert_called_with([1, 32], tf.float32)
                 variable().assign_sub.assert_called_with(variable().__sub__().__rmul__())
                 get_train_ops.assert_called_with(
-                    variable().__rsub__().__rmul__(),
-                    [],
                     variable(),
                     mc.learning_rate,
                     clip_mode=mc.clip_mode,
                     optim_algo=mc.optim_algo)
+                train_op.assert_called_with(mc.loss, [])
+                grad_norm.assert_called_with(mc.loss, [])
                 to_float.assert_called_with(mock_child.batch_size)
                 cd.assert_called_with(['assign_sub'])
                 while_loop.assert_called()

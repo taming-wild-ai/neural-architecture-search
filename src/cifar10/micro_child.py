@@ -129,7 +129,7 @@ class MicroChild(Child):
         if c[1] != out_filters:
           with fw.name_scope("pool_y") as scope:
             w = weights.get(reuse, scope, "w", [1, 1, c[1], out_filters], None)
-            bn = BatchNorm(is_training, child.data_format, weights, out_filters)
+            bn = BatchNorm(is_training, child.data_format, weights, out_filters, reuse)
             self.layers_y = [
               fw.relu,
               lambda x: fw.conv2d(
@@ -146,11 +146,11 @@ class MicroChild(Child):
       x = layers[0]
       y = layers[1]
 
-      with fw.name_scope("calibrate") as scope:
-        with fw.name_scope("pool_x") as scope:
+      with fw.name_scope("calibrate"):
+        with fw.name_scope("pool_x"):
           for layer in self.layers_x:
             x = layer(x)
-        with fw.name_scope("pool_y") as scope:
+        with fw.name_scope("pool_y"):
           for layer in self.layers_y:
             y = layer(y)
 
@@ -229,12 +229,13 @@ class MicroChild(Child):
           if (child.use_aux_heads and layer_id in child.aux_head_indices and is_training):
             print(f'Using aux_head at layer {layer_id}')
             with fw.name_scope('aux_head') as scope:
-              self.aux_logits[layer_id] = [lambda x: fw.avg_pool2d(
-                fw.relu(x),
-                [5, 5],
-                [3, 3],
-                "VALID",
-                data_format=child.data_format.actual)]
+              self.aux_logits[layer_id] = [
+                lambda x: fw.avg_pool2d(
+                  fw.relu(x),
+                  [5, 5],
+                  [3, 3],
+                  "VALID",
+                  data_format=child.data_format.actual)]
               with fw.name_scope('proj') as scope:
                 self.aux_logits[layer_id].append(Child.InputConv(
                   weights,
@@ -287,13 +288,13 @@ class MicroChild(Child):
             layers = [layers[-1], x]
           aux_logit_fns = self.aux_logits.get(layer_id)
           if aux_logit_fns:
-            with fw.name_scope('aux_head') as scope:
+            with fw.name_scope('aux_head'):
               aux_logits = aux_logit_fns[0](x)
-              with fw.name_scope('proj') as scope:
+              with fw.name_scope('proj'):
                 aux_logits = aux_logit_fns[1](aux_logits)
-              with fw.name_scope('avg_pool') as scope:
+              with fw.name_scope('avg_pool'):
                 aux_logits = aux_logit_fns[2](aux_logits)
-              with fw.name_scope('fc') as scope:
+              with fw.name_scope('fc'):
                 self.child.aux_logits = aux_logit_fns[3](aux_logits)
             aux_head_variables = [
             var for var in fw.trainable_variables() if (
@@ -315,7 +316,7 @@ class MicroChild(Child):
           strides=strides,
           padding="SAME",
           data_format=data_format.name)
-      bn = BatchNorm(is_training, data_format, weights, out_filters)
+      bn = BatchNorm(is_training, data_format, weights, out_filters, reuse)
       self.layers = [separable_conv2d, bn]
 
 
@@ -377,7 +378,7 @@ class MicroChild(Child):
   class LayerBase(LayeredModel):
     def __init__(self, weights, reuse: bool, scope: str, num_input_chan: int, out_filters: int, is_training: bool, data_format):
       w = weights.get(reuse, scope, "w", [1, 1, num_input_chan, out_filters], None)
-      bn = BatchNorm(is_training, data_format, weights, out_filters)
+      bn = BatchNorm(is_training, data_format, weights, out_filters, reuse)
       self.layers = [
         fw.relu,
         lambda x: fw.conv2d(
@@ -539,7 +540,7 @@ class MicroChild(Child):
           [curr_cell + 1, num_input_chan * out_filters],
           None)
         with fw.name_scope('conv'):
-          bn = BatchNorm(True, data_format, weights, out_filters)
+          bn = BatchNorm(True, data_format, weights, out_filters, reuse)
           conv2d = lambda x: fw.conv2d(x, fw.reshape(w[prev_cell], [1, 1, num_input_chan, out_filters]), strides=[1, 1, 1, 1], padding='SAME', data_format=data_format.name)
         self.layers += [fw.relu, conv2d, bn]
 
@@ -556,7 +557,7 @@ class MicroChild(Child):
           [curr_cell + 1, num_input_chan * out_filters],
           None)
         with fw.name_scope("conv"):
-          bn = BatchNorm(True, data_format, weights, out_filters)
+          bn = BatchNorm(True, data_format, weights, out_filters, reuse)
 
         def inner(x):
           with fw.name_scope("conv"):
@@ -583,7 +584,7 @@ class MicroChild(Child):
           [num_possible_inputs, num_input_chan * out_filters],
           None)
         conv2d = lambda x: fw.conv2d(x, fw.reshape(w[prev_cell], [1, 1, num_input_chan, out_filters]), strides=[1, 1, 1, 1], padding='SAME', data_format=data_format.name)
-        bn = BatchNorm(True, data_format, weights, out_filters)
+        bn = BatchNorm(True, data_format, weights, out_filters, reuse)
         self.layers += [fw.relu, conv2d, bn]
       else:
         self.layers.append(lambda x: x)
@@ -698,7 +699,7 @@ class MicroChild(Child):
         strides=[1, 1, 1, 1],
         padding='SAME',
         data_format = data_format.name)
-      bn = BatchNorm(True, data_format, weights, out_filters)
+      bn = BatchNorm(True, data_format, weights, out_filters, reuse)
       reshape = lambda x: fw.reshape(x, fw.shape(prev_layers[0]))
       self.layers = [
         stack,

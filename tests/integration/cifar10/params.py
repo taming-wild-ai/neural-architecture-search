@@ -169,7 +169,7 @@ class TestParameterCounts(unittest.TestCase):
 
     @patch('src.cifar10.child.print')
     @patch('src.cifar10.micro_child.print')
-    def test_micro_search_params(self, print, print2):
+    def test_micro_search_params(self, print1, print2):
         IMAGES = {
             'train': np.ndarray((45000, 32, 32, 3), dtype=np.float32),
             'valid': np.ndarray((5000, 32, 32, 3), dtype=np.float32),
@@ -196,13 +196,21 @@ class TestParameterCounts(unittest.TestCase):
                         expected_shape = (None, 40, 16, 16)
                     else:
                         expected_shape = (None, 80, 8, 8)
-                    print.assert_any_call(f'Layer  {layer_num}: Tensor("child/layer_{layer_num}/Reshape_2:0", shape={expected_shape}, dtype=float32)')
+                    print1.assert_any_call(f'Layer  {layer_num}: Tensor("child/layer_{layer_num}/Reshape_2:0", shape={expected_shape}, dtype=float32)')
                 print2.assert_any_call("-" * 80)
                 print2.assert_any_call("Build model child")
                 print2.assert_any_call("Build data ops")
-                print.assert_any_call("Aux head uses 412928 params")
-                print.assert_called_with("Model has 5373140 params")
-
+                print1.assert_any_call("Aux head uses 412928 params")
+                print1.assert_called_with("Model has 5373140 params")
+                print1.reset_mock()
+                mc._build_valid(mc.weights, mc.x_train, mc.y_train)
+                print1.assert_any_call("Aux head uses 412928 params")
+                print1.reset_mock()
+                mc._build_test(mc.weights, mc.x_train, mc.y_train)
+                print1.assert_any_call("Aux head uses 412928 params")
+                print1.reset_mock()
+                mc.build_valid_rl()
+                print1.assert_any_call("Aux head uses 412928 params")
 
 if "__main__" == __name__:
     unittest.main()

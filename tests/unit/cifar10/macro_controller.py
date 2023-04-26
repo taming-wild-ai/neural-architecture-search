@@ -111,11 +111,14 @@ class TestMacroController(unittest.TestCase):
     @patch('src.cifar10.macro_controller.fw.sparse_softmax_cross_entropy_with_logits', return_value=0.5)
     @patch('src.cifar10.macro_controller.fw.reshape', return_value=3.0)
     @patch('src.cifar10.macro_controller.fw.to_float', return_value=tf.constant(np.ones((1, 2))))
-    @patch('src.cifar10.macro_controller.get_train_ops', return_value=(1, 2, 3, 4))
+    @patch('src.cifar10.macro_controller.get_train_ops')
     @patch('src.cifar10.macro_controller.fw.Variable')
     @patch('src.cifar10.macro_controller.fw.zeros', return_value="zeros")
     @patch('src.cifar10.macro_controller.print')
     def test_build_trainer(self, print, zeros, variable, get_train_ops, to_float, reshape, sscewl, embedding_lookup, stack_lstm, matmul, tanh, multinomial, to_int32, less_equal, where, fill, concat, reduce_sum, cd):
+        train_op = mock.MagicMock(name='train_op', return_value='train_op')
+        grad_norm = mock.MagicMock(name='grad_norm', return_value='grad_norm')
+        get_train_ops.return_value = (train_op, 2, grad_norm, 4)
         variable(0.0, dtype=fw.float32).assign_sub = mock.MagicMock(return_value='assign_sub')
         fw.FLAGS.child_num_layers = 4
         fw.FLAGS.child_num_branches = 6
@@ -127,7 +130,7 @@ class TestMacroController(unittest.TestCase):
             mc = MacroController(temperature=0.9)
             child_model = mock.MagicMock()
             mc.skip_penaltys = 1.0
-            self.assertEqual((1, 2, 3, 4), mc.build_trainer(child_model))
+            self.assertEqual(('train_op', 2, 'grad_norm', 4), mc.build_trainer(child_model))
             child_model.build_valid_rl.assert_called_with()
             variable.assert_called_with(0, dtype=tf.int32, name='train_step')
             variable(0.0, dtype=fw.float32).assign_sub.assert_called_with(variable().__sub__().__rmul__())
@@ -136,7 +139,9 @@ class TestMacroController(unittest.TestCase):
             print.assert_any_call("Build controller sampler")
             zeros.assert_called_with([1, 32], tf.float32)
             variable().assign_sub.assert_called_with(variable().__sub__().__rmul__())
-            get_train_ops.assert_called_with(variable().__rsub__().__rmul__().__iadd__(), [], variable(), mc.learning_rate, clip_mode=mc.clip_mode, l2_reg=0.0, optim_algo=mc.optim_algo)
+            get_train_ops.assert_called_with(variable(), mc.learning_rate, clip_mode=mc.clip_mode, l2_reg=0.0, optim_algo=mc.optim_algo)
+            train_op.assert_called_with(mc.loss, [])
+            grad_norm.assert_called_with(mc.loss, [])
             to_float.assert_any_call(4.0)
             to_float.assert_called_with(6.0)
             reshape.assert_called_with(2.0, [-1])
