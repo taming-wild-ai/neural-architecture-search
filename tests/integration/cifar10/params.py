@@ -74,7 +74,7 @@ class TestParameterCounts(unittest.TestCase):
                 fixed_arc +=" 0 1 1 0 0 0 1 1 1 0 1 0 0 0 1 0 1 0 0 1 1 0 0 0"
                 mc.fixed_arc = fixed_arc
                 mc.sample_arc = np.array([int(x) for x in fixed_arc.split(" ") if x])
-                mc._build_train(mc.weights, mc.x_train, mc.y_train)
+                mc._build_train(mc.x_train, mc.y_train)
                 print2.assert_any_call("-" * 80)
                 print2.assert_any_call("Build model child")
                 print2.assert_any_call("Build data ops")
@@ -124,7 +124,7 @@ class TestParameterCounts(unittest.TestCase):
                 fixed_arc +=" 0 1 0 1 0 1 0 0 0 0 0 0 0 0 1 0 1 0 0 1 0 0 0"
                 fixed_arc +=" 0 1 1 0 0 0 1 1 1 0 1 0 0 0 1 0 1 0 0 1 1 0 0 0"
                 mc.sample_arc = np.array([int(x) for x in fixed_arc.split(" ") if x])
-                mc._build_train(mc.weights, mc.x_train, mc.y_train)
+                mc._build_train(mc.x_train, mc.y_train)
                 print2.assert_any_call("-" * 80)
                 print2.assert_any_call("Build model child")
                 print2.assert_any_call("Build data ops")
@@ -151,7 +151,7 @@ class TestParameterCounts(unittest.TestCase):
                 fixed_arc = np.array([int(x) for x in mc.fixed_arc.split(" ") if x])
                 mc.normal_arc = fixed_arc[:4 * mc.num_cells]
                 mc.reduce_arc = fixed_arc[4 * mc.num_cells:]
-                mc._build_train(mc.weights, mc.x_train, mc.y_train)
+                mc._build_train(mc.x_train, mc.y_train)
                 print2.assert_any_call("-" * 80)
                 print2.assert_any_call("Build model child")
                 print2.assert_any_call("Build data ops")
@@ -188,7 +188,7 @@ class TestParameterCounts(unittest.TestCase):
                 fixed_arc = np.array([int(x) for x in fixed_arc.split(" ") if x])
                 mc.normal_arc = fixed_arc[:4 * mc.num_cells]
                 mc.reduce_arc = fixed_arc[4 * mc.num_cells:]
-                mc._build_train(mc.weights, mc.x_train, mc.y_train)
+                mc._build_train(mc.x_train, mc.y_train)
                 for layer_num in range(8):
                     if 2 > layer_num:
                         expected_shape = (None, 20, 32, 32)
@@ -203,10 +203,10 @@ class TestParameterCounts(unittest.TestCase):
                 print1.assert_any_call("Aux head uses 412928 params")
                 print1.assert_called_with("Model has 5373140 params")
                 print1.reset_mock()
-                mc._build_valid(mc.weights, mc.x_train, mc.y_train)
+                mc._build_valid(mc.x_train, mc.y_train)
                 print1.assert_any_call("Aux head uses 412928 params")
                 print1.reset_mock()
-                mc._build_test(mc.weights, mc.x_train, mc.y_train)
+                mc._build_test(mc.x_train, mc.y_train)
                 print1.assert_any_call("Aux head uses 412928 params")
                 print1.reset_mock()
                 mc.build_valid_rl()

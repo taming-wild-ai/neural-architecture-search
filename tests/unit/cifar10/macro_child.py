@@ -144,7 +144,7 @@ class TestMacroChild(unittest.TestCase):
             mc.keep_prob = 0.9
             with patch.object(mc.data_format, 'global_avg_pool', return_value='gap') as global_avg_pool:
                 with patch.object(mc.weights, 'get', return_value='w') as create_weight:
-                    model = MacroChild.Model(mc, True, mc.weights)
+                    model = MacroChild.Model(mc, True)
                     model({})
                     create_weight.assert_any_call(False, 'generic_model/stem_conv/', "w", [3, 3, 3, 24], None)
                     conv2d.assert_called_with({}, 'w', [1, 1, 1, 1], 'SAME', data_format='NHWC')
@@ -172,7 +172,7 @@ class TestMacroChild(unittest.TestCase):
             mc.pool_layers = [0]
             with patch.object(mc.data_format, 'global_avg_pool', return_value="global_avg_pool") as global_avg_pool:
                 with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
-                    model = MacroChild.Model(mc, True, mc.weights)
+                    model = MacroChild.Model(mc, True)
                     model({})
                     create_weight.assert_any_call(False, 'generic_model/stem_conv/', "w", [3, 3, 3, 24], None)
                     conv2d.assert_called_with({}, 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
@@ -205,7 +205,7 @@ class TestMacroChild(unittest.TestCase):
             mc.fixed_arc = ""
             with patch.object(mc.data_format, 'global_avg_pool', return_value='global_avg_pool') as global_avg_pool:
                 with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
-                    model = MacroChild.Model(mc, True, mc.weights)
+                    model = MacroChild.Model(mc, True)
                     model({})
                     create_weight.assert_any_call(False, 'generic_model/stem_conv/', "w", [3, 3, 3, 24], None)
                     conv2d.assert_called_with({}, 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
@@ -690,11 +690,11 @@ class TestMacroChild(unittest.TestCase):
             mc.num_aggregate = None
             mc.num_replicas = None
             mc.name = "macro_child"
-            self.assertEqual(('reduce_mean', 'reduce_sum', 'global_step', train_op(), 2, grad_norm(), 4), mc._build_train(mc.weights, mc.x_train, mc.y_train))
+            self.assertEqual(('reduce_mean', 'reduce_sum', 'global_step', train_op(), 2, grad_norm(), 4), mc._build_train(mc.x_train, mc.y_train))
             print.assert_any_call("-" * 80)
             print.assert_any_call("Build train graph")
             print.assert_called_with("Model has 0 params")
-            model.assert_called_with(mc, True, mc.weights)
+            model.assert_called_with(mc, True)
             model().assert_called_with(mc.x_train)
             sscewl.assert_called_with(logits="model", labels=mc.y_train)
             reduce_mean.assert_called_with("sscewl")
@@ -720,7 +720,7 @@ class TestMacroChild(unittest.TestCase):
         self.assertEqual(('to_int32', 'reduce_sum'), mc._build_valid(mc.weights, mc.x_valid, mc.y_valid))
         print.assert_any_call("-" * 80)
         print.assert_any_call("Build valid graph")
-        model.assert_called_with(mc, False, mc.weights, True)
+        model.assert_called_with(mc, False, True)
         model().assert_called_with(True)
         argmax.assert_called_with('model', axis=1)
         to_int32.assert_any_call('argmax')
@@ -743,7 +743,7 @@ class TestMacroChild(unittest.TestCase):
         self.assertEqual(('to_int32', 'reduce_sum'), mc._build_test(mc.weights, mc.x_test, mc.y_test))
         print.assert_any_call('-' * 80)
         print.assert_any_call("Build test graph")
-        model.assert_called_with(mc, False, mc.weights, True)
+        model.assert_called_with(mc, False, True)
         model().assert_called_with(True)
         argmax.assert_called_with('model', axis=1)
         to_int32.assert_any_call('argmax')
@@ -775,7 +775,7 @@ class TestMacroChild(unittest.TestCase):
             [mc.images['valid_original'], mc.labels['valid_original']],
             mc.batch_size,
             mc.seed)
-        model.assert_called_with(mc, False, mc.weights, True)
+        model.assert_called_with(mc, False, True)
         model().assert_called_with('map_fn')
         argmax.assert_called_with("model", axis=1)
         to_int32.assert_any_call("argmax")
@@ -793,9 +793,9 @@ class TestMacroChild(unittest.TestCase):
                 with patch.object(mc, '_build_test', return_value=('predictions', 'accuracy')) as build_test:
                     controller_mock = mock.MagicMock()
                     mc.connect_controller(controller_mock)
-                    build_train.assert_called_with(mc.weights, mc.x_train, mc.y_train)
-                    build_valid.assert_called_with(mc.weights, mc.x_valid, mc.y_valid)
-                    build_test.assert_called_with(mc.weights, mc.x_test, mc.y_test)
+                    build_train.assert_called_with(mc.x_train, mc.y_train)
+                    build_valid.assert_called_with(mc.x_valid, mc.y_valid)
+                    build_test .assert_called_with(mc.x_test, mc.y_test)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     def test_connect_controller_fixed_arc(self):
@@ -807,6 +807,6 @@ class TestMacroChild(unittest.TestCase):
                 with patch.object(mc, '_build_test', return_value=('predictions', 'accuracy')) as build_test:
                     controller_mock = mock.MagicMock()
                     mc.connect_controller(controller_mock)
-                    build_train.assert_called_with(mc.weights, mc.x_train, mc.y_train)
-                    build_valid.assert_called_with(mc.weights, mc.x_valid, mc.y_valid)
-                    build_test.assert_called_with(mc.weights, mc.x_test, mc.y_test)
+                    build_train.assert_called_with(mc.x_train, mc.y_train)
+                    build_valid.assert_called_with(mc.x_valid, mc.y_valid)
+                    build_test .assert_called_with(mc.x_test, mc.y_test)

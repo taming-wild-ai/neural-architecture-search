@@ -89,13 +89,13 @@ class MacroChild(Child):
 
   # Because __call__ is overridden, this superclass is just for ease of search.
   class Model(LayeredModel):
-    def __init__(self, child, is_training: bool, weights, reuse=False):
+    def __init__(self, child, is_training: bool, reuse=False):
       self.child = child
       self.enas_layers = []
       self.model_factorized_reduction = {}
       with fw.name_scope(child.name):
         with fw.name_scope("stem_conv") as scope:
-          self.model_layers = [Child.StemConv(weights, reuse, scope, child.out_filters, is_training, child.data_format)]
+          self.model_layers = [Child.StemConv(child.weights, reuse, scope, child.out_filters, is_training, child.data_format)]
 
         out_filters = child.out_filters
         layers_channels = [out_filters]
@@ -110,7 +110,7 @@ class MacroChild(Child):
             if child.fixed_arc is None:
               with fw.name_scope("conv_1") as scope:
                 input_conv4 = Child.InputConv(
-                  weights,
+                  child.weights,
                   reuse,
                   scope,
                   1,
@@ -119,7 +119,7 @@ class MacroChild(Child):
                   is_training,
                   child.data_format)
                 input_conv5 = Child.InputConv(
-                  weights,
+                  child.weights,
                   reuse,
                   scope,
                   1,
@@ -127,10 +127,10 @@ class MacroChild(Child):
                   child.out_filters,
                   is_training,
                   child.data_format)
-              self.model_layers.append(MacroChild.ENASLayer(child, layer_id, start_idx, out_filters, out_filters, is_training, weights, reuse, input_conv4, input_conv5))
+              self.model_layers.append(MacroChild.ENASLayer(child, layer_id, start_idx, out_filters, out_filters, is_training, child.weights, reuse, input_conv4, input_conv5))
               layers_channels.append(out_filters)
             else:
-              self.model_layers.append(MacroChild.FixedLayer(child, layer_id, start_idx, out_filters, out_filters, is_training, weights, reuse))
+              self.model_layers.append(MacroChild.FixedLayer(child, layer_id, start_idx, out_filters, out_filters, is_training, child.weights, reuse))
               layers_channels.append(out_filters)
             if layer_id in child.pool_layers:
               if child.fixed_arc is not None:
@@ -139,7 +139,7 @@ class MacroChild(Child):
                 pooled_layers_channels = []
                 for i, layer in enumerate(self.model_layers):
                   with fw.name_scope("from_{0}".format(i)):
-                    self.model_factorized_reduction[(layer_id, i)] = Child.FactorizedReduction(child, layers_channels[i], out_filters, 2, is_training, weights, reuse)
+                    self.model_factorized_reduction[(layer_id, i)] = Child.FactorizedReduction(child, layers_channels[i], out_filters, 2, is_training, child.weights, reuse)
                   pooled_layers_channels.append(out_filters)
                 layers_channels = pooled_layers_channels
           if child.whole_channels:
@@ -152,7 +152,7 @@ class MacroChild(Child):
             child.data_format,
             is_training,
             child.keep_prob,
-            weights,
+            child.weights,
             reuse,
             scope,
             layers_channels[-1])
@@ -808,12 +808,12 @@ class MacroChild(Child):
         fw.reduce_sum]
 
   # override
-  def _build_train(self, weights, x, y):
+  def _build_train(self, x, y):
     loss = MacroChild.LossModel(y)
     train_acc = MacroChild.TrainModel(y)
     print("-" * 80)
     print("Build train graph")
-    m = MacroChild.Model(self, True, weights)
+    m = MacroChild.Model(self, True)
     logits = m(x)
 
     print("Model has {} params".format(count_model_params(self.tf_variables())))
@@ -834,7 +834,7 @@ class MacroChild(Child):
   class ValidationPredictions(LayeredModel):
     def __init__(self, child, weights, reuse):
       self.layers = [
-        MacroChild.Model(child, False, weights, reuse),
+        MacroChild.Model(child, False, reuse),
         lambda x: fw.argmax(x, axis=1),
         fw.to_int32]
 
@@ -863,7 +863,7 @@ class MacroChild(Child):
   class TestPredictions(LayeredModel):
     def __init__(self, child, weights, reuse):
       self.layers = [
-        MacroChild.Model(child, False, weights, reuse),
+        MacroChild.Model(child, False, reuse),
         lambda x: fw.argmax(x, axis=1),
         fw.to_int32]
 
@@ -890,7 +890,7 @@ class MacroChild(Child):
   class ValidationRL(LayeredModel):
     def __init__(self, child, y):
       self.layers = [
-        MacroChild.Model(child, False, child.weights, True),
+        MacroChild.Model(child, False, True),
         lambda x: fw.argmax(x, axis=1),
         fw.to_int32,
         lambda x: fw.equal(x, y),
@@ -932,7 +932,7 @@ class MacroChild(Child):
     else:
       self.sample_arc = np.array([int(x) for x in self.fixed_arc.split(" ") if x])
 
-    self.loss, self.train_acc, self.global_step, train_op, lr, grad_norm, optimizer = self._build_train(self.weights, self.x_train, self.y_train)
-    self.valid_preds, self.valid_acc = self._build_valid(self.weights, self.x_valid, self.y_valid) # unused?
-    self.test_preds, self.test_acc = self._build_test(self.weights, self.x_test, self.y_test) # unused?
+    self.loss, self.train_acc, self.global_step, train_op, lr, grad_norm, optimizer = self._build_train(self.x_train, self.y_train)
+    self.valid_preds, self.valid_acc = self._build_valid(self.x_valid, self.y_valid) # unused?
+    self.test_preds, self.test_acc = self._build_test(self.x_test, self.y_test) # unused?
     return train_op, lr, grad_norm, optimizer
