@@ -88,13 +88,6 @@ class MicroChild(Child):
       self.layers = [avg_pool, conv2d]
 
 
-  def _get_HW(self, x):
-    """
-    Args:
-      x: tensor of shape [N, H, W, C] or [N, C, H, W]
-    """
-    return x.get_shape()[2]
-
   def _apply_drop_path(self, x, layer_id):
     return drop_path(
       x,
@@ -349,21 +342,26 @@ class MicroChild(Child):
 
 
   class FixedCombine(object):
-    def __init__(self, child, used, c, out_hw: int, out_filters: int, is_training, weights, reuse):
+    def __init__(self, child, used, c, in_hws, out_hw: int, out_filters: int, is_training, weights, reuse):
+      self.layers = {}
+      with fw.name_scope('final_combine'):
+        for i in range(len(used)):
+          if used[i] == 0:
+            hw = in_hws[i]
+            if hw > out_hw:
+              assert hw == out_hw * 2, f"hw ({hw}) is not two times out_hw ({out_hw})"
+              with fw.name_scope(f'calibrate_{i}'):
+                self.layers[i] = Child.FactorizedReduction(child, c[i], out_filters, 2, is_training, weights, reuse)
+            else:
+              assert hw == out_hw, f"expected {out_hw}, got {hw}"
+              self.layers[i] = lambda x: x
+
       def layer_fn(layers):
         out = []
         with fw.name_scope('final_combine'):
           for i, layer in enumerate(layers):
             if used[i] == 0:
-              hw = child._get_HW(layer)
-              if hw > out_hw:
-                assert hw == out_hw * 2, f"hw ({hw}) is not two times out_hw ({out_hw})"
-                with fw.name_scope(f'calibrate_{i}'):
-                  fr = Child.FactorizedReduction(child, c[i], out_filters, 2, is_training, weights, reuse)
-                  x = fr(layer)
-              else:
-                assert hw == out_hw
-                x = layer
+              x = self.layers[i](layer)
               out.append(x)
           return out
       self.first_layer = layer_fn
@@ -490,14 +488,20 @@ class MicroChild(Child):
       c = [out_filters] * (child.num_cells + 2)
       hws = []
       for i in range(child.num_cells + 2):
+        if [0, 0] == ops[0]: # Not sure about this check :-\
+          hws.append(hw[1] // 2)
+        else:
+          hws.append(hw[1])
+      uhws = []
+      for i in range(child.num_cells + 2):
         if used[i] == 0:
           if [0, 0] == ops[0]:  # Not sure about this check :-\
-            hws.append(hw[1] // 2)
+            uhws.append(hw[1] // 2)
           else:
-            hws.append(hw[1])
-      out_hw = min(hws)
-      self.fc = MicroChild.FixedCombine(child, used, c, out_hw, out_filters, is_training, weights, reuse)
-      self.out_chan = out_filters // 2 * 2 * len(hws)
+            uhws.append(hw[1])
+      out_hw = min(uhws)
+      self.fc = MicroChild.FixedCombine(child, used, c, hws, out_hw, out_filters, is_training, weights, reuse)
+      self.out_chan = out_filters // 2 * 2 * len(uhws)
 
       def layer2(layers):
         for cell_id in range(child.num_cells):

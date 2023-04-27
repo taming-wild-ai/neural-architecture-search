@@ -54,12 +54,6 @@ class TestMacroChild(unittest.TestCase):
             mc = MacroChild({}, {})
         self.assertEqual(MacroChild, type(mc))
 
-    @patch('src.cifar10.child.Child.__init__', new=mock_init)
-    def test_get_hw(self):
-        with tf.Graph().as_default():
-            mc = MacroChild({}, {})
-        self.assertEqual(mc._get_HW(fw.constant(np.ndarray((1, 2, 3)))), 3)
-
     @patch('src.cifar10.child.Child.__init__', new=mock_init_invalid)
     def test_get_strides_exception(self):
         with tf.Graph().as_default():

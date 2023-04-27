@@ -45,13 +45,6 @@ class MacroChild(Child):
     pool_distance = self.num_layers // 3
     self.pool_layers = [pool_distance - 1, 2 * pool_distance - 1]
 
-  def _get_HW(self, x):
-    """
-    Args:
-      x: tensor of shape [N, H, W, C] or [N, C, H, W]
-    """
-    return x.get_shape()[2]
-
 
   class SkipPath(LayeredModel):
     def __init__(self, stride_spec, data_format, weights, reuse: bool, scope: str, num_input_chan: int, out_filters: int):
