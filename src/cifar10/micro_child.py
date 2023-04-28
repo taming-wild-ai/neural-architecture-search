@@ -735,23 +735,31 @@ class MicroChild(Child):
     """
     def __init__(self, child, arc, hw, c, out_filters, weights, reuse):
       self.cs = MicroChild.CalibrateSize(child, hw, c, out_filters, True, weights, reuse)
+      ec_x = {}
+      ec_y = {}
+      for cell_id in range(child.num_cells):
+          with fw.name_scope(f"cell_{cell_id}"):
+            with fw.name_scope("x"):
+              x_id = arc[4 * cell_id] # always in {0, 1}
+              ec_x[cell_id] = MicroChild.ENASCell(child, cell_id, x_id, out_filters, out_filters, weights, reuse)
+            with fw.name_scope("y"):
+              y_id = arc[4 * cell_id + 2]
+              ec_y[cell_id] = MicroChild.ENASCell(child, cell_id, y_id, out_filters, out_filters, weights, reuse)
 
       def l0(layers):
         used = []
         for cell_id in range(child.num_cells):
           prev_layers = fw.stack(layers, axis=0) # Always 2, N, H, W, C or 2, N, C, H, W
-          with fw.name_scope(f"cell_{cell_id}") as scope:
-            with fw.name_scope("x") as scope:
+          with fw.name_scope(f"cell_{cell_id}"):
+            with fw.name_scope("x"):
               x_id = arc[4 * cell_id] # always in {0, 1}
               x = prev_layers[x_id, :, :, :, :]
-              ec = MicroChild.ENASCell(child, cell_id, x_id, out_filters, out_filters, weights, reuse)
-              x = ec(x, arc[4 * cell_id + 1])
+              x = ec_x[cell_id](x, arc[4 * cell_id + 1])
               x_used = fw.one_hot(x_id, depth=child.num_cells + 2, dtype=fw.int32)
-            with fw.name_scope("y") as scope:
+            with fw.name_scope("y"):
               y_id = arc[4 * cell_id + 2]
               y = prev_layers[y_id, :, :, :, :]
-              ec = MicroChild.ENASCell(child, cell_id, y_id, out_filters, out_filters, weights, reuse)
-              y = ec(y, arc[4 * cell_id + 3])
+              y = ec_y[cell_id](y, arc[4 * cell_id + 3])
               y_used = fw.one_hot(y_id, depth=child.num_cells + 2, dtype=fw.int32)
             out = x + y
             used.extend([x_used, y_used])

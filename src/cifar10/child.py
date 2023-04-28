@@ -433,16 +433,20 @@ class Child(object):
         stride_spec = child.data_format.get_strides(stride)
         with fw.name_scope('path1_conv') as scope:
           skip_path1 = child.SkipPath(stride_spec, child.data_format, weights, reuse, scope, num_input_chan, out_filters)
+
         def path1(x):
           with fw.name_scope('path1_conv'):
             return skip_path1(x)
+
         self.layers.append(path1)
         self.layers.append(lambda x: child.data_format.factorized_reduction(x))
         with fw.name_scope('path2_conv') as scope:
           skip_path2 = child.SkipPath(stride_spec, child.data_format, weights, reuse, scope, num_input_chan, out_filters)
+
         def path2(x):
           with fw.name_scope('path2_conv'):
             return skip_path2(x)
+
         self.layers.append(path2)
         self.layers.append(Child.FactorizedReductionInner(is_training, child.data_format, weights, out_filters // 2 * 2, reuse))
 
