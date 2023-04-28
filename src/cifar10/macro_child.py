@@ -8,8 +8,7 @@ import numpy as np
 import src.framework as fw
 
 from src.cifar10.child import Child
-from src.cifar10.image_ops import BatchNorm
-from src.cifar10.image_ops import batch_norm_with_mask
+from src.cifar10.image_ops import BatchNorm, BatchNormWithMask
 
 from src.utils import count_model_params, get_train_ops, DEFINE_integer, LayeredModel
 
@@ -637,15 +636,16 @@ class MacroChild(Child):
           strides=[1, 1, 1, 1],
           padding="SAME",
           data_format=data_format.name)
-      def bn_with_mask(x):
-        return batch_norm_with_mask(
-          x,
+      self.layers = [
+        sep_conv2d,
+        BatchNormWithMask(
           is_training,
           fw.logical_and(start_idx <= self.mask, self.mask < start_idx + count),
           out_filters,
           weights,
-          data_format=data_format.name)
-      self.layers = [sep_conv2d, bn_with_mask, fw.relu]
+          reuse,
+          data_format=data_format.name),
+        fw.relu]
 
 
   class OutConvMasked(LayeredModel):
@@ -668,15 +668,16 @@ class MacroChild(Child):
           [1, 1, 1, 1],
           "SAME",
           data_format=data_format.name)
-      def bn_with_mask(x):
-        return batch_norm_with_mask(
-          x,
+      self.layers = [
+        conv2d,
+        BatchNormWithMask(
           is_training,
           fw.logical_and(start_idx <= self.mask, self.mask < start_idx + count),
           out_filters,
           weights,
-          data_format=data_format.name)
-      self.layers = [conv2d, bn_with_mask, fw.relu]
+          reuse,
+          data_format=data_format.name),
+        fw.relu]
 
 
   class ConvBranch(LayeredModel):

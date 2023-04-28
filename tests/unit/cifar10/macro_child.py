@@ -515,7 +515,7 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.macro_child.fw.transpose', return_value="transpose")
     @patch('src.cifar10.macro_child.fw.reshape', return_value="reshape")
     @patch('src.cifar10.macro_child.fw.separable_conv2d', return_value="sep_conv2d")
-    @patch('src.cifar10.macro_child.batch_norm_with_mask', return_value="bnwm")
+    @patch('src.cifar10.macro_child.BatchNormWithMask', return_value=mock.MagicMock(return_value="bnwm"))
     def test_conv_branch_nchw_separable(self, bnwm, sep_conv2d, reshape, transpose, relu, batch_norm1, batch_norm, conv2d):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
@@ -539,7 +539,7 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.macro_child.fw.transpose', return_value=tf.Variable(initial_value=np.zeros((24, 24, 24, 1))))
     @patch('src.cifar10.macro_child.fw.reshape', return_value="reshape")
     @patch('src.cifar10.macro_child.fw.separable_conv2d', return_value="sep_conv2d")
-    @patch('src.cifar10.macro_child.batch_norm_with_mask', return_value="bnwm")
+    @patch('src.cifar10.macro_child.BatchNormWithMask', return_value=mock.MagicMock(return_value="bnwm"))
     def test_conv_branch_nchw_second_index(self, bnwm, sep_conv2d, reshape, transpose, relu, batch_norm1, batch_norm, conv2d):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
@@ -563,7 +563,7 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.macro_child.fw.transpose', return_value="transpose")
     @patch('src.cifar10.macro_child.fw.reshape', return_value="reshape")
     @patch('src.cifar10.macro_child.fw.separable_conv2d', return_value="sep_conv2d")
-    @patch('src.cifar10.macro_child.batch_norm_with_mask', return_value="bnwm")
+    @patch('src.cifar10.macro_child.BatchNormWithMask', return_value=mock.MagicMock(return_value="bnwm"))
     def test_conv_branch_nchw_second_index_separable(self, bnwm, sep_conv2d, reshape, transpose, relu, batch_norm1, batch_norm, conv2d):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
