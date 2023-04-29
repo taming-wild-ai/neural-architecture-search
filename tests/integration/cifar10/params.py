@@ -8,6 +8,7 @@ tf.compat.v1.disable_eager_execution()
 from src.cifar10.micro_child import MicroChild
 from src.cifar10.macro_child import MacroChild
 from src.cifar10.macro_controller import DEFINE_boolean # for controller_search_whole_channels
+from src.utils import count_model_params
 
 import src.framework as fw
 import sys
@@ -32,7 +33,7 @@ class RestoreFLAGS:
 class TestParameterCounts(unittest.TestCase):
     @patch('src.cifar10.child.print')
     @patch('src.cifar10.macro_child.print')
-    def test_macro_final_params(self, print, print2):
+    def test_macro_final_params(self, print1, print2):
         IMAGES = {
             'train': np.ndarray((45000, 32, 32, 3), dtype=np.float32),
             'valid': np.ndarray((5000, 32, 32, 3), dtype=np.float32),
@@ -74,15 +75,23 @@ class TestParameterCounts(unittest.TestCase):
                 fixed_arc +=" 0 1 1 0 0 0 1 1 1 0 1 0 0 0 1 0 1 0 0 1 1 0 0 0"
                 mc.fixed_arc = fixed_arc
                 mc.sample_arc = np.array([int(x) for x in fixed_arc.split(" ") if x])
-                mc._build_train(mc.x_train, mc.y_train)
+                loss0, train_acc0, global_step0, train_op0, lr, grad_norm0, optimizer = mc._build_train(mc.y_train)
+                model = MacroChild.Model(mc, True)
+                # Parameters should be allocated before graph execution. Number of weight parameters used to be
+                # printed in original code
+                self.assertEqual(42559392, count_model_params(mc.tf_variables()))
+                logits = model(mc.x_train)
+                loss = loss0(logits)
+                train_acc = train_acc0(logits)
+                train_op = train_op0(loss, mc.tf_variables())
+                grad_norm = grad_norm0(loss, mc.tf_variables())
                 print2.assert_any_call("-" * 80)
                 print2.assert_any_call("Build model child")
                 print2.assert_any_call("Build data ops")
-                print.assert_called_with("Model has 42559392 params")
 
     @patch('src.cifar10.child.print')
     @patch('src.cifar10.macro_child.print')
-    def test_macro_search_params(self, print, print2):
+    def test_macro_search_params(self, print1, print2):
         IMAGES = {
             'train': np.ndarray((45000, 32, 32, 3), dtype=np.float32),
             'valid': np.ndarray((5000, 32, 32, 3), dtype=np.float32),
@@ -124,15 +133,23 @@ class TestParameterCounts(unittest.TestCase):
                 fixed_arc +=" 0 1 0 1 0 1 0 0 0 0 0 0 0 0 1 0 1 0 0 1 0 0 0"
                 fixed_arc +=" 0 1 1 0 0 0 1 1 1 0 1 0 0 0 1 0 1 0 0 1 1 0 0 0"
                 mc.sample_arc = np.array([int(x) for x in fixed_arc.split(" ") if x])
-                mc._build_train(mc.x_train, mc.y_train)
+                loss0, train_acc0, global_step0, train_op0, lr, grad_norm0, optimizer = mc._build_train(mc.y_train)
+                model = MacroChild.Model(mc, True)
+                # Parameters should be allocated before graph execution. Number of weight parameters used to be
+                # printed in original code
+                self.assertEqual(810756, count_model_params(mc.tf_variables()))
+                logits = model(mc.x_train)
+                loss = loss0(logits)
+                train_acc = train_acc0(logits)
+                train_op = train_op0(loss, mc.tf_variables())
+                grad_norm = grad_norm0(loss, mc.tf_variables())
                 print2.assert_any_call("-" * 80)
                 print2.assert_any_call("Build model child")
                 print2.assert_any_call("Build data ops")
-                print.assert_called_with("Model has 810756 params")
 
     @patch('src.cifar10.child.print')
     @patch('src.cifar10.micro_child.print')
-    def test_micro_final_params(self, print, print2):
+    def test_micro_final_params(self, print1, print2):
         IMAGES = {
             'train': np.ndarray((45000, 32, 32, 3), dtype=np.float32),
             'valid': np.ndarray((5000, 32, 32, 3), dtype=np.float32),
@@ -151,21 +168,30 @@ class TestParameterCounts(unittest.TestCase):
                 fixed_arc = np.array([int(x) for x in mc.fixed_arc.split(" ") if x])
                 mc.normal_arc = fixed_arc[:4 * mc.num_cells]
                 mc.reduce_arc = fixed_arc[4 * mc.num_cells:]
-                mc._build_train(mc.x_train, mc.y_train)
+                loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train(mc.y_train)
+                model = MicroChild.Model(mc, True)
+                # Parameters should be allocated before graph execution. Number of weight parameters used to be
+                # printed in original code
+                self.assertEqual(3894372, count_model_params(mc.tf_variables()))
+                logits = model(mc.x_train)
+                train_loss = train_loss0(logits, mc.aux_logits)
+                loss = loss0(logits)
+                train_acc = train_acc0(logits)
+                train_op = train_op0(train_loss, mc.tf_variables())
+                grad_norm = grad_norm0(train_loss, mc.tf_variables())
                 print2.assert_any_call("-" * 80)
                 print2.assert_any_call("Build model child")
                 print2.assert_any_call("Build data ops")
                 for layer_id in range(5):
-                    print.assert_any_call(f'Layer  {layer_id}: Tensor("child/layer_{layer_id}/final_combine/concat:0", shape=(None, 180, 32, 32), dtype=float32)')
-                print.assert_any_call('Layer  5: Tensor("child/layer_5/final_combine/concat:0", shape=(None, 288, 16, 16), dtype=float32)')
+                    print1.assert_any_call(f'Layer  {layer_id}: Tensor("child/layer_{layer_id}/final_combine/concat:0", shape=(None, 180, 32, 32), dtype=float32)')
+                print1.assert_any_call('Layer  5: Tensor("child/layer_5/final_combine/concat:0", shape=(None, 288, 16, 16), dtype=float32)')
                 for layer_id in range(6, 10):
-                    print.assert_any_call(f'Layer  {layer_id}: Tensor("child/layer_{layer_id}/final_combine/concat:0", shape=(None, 360, 16, 16), dtype=float32)')
-                print.assert_any_call('Layer 10: Tensor("child/layer_10/final_combine/concat:0", shape=(None, 360, 16, 16), dtype=float32)')
-                print.assert_any_call('Layer 11: Tensor("child/layer_11/final_combine/concat:0", shape=(None, 576, 8, 8), dtype=float32)')
+                    print1.assert_any_call(f'Layer  {layer_id}: Tensor("child/layer_{layer_id}/final_combine/concat:0", shape=(None, 360, 16, 16), dtype=float32)')
+                print1.assert_any_call('Layer 10: Tensor("child/layer_10/final_combine/concat:0", shape=(None, 360, 16, 16), dtype=float32)')
+                print1.assert_any_call('Layer 11: Tensor("child/layer_11/final_combine/concat:0", shape=(None, 576, 8, 8), dtype=float32)')
                 for layer_id in range(12, 17):
-                    print.assert_any_call(f'Layer {layer_id}: Tensor("child/layer_{layer_id}/final_combine/concat:0", shape=(None, 720, 8, 8), dtype=float32)')
-                print.assert_any_call("Aux head uses 494848 params")
-                print.assert_any_call("Model has 3894372 params")
+                    print1.assert_any_call(f'Layer {layer_id}: Tensor("child/layer_{layer_id}/final_combine/concat:0", shape=(None, 720, 8, 8), dtype=float32)')
+                print1.assert_any_call("Aux head uses 494848 params")
 
     @patch('src.cifar10.child.print')
     @patch('src.cifar10.micro_child.print')
@@ -188,7 +214,17 @@ class TestParameterCounts(unittest.TestCase):
                 fixed_arc = np.array([int(x) for x in fixed_arc.split(" ") if x])
                 mc.normal_arc = fixed_arc[:4 * mc.num_cells]
                 mc.reduce_arc = fixed_arc[4 * mc.num_cells:]
-                mc._build_train(mc.x_train, mc.y_train)
+                loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train(mc.y_train)
+                model = MicroChild.Model(mc, True)
+                # Parameters should be allocated before graph execution. Number of weight parameters used to be
+                # printed in original code
+                self.assertEqual(5373140, count_model_params(mc.tf_variables()))
+                logits = model(mc.x_train)
+                train_loss = train_loss0(logits, mc.aux_logits)
+                loss = loss0(logits)
+                train_acc = train_acc0(logits)
+                train_op = train_op0(train_loss, mc.tf_variables())
+                grad_norm = grad_norm0(train_loss, mc.tf_variables())
                 for layer_num in range(8):
                     if 2 > layer_num:
                         expected_shape = (None, 20, 32, 32)
@@ -196,12 +232,11 @@ class TestParameterCounts(unittest.TestCase):
                         expected_shape = (None, 40, 16, 16)
                     else:
                         expected_shape = (None, 80, 8, 8)
-                    print1.assert_any_call(f'Layer  {layer_num}: Tensor("child/layer_{layer_num}/Reshape_2:0", shape={expected_shape}, dtype=float32)')
+                    print1.assert_any_call(f'Layer  {layer_num}: Tensor("child/layer_{layer_num}/Reshape_3:0", shape={expected_shape}, dtype=float32)')
                 print2.assert_any_call("-" * 80)
                 print2.assert_any_call("Build model child")
                 print2.assert_any_call("Build data ops")
                 print1.assert_any_call("Aux head uses 412928 params")
-                print1.assert_called_with("Model has 5373140 params")
                 print1.reset_mock()
                 mc._build_valid(mc.x_train, mc.y_train)
                 print1.assert_any_call("Aux head uses 412928 params")

@@ -669,9 +669,9 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.macro_child.fw.reduce_mean', return_value="reduce_mean")
     @patch('src.cifar10.macro_child.fw.argmax', return_value=10)
     @patch('src.cifar10.macro_child.get_train_ops')
-    def test_build_train(self, get_train_ops, argmax, reduce_mean, sscewl, print, to_int32, equal, reduce_sum, global_step, model):
-        train_op = mock.MagicMock(name='train_op')
-        grad_norm = mock.MagicMock(name='grad_norm')
+    def test_build_train(self, get_train_ops, argmax, reduce_mean, sscewl, print1, to_int32, equal, reduce_sum, global_step, model):
+        train_op = mock.MagicMock(name='train_op', return_value='train_op')
+        grad_norm = mock.MagicMock(name='grad_norm', return_value='grad_norm')
         get_train_ops.return_value = (train_op, 2, grad_norm, 4)
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
@@ -690,10 +690,20 @@ class TestMacroChild(unittest.TestCase):
             mc.num_aggregate = None
             mc.num_replicas = None
             mc.name = "macro_child"
-            self.assertEqual(('reduce_mean', 'reduce_sum', 'global_step', train_op(), 2, grad_norm(), 4), mc._build_train(mc.x_train, mc.y_train))
-            print.assert_any_call("-" * 80)
-            print.assert_any_call("Build train graph")
-            print.assert_called_with("Model has 0 params")
+            loss0, train_acc0, global_step0, train_op0, lr, grad_norm0, optimizer = mc._build_train(mc.y_train)
+            logits = MacroChild.Model(mc, True)(mc.x_train)
+            loss = loss0(logits)
+            train_acc = train_acc0(logits)
+            train_op = train_op0(loss, mc.tf_variables())
+            grad_norm = grad_norm0(loss, mc.tf_variables())
+            self.assertEqual(loss, 'reduce_mean')
+            self.assertEqual('reduce_sum', train_acc)
+            self.assertEqual('train_op', train_op)
+            self.assertEqual(2, lr)
+            self.assertEqual('grad_norm', grad_norm)
+            self.assertEqual(4, optimizer)
+            print1.assert_any_call("-" * 80)
+            print1.assert_any_call("Build train graph")
             model.assert_called_with(mc, True)
             model().assert_called_with(mc.x_train)
             sscewl.assert_called_with(logits="model", labels=mc.y_train)

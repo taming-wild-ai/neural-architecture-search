@@ -155,6 +155,7 @@ class MacroChild(Child):
             reuse,
             scope,
             layers_channels[-1])
+        print("Model has {0} params".format(count_model_params(child.tf_variables())))
 
     def __call__(self, images):
       with fw.name_scope(self.child.name):
@@ -817,15 +818,11 @@ class MacroChild(Child):
         fw.reduce_sum]
 
   # override
-  def _build_train(self, x, y):
+  def _build_train(self, y):
     loss = MacroChild.LossModel(y)
     train_acc = MacroChild.TrainModel(y)
     print("-" * 80)
     print("Build train graph")
-    m = MacroChild.Model(self, True)
-    logits = m(x)
-
-    print("Model has {} params".format(count_model_params(self.tf_variables())))
 
     global_step = fw.get_or_create_global_step()
     train_op, lr, grad_norm, optimizer = get_train_ops(
@@ -835,9 +832,7 @@ class MacroChild(Child):
       l2_reg=self.l2_reg,
       num_train_batches=self.num_train_batches,
       optim_algo=self.optim_algo)
-    l = loss(logits)
-    v = self.tf_variables()
-    return l, train_acc(logits), global_step, train_op(l, v), lr, grad_norm(l, v), optimizer
+    return loss, train_acc, global_step, train_op, lr, grad_norm, optimizer
 
 
   class ValidationPredictions(LayeredModel):

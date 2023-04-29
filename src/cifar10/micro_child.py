@@ -260,6 +260,7 @@ class MicroChild(Child):
             reuse,
             scope,
             x_chan)
+        print("Model has {0} params".format(count_model_params(child.tf_variables())))
 
     def __call__(self, images):
       with fw.name_scope(self.child.name):
@@ -301,11 +302,13 @@ class MicroChild(Child):
 
   class SeparableConv(LayeredModel):
     def __init__(self, weights, reuse, scope, filter_size, data_format, num_input_chan: int, out_filters: int, strides, is_training):
+      depthwise_filter=weights.get(reuse, scope, "w_depth", [filter_size, filter_size, num_input_chan, 1], None)
+      pointwise_filter=weights.get(reuse, scope, "w_point", [1, 1, num_input_chan, out_filters], None)
       def separable_conv2d(x):
         return fw.separable_conv2d(
           fw.relu(x),
-          depthwise_filter=weights.get(reuse, scope, "w_depth", [filter_size, filter_size, num_input_chan, 1], None),
-          pointwise_filter=weights.get(reuse, scope, "w_point", [1, 1, num_input_chan, out_filters], None),
+          depthwise_filter=depthwise_filter,
+          pointwise_filter=pointwise_filter,
           strides=strides,
           padding="SAME",
           data_format=data_format.name)
@@ -341,7 +344,8 @@ class MicroChild(Child):
               is_training))
 
 
-  class FixedCombine(object):
+  # Because __call__ is overridden, this superclass is just for ease of find.
+  class FixedCombine(LayeredModel):
     def __init__(self, child, used, c, in_hws, out_hw: int, out_filters: int, is_training, weights, reuse):
       self.layers = {}
       with fw.name_scope('final_combine'):
@@ -389,13 +393,6 @@ class MicroChild(Child):
 
 
   class Operator(object):
-    def inner1(x, child, num_input_chan: int, out_filters: int, weights, reuse, scope, is_training):
-      if num_input_chan != out_filters:
-        x_conv = Child.Conv1x1(weights, reuse, scope, num_input_chan, out_filters, is_training, child.data_format)
-        return x_conv(x)
-      else:
-        return x
-
     def inner2(x, child, is_training, layer_id):
       if (child.drop_path_keep_prob is not None and
           is_training):
@@ -419,17 +416,27 @@ class MicroChild(Child):
 
     class AveragePooling(LayeredModel):
       def __init__(self, child, num_input_chan, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
+        if num_input_chan != out_filters:
+          x_conv = Child.Conv1x1(weights, reuse, scope, num_input_chan, out_filters, is_training, child.data_format)
+          inner1 = lambda x: x_conv(x)
+        else:
+          inner1 = lambda x: x
         self.layers = [
           lambda x: fw.avg_pool2d(x, [3, 3], [x_stride, x_stride], "SAME", data_format=child.data_format.actual),
-          lambda x: MicroChild.Operator.inner1(x, child, num_input_chan, out_filters, weights, reuse, scope, is_training),
+          inner1,
           lambda x: MicroChild.Operator.inner2(x, child, is_training, layer_id)]
 
 
     class MaxPooling(LayeredModel):
       def __init__(self, child, num_input_chan, out_filters, x_stride, is_training: bool, weights, reuse: bool, scope: str, layer_id: int):
+        if num_input_chan != out_filters:
+          x_conv = Child.Conv1x1(weights, reuse, scope, num_input_chan, out_filters, is_training, child.data_format)
+          inner1 = lambda x: x_conv(x)
+        else:
+          inner1 = lambda x: x
         self.layers = [
           lambda x: fw.max_pool2d(x, [3, 3], [x_stride, x_stride], "SAME", data_format=child.data_format.actual),
-          lambda x: MicroChild.Operator.inner1(x, child, num_input_chan, out_filters, weights, reuse, scope, is_training),
+          inner1,
           lambda x: MicroChild.Operator.inner2(x, child, is_training, layer_id)]
 
 
@@ -439,7 +446,12 @@ class MicroChild(Child):
         if x_stride > 1:
           assert x_stride == 2
           self.layers.append(Child.FactorizedReduction(child, num_input_chan, out_filters, 2, is_training, weights, reuse))
-        self.layers.append(lambda x: MicroChild.Operator.inner1(x, child, num_input_chan, out_filters, weights, reuse, scope, is_training))
+        if num_input_chan != out_filters:
+          x_conv = Child.Conv1x1(weights, reuse, scope, num_input_chan, out_filters, is_training, child.data_format)
+          inner1 = lambda x: x_conv(x)
+        else:
+          inner1 = lambda x: x
+        self.layers.append(inner1)
 
 
     @staticmethod
@@ -673,46 +685,48 @@ class MicroChild(Child):
 
 
   class ENASLayerInner(LayeredModel):
-    def __init__(self, weights, reuse: bool, scope:str, num_cells: int, out_filters: int, indices: list[int], num_outs, data_format, prev_layers: list[int]):
-      """
-      Output channels/filters: out_filters
-      """
-      filters = fw.reshape(
+    def __init__(self, weights, reuse: bool, scope:str, num_cells: int, out_filters: int, data_format):
+      self.stack = lambda x: fw.stack(x, axis=0)
+      self.gather = lambda x, indices: fw.gather(x, indices, axis=0)
+      self.micro_enas = lambda x, num_outs, prev_layers0: data_format.micro_enas(
+        x,
+        prev_layers0,
+        num_outs,
+        out_filters)
+      w = weights.get(
+        reuse,
+        scope,
+        "w",
+        [num_cells + 2, out_filters * out_filters],
+        None)
+      filters = lambda indices, num_outs: fw.reshape(
         fw.gather(
-          weights.get(
-            reuse,
-            scope,
-            "w",
-            [num_cells + 2, out_filters * out_filters],
-            None),
+          w,
           indices,
           axis=0),
         [1, 1, num_outs * out_filters, out_filters])
-
-      stack = lambda x: fw.stack(x, axis=0)
-      def gather(x):
-        return fw.gather(x, indices, axis=0)
-      micro_enas = lambda x: data_format.micro_enas(
+      self.conv2d = lambda x, indices, num_outs: fw.conv2d(
         x,
-        prev_layers[0],
-        num_outs,
-        out_filters)
-      conv2d = lambda x: fw.conv2d(
-        x,
-        filters,
+        filters(indices, num_outs),
         strides=[1, 1, 1, 1],
         padding='SAME',
         data_format = data_format.name)
-      bn = BatchNorm(True, data_format, weights, out_filters, reuse)
-      reshape = lambda x: fw.reshape(x, fw.shape(prev_layers[0]))
-      self.layers = [
-        stack,
-        gather,
-        micro_enas,
-        fw.relu,
-        conv2d,
-        bn,
-        reshape]
+      self.bn = BatchNorm(True, data_format, weights, out_filters, reuse)
+      self.reshape = lambda x, prev_layers_0: fw.reshape(x, fw.shape(prev_layers_0))
+
+    def __call__(self, x, indices, num_outs, prev_layers_0):
+      return self.reshape(
+        self.bn(
+          self.conv2d(
+            fw.relu(
+              self.micro_enas(
+                self.gather(self.stack(x), indices),
+                num_outs,
+                prev_layers_0)),
+            indices,
+          num_outs)),
+        prev_layers_0)
+
 
     class Indices(LayeredModel):
       def __init__(self):
@@ -767,14 +781,20 @@ class MicroChild(Child):
         return prev_layers, layers, used
 
       self.l0 = l0
+      with fw.name_scope("final_conv") as scope:
+        el = MicroChild.ENASLayerInner(
+          weights,
+          reuse,
+          scope,
+          child.num_cells,
+          out_filters,
+          child.data_format)
 
       def indices(layers, prev_layers, used):
         i = MicroChild.ENASLayerInner.Indices()
         ixs = i(used)
         num_outs = fw.size(ixs)
-        with fw.name_scope("final_conv") as scope:
-          el = MicroChild.ENASLayerInner(weights, reuse, scope, child.num_cells, out_filters, ixs, num_outs, child.data_format, prev_layers)
-        return el(layers)
+        return el(layers, ixs, num_outs, prev_layers[0])
 
       self.indices = indices
 
@@ -802,21 +822,18 @@ class MicroChild(Child):
         fw.reduce_sum]
 
   # override
-  def _build_train(self, x, y):
+  def _build_train(self, y):
     print("-" * 80)
     print("Build train graph")
-    m = MicroChild.Model(self, True)
-    logits = m(x)
     loss = MicroChild.Loss(y)
 
     if self.use_aux_heads:
-      self.aux_loss = fw.reduce_mean(fw.sparse_softmax_cross_entropy_with_logits(
-        logits=self.aux_logits, labels=y))
-      train_loss = lambda logits: loss(logits) + 0.4 * self.aux_loss
+      self.aux_loss = lambda aux_logits: fw.reduce_mean(fw.sparse_softmax_cross_entropy_with_logits(
+        logits=aux_logits, labels=y))
+      train_loss = lambda logits, aux_logits: loss(logits) + 0.4 * self.aux_loss(aux_logits)
     else:
       train_loss = loss
 
-    print("Model has {0} params".format(count_model_params(self.tf_variables())))
 
     train_op, lr, grad_norm, optimizer = get_train_ops(
       self.global_step,
@@ -828,7 +845,7 @@ class MicroChild(Child):
 
     train_acc = MicroChild.Accuracy(y)
 
-    return loss(logits), train_acc(logits), train_op(train_loss(logits), self.tf_variables()), lr, grad_norm(train_loss(logits), self.tf_variables()), optimizer
+    return loss, train_loss, train_acc, train_op, lr, grad_norm, optimizer
 
   # override
   def _build_valid(self, x, y):

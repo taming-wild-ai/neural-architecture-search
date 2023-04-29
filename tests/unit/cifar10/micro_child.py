@@ -465,8 +465,8 @@ class TestMicroChild(unittest.TestCase):
                     ec.assert_called_with(mc, 4, 0, 3, 3, mc.weights, False)
                     ec().assert_called_with(val, 4)
                     stack.assert_called_with(['mcs1', 'mcs2', 'ecec', 'ecec', 'ecec', 'ecec', 'ecec'], axis=0)
-                    gather.assert_any_call('fw.create_weight', 'reshape', axis=0)
-                    gather.assert_called_with(stack(), 'reshape', axis=0)
+                    gather.assert_called_with('fw.create_weight', 'reshape', axis=0)
+                    gather.assert_any_call(stack(), 'reshape', axis=0)
                     transpose.assert_called_with('gather', [1, 2, 3, 0, 4])
                     reshape.assert_called_with('batch_norm', 'shape')
                     relu.assert_called_with('reshape')
@@ -512,8 +512,8 @@ class TestMicroChild(unittest.TestCase):
                     ec().assert_called_with(val, 4)
                     create_weight.assert_called_with(False, 'final_conv/', 'w', [7, 9], None)
                     stack.assert_called_with([layer1, layer2, 'ecec', 'ecec', 'ecec', 'ecec', 'ecec'], axis=0)
-                    gather.assert_any_call('fw.create_weight', 'reshape', axis=0)
-                    gather.assert_called_with(stack(), 'reshape', axis=0)
+                    gather.assert_called_with('fw.create_weight', 'reshape', axis=0)
+                    gather.assert_any_call(stack(), 'reshape', axis=0)
                     transpose.assert_called_with('gather', [1, 0, 2, 3, 4])
                     shape.assert_called_with(val)
                     reshape.assert_called_with('batch_norm', 'shape')
@@ -537,8 +537,8 @@ class TestMicroChild(unittest.TestCase):
     @patch('src.cifar10.micro_child.fw.sparse_softmax_cross_entropy_with_logits', return_value="sscewl")
     @patch('src.cifar10.micro_child.print')
     def test_build_train_aux_heads(self, print, sscewl, reduce_mean, argmax, to_int32, equal, reduce_sum, get_train_ops, model):
-        train_op = mock.MagicMock(name="get_train_op")
-        grad_norm = mock.MagicMock(name="grad_norm")
+        train_op = mock.MagicMock(name="get_train_op", return_value='train_op')
+        grad_norm = mock.MagicMock(name="get_grad_norm", return_value='grad_norm')
         get_train_ops.return_value = (train_op, 2, grad_norm, 4)
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
@@ -560,7 +560,20 @@ class TestMicroChild(unittest.TestCase):
                 mc.sync_replicas = None
                 mc.num_aggregate = None
                 mc.num_replicas = None
-                self.assertEqual((1.0, 'reduce_sum', train_op(), 2, grad_norm(), 4), mc._build_train(mc.x_train, mc.y_train))
+                loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train(mc.y_train)
+                logits = MicroChild.Model(mc, True)(mc.x_train)
+                train_loss = train_loss0(logits, mc.aux_logits)
+                loss = loss0(logits)
+                train_acc = train_acc0(logits)
+                train_op = train_op0(train_loss, mc.tf_variables())
+                grad_norm = grad_norm0(train_loss, mc.tf_variables())
+                self.assertEqual(loss, 1.0)
+                self.assertEqual(1.4, train_loss)
+                self.assertEqual('reduce_sum', train_acc)
+                self.assertEqual('train_op', train_op)
+                self.assertEqual(2, lr)
+                self.assertEqual('grad_norm', grad_norm)
+                self.assertEqual(4, optimizer)
                 print.assert_any_call('-' * 80)
                 print.assert_any_call("Build train graph")
                 model.assert_called_with(mc, True)
@@ -583,8 +596,8 @@ class TestMicroChild(unittest.TestCase):
     @patch('src.cifar10.micro_child.fw.sparse_softmax_cross_entropy_with_logits', return_value="sscewl")
     @patch('src.cifar10.micro_child.print')
     def test_build_train_no_aux_heads(self, print, sscewl, reduce_mean, argmax, to_int32, equal, reduce_sum, get_train_ops, model):
-        train_op = mock.MagicMock(name="train_op")
-        grad_norm = mock.MagicMock(name="grad_norm")
+        train_op = mock.MagicMock(name="get_train_op", return_value='grad_norm')
+        grad_norm = mock.MagicMock(name="get_grad_norm", return_value='grad_norm')
         get_train_ops.return_value = (train_op, 2, grad_norm, 4)
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
@@ -604,7 +617,18 @@ class TestMicroChild(unittest.TestCase):
                 mc.sync_replicas = None
                 mc.num_aggregate = None
                 mc.num_replicas = None
-                self.assertEqual((1.0, 'reduce_sum', train_op(), 2, grad_norm(), 4), mc._build_train(mc.x_train, mc.y_train))
+                loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train(mc.y_train)
+                logits = MicroChild.Model(mc, True)(mc.x_train)
+                train_loss = train_loss0(logits)
+                loss = loss0(logits)
+                train_acc = train_acc0(logits)
+                train_op = train_op0(train_loss, mc.tf_variables())
+                grad_norm = grad_norm0(train_loss, mc.tf_variables())
+                self.assertEqual(loss, 1.0)
+                self.assertEqual(1.0, train_loss)
+                self.assertEqual('reduce_sum', train_acc)
+                self.assertEqual(2, lr)
+                self.assertEqual('grad_norm', grad_norm)
                 print.assert_any_call('-' * 80)
                 print.assert_any_call("Build train graph")
                 model.assert_called_with(mc, True)
