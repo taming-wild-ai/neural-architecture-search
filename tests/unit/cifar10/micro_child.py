@@ -426,7 +426,7 @@ class TestMicroChild(unittest.TestCase):
                     ec = MicroChild.ENASConvOuter(mc, 0, 0, 3, 24, mc.weights, False)
                     ec(None)
                     create_weight.assert_any_call(False, 'conv_3x3/stack_1/bn/', 'scale', [2, 24], 'ones')
-                    create_weight.assert_called_with(False, 'conv_3x3/stack_1/bn/', 'w_point', [2, 576], None)
+                    create_weight.assert_called_with(False, 'conv_3x3/stack_1/', 'w_point', [2, 576], None)
                     reshape.assert_called_with(create_weight().__getitem__(), [1, 1, 24, 24])
                     relu.assert_called_with('f')
                     s_conv.assert_called_with('relu', depthwise_filter='reshape', pointwise_filter='reshape', strides=[1, 1, 1, 1], padding="SAME", data_format="NHWC")
@@ -653,7 +653,9 @@ class TestMicroChild(unittest.TestCase):
                 mc = MicroChild({}, {})
             mc.x_valid = {}
             mc.y_valid = {}
-            self.assertEqual(('to_int32', 'reduce_sum'), mc._build_valid(mc.x_valid, mc.y_valid))
+            logits = MicroChild.Model(mc, False, True)(mc.x_valid)
+            predictions, accuracy = mc._build_valid(mc.y_valid)
+            self.assertEqual(('to_int32', 'reduce_sum'), (predictions(logits), accuracy(logits)))
             print.assert_any_call('-' * 80)
             print.assert_any_call("Build valid graph")
             argmax.assert_called_with("model", axis=1)
@@ -676,7 +678,9 @@ class TestMicroChild(unittest.TestCase):
                 mc = MicroChild({}, {})
             mc.x_test = {}
             mc.y_test = {}
-            self.assertEqual(('to_int32', 'reduce_sum'), mc._build_test(mc.x_test, mc.y_test))
+            logits = MicroChild.Model(mc, False, True)(mc.x_test)
+            predictions, accuracy = mc._build_test(mc.y_test)
+            self.assertEqual(('to_int32', 'reduce_sum'), (predictions(logits), accuracy(logits)))
             print.assert_any_call('-' * 80)
             print.assert_any_call("Build test graph")
             argmax.assert_called_with("model", axis=1)
@@ -713,9 +717,7 @@ class TestMicroChild(unittest.TestCase):
                     mc.seed,
                     25000)
                 map_fn.assert_called()
-                model.assert_called_with(mc, True, True)
-                model().assert_called_with('map_fn')
-                argmax.assert_called_with("model", axis=1)
+                argmax.assert_called_with('map_fn', axis=1)
                 to_int32.assert_any_call("argmax")
                 equal.assert_called_with("to_int32", "y_valid_shuffle")
                 to_int32.assert_any_call("equal")
@@ -725,15 +727,15 @@ class TestMicroChild(unittest.TestCase):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
-                with patch.object(mc, '_build_train', return_value=('loss', 'train_acc', 'train_op', 'lr', 'grad_norm', 'optimizer')) as build_train:
+                with patch.object(mc, '_build_train', return_value=('loss', 'train_loss', 'train_acc', 'train_op', 'lr', 'grad_norm', 'optimizer')) as build_train:
                     with patch.object(mc, '_build_valid', return_value=('predictions', 'accuracy')) as build_valid:
                         with patch.object(mc, '_build_test', return_value=('predictions', 'accuracy')) as build_test:
                             mock_controller = mock.MagicMock()
                             mock_controller.sample_arc = (None, None)
                             mc.connect_controller(mock_controller)
-                            build_train.assert_called_with(mc.x_train, mc.y_train)
-                            build_valid.assert_called_with(mc.x_valid, mc.y_valid)
-                            build_test.assert_called_with(mc.x_test, mc.y_test)
+                            build_train.assert_called_with(mc.y_train)
+                            build_valid.assert_called_with(mc.y_valid)
+                            build_test.assert_called_with(mc.y_test)
 
 if "__main__" == "__name__":
     unittest.main()

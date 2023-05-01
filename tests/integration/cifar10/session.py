@@ -63,12 +63,20 @@ class TestSession(unittest.TestCase):
             with tf.Graph().as_default():
                 ops = get_ops(images, labels)
                 with fw.Session(config=fw.ConfigProto()) as sess:
+                    logits_graph =     ops['child']['model'](images)
+                    loss_graph =       ops["child"]["loss"](logits_graph)
+                    train_loss_graph = ops['child']['train_loss'](logits_graph)
+                    lr_graph =         ops["child"]["lr"]()
+                    grad_norm_graph =  ops["child"]["grad_norm"](loss_graph, ops['child']['model'].tf_variables())
+                    train_acc_graph =  ops["child"]["train_acc"](logits_graph)
+                    train_op_graph =   ops["child"]["train_op"](train_loss_graph, ops['child']['model'].tf_variables())
                     loss, lr, gn, tr_acc, _ = sess.run([
-                        ops["child"]["loss"],
-                        ops["child"]["lr"],
-                        ops["child"]["grad_norm"],
-                        ops["child"]["train_acc"],
-                        ops["child"]["train_op"],
+                        logits_graph,
+                        loss_graph,
+                        lr_graph,
+                        grad_norm_graph,
+                        train_acc_graph,
+                        train_op_graph
                     ])
                     self.assertLess(loss, 4.0)
                     self.assertLess(lr, 0.06)

@@ -215,11 +215,11 @@ class TestParameterCounts(unittest.TestCase):
                 mc.normal_arc = fixed_arc[:4 * mc.num_cells]
                 mc.reduce_arc = fixed_arc[4 * mc.num_cells:]
                 loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train(mc.y_train)
-                model = MicroChild.Model(mc, True)
+                train_model = MicroChild.Model(mc, True)
                 # Parameters should be allocated before graph execution. Number of weight parameters used to be
                 # printed in original code
                 self.assertEqual(5373140, count_model_params(mc.tf_variables()))
-                logits = model(mc.x_train)
+                logits = train_model(mc.x_train)
                 train_loss = train_loss0(logits, mc.aux_logits)
                 loss = loss0(logits)
                 train_acc = train_acc0(logits)
@@ -238,14 +238,15 @@ class TestParameterCounts(unittest.TestCase):
                 print2.assert_any_call("Build data ops")
                 print1.assert_any_call("Aux head uses 412928 params")
                 print1.reset_mock()
-                mc._build_valid(mc.x_train, mc.y_train)
-                print1.assert_any_call("Aux head uses 412928 params")
-                print1.reset_mock()
-                mc._build_test(mc.x_train, mc.y_train)
-                print1.assert_any_call("Aux head uses 412928 params")
-                print1.reset_mock()
+                mc._build_valid(mc.y_valid)
+                num_aux_params = count_model_params([var for var in fw.trainable_variables() if (var.name.startswith(mc.name) and 'aux_head' in var.name)])
+                self.assertEqual(412928, num_aux_params)
+                mc._build_test(mc.y_train)
+                num_aux_params = count_model_params([var for var in fw.trainable_variables() if (var.name.startswith(mc.name) and 'aux_head' in var.name)])
+                self.assertEqual(412928, num_aux_params)
                 mc.build_valid_rl()
-                print1.assert_any_call("Aux head uses 412928 params")
+                num_aux_params = count_model_params([var for var in fw.trainable_variables() if (var.name.startswith(mc.name) and 'aux_head' in var.name)])
+                self.assertEqual(412928, num_aux_params)
 
 if "__main__" == __name__:
     unittest.main()

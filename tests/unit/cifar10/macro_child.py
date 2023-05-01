@@ -727,7 +727,9 @@ class TestMacroChild(unittest.TestCase):
             mc = MacroChild({}, {})
         mc.x_valid = True
         mc.y_valid = None
-        self.assertEqual(('to_int32', 'reduce_sum'), mc._build_valid(mc.weights, mc.x_valid, mc.y_valid))
+        predictions, accuracy = mc._build_valid(mc.y_valid)
+        logits = MacroChild.Model(mc, False, True)(mc.x_valid)
+        self.assertEqual(('to_int32', 'reduce_sum'), (predictions(logits), accuracy(logits)))
         print.assert_any_call("-" * 80)
         print.assert_any_call("Build valid graph")
         model.assert_called_with(mc, False, True)
@@ -750,7 +752,9 @@ class TestMacroChild(unittest.TestCase):
             mc = MacroChild({}, {})
         mc.x_test = True
         mc.y_test = False
-        self.assertEqual(('to_int32', 'reduce_sum'), mc._build_test(mc.weights, mc.x_test, mc.y_test))
+        predictions, accuracy = mc._build_test(mc.y_test)
+        logits = MacroChild.Model(mc, False, True)(mc.x_test)
+        self.assertEqual(('to_int32', 'reduce_sum'), (predictions(logits), accuracy(logits)))
         print.assert_any_call('-' * 80)
         print.assert_any_call("Build test graph")
         model.assert_called_with(mc, False, True)
@@ -803,9 +807,9 @@ class TestMacroChild(unittest.TestCase):
                 with patch.object(mc, '_build_test', return_value=('predictions', 'accuracy')) as build_test:
                     controller_mock = mock.MagicMock()
                     mc.connect_controller(controller_mock)
-                    build_train.assert_called_with(mc.x_train, mc.y_train)
-                    build_valid.assert_called_with(mc.x_valid, mc.y_valid)
-                    build_test .assert_called_with(mc.x_test, mc.y_test)
+                    build_train.assert_called_with(mc.y_train)
+                    build_valid.assert_called_with(mc.y_valid)
+                    build_test .assert_called_with(mc.y_test)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     def test_connect_controller_fixed_arc(self):
@@ -817,6 +821,6 @@ class TestMacroChild(unittest.TestCase):
                 with patch.object(mc, '_build_test', return_value=('predictions', 'accuracy')) as build_test:
                     controller_mock = mock.MagicMock()
                     mc.connect_controller(controller_mock)
-                    build_train.assert_called_with(mc.x_train, mc.y_train)
-                    build_valid.assert_called_with(mc.x_valid, mc.y_valid)
-                    build_test .assert_called_with(mc.x_test, mc.y_test)
+                    build_train.assert_called_with(mc.y_train)
+                    build_valid.assert_called_with(mc.y_valid)
+                    build_test .assert_called_with(mc.y_test)

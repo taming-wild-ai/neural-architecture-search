@@ -835,60 +835,24 @@ class MacroChild(Child):
     return loss, train_acc, global_step, train_op, lr, grad_norm, optimizer
 
 
-  class ValidationPredictions(LayeredModel):
-    def __init__(self, child, weights, reuse):
-      self.layers = [
-        MacroChild.Model(child, False, reuse),
-        lambda x: fw.argmax(x, axis=1),
-        fw.to_int32]
-
-
-  class ValidationAccuracy(LayeredModel):
-    def __init__(self, valid):
-      self.layers =  [
-        lambda x: fw.equal(x, valid),
-        fw.to_int32,
-        fw.reduce_sum]
-
-
-  def _build_valid(self, weights, x, y):
-    if self.x_valid is not None:
-      print("-" * 80)
-      print("Build valid graph")
-      vp = MacroChild.ValidationPredictions(self, weights, True)
-      predictions = vp(x)
-      va = MacroChild.ValidationAccuracy(y)
-      accuracy = va(predictions)
-      return predictions, accuracy
-    else:
-      return (None, None)
-
-
-  class TestPredictions(LayeredModel):
-    def __init__(self, child, weights, reuse):
-      self.layers = [
-        MacroChild.Model(child, False, reuse),
-        lambda x: fw.argmax(x, axis=1),
-        fw.to_int32]
-
-
-  class TestAccuracy(LayeredModel):
-    def __init__(self, preds):
-      self.layers = [
-        lambda x: fw.equal(x, preds),
-        fw.to_int32,
-        fw.reduce_sum]
+  def _build_valid(self, y):
+    print("-" * 80)
+    print("Build valid graph")
+    predictions = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
+    retval = (
+      predictions,
+      lambda logits: fw.reduce_sum(fw.to_int32(fw.equal(predictions(logits), y))))
+    return retval
 
 
   # override
-  def _build_test(self, weights, x, y):
+  def _build_test(self, y):
     print("-" * 80)
     print("Build test graph")
-    tp = MacroChild.TestPredictions(self, weights, True)
-    predictions = tp(x)
-    ta = MacroChild.TestAccuracy(y)
-    accuracy = ta(predictions)
-    return predictions, accuracy
+    predictions = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
+    return (
+      predictions,
+      lambda logits: fw.reduce_sum(fw.to_int32(fw.equal(predictions(logits), y))))
 
 
   class ValidationRL(LayeredModel):
@@ -936,7 +900,7 @@ class MacroChild(Child):
     else:
       self.sample_arc = np.array([int(x) for x in self.fixed_arc.split(" ") if x])
 
-    self.loss, self.train_acc, self.global_step, train_op, lr, grad_norm, optimizer = self._build_train(self.x_train, self.y_train)
-    self.valid_preds, self.valid_acc = self._build_valid(self.x_valid, self.y_valid) # unused?
-    self.test_preds, self.test_acc = self._build_test(self.x_test, self.y_test) # unused?
+    self.loss, self.train_acc, self.global_step, train_op, lr, grad_norm, optimizer = self._build_train(self.y_train)
+    self.valid_preds, self.valid_acc = self._build_valid(self.y_valid) # unused?
+    self.test_preds, self.test_acc = self._build_test(self.y_test) # unused?
     return train_op, lr, grad_norm, optimizer

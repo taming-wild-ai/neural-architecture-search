@@ -631,15 +631,15 @@ class MicroChild(Child):
 
   class ENASConvInner(LayeredModel):
     def __init__(self, weights, reuse: bool, scope: str, num_possible_inputs: int, filter_size: int, prev_cell: int, out_filters: int, data_format):
-      with fw.name_scope("bn") as scope:
+      with fw.name_scope("bn") as scope1:
         offset = weights.get(
           reuse,
-          scope,
+          scope1,
           "offset", [num_possible_inputs, out_filters],
           fw.zeros_init())[prev_cell]
         scale = weights.get(
           reuse,
-          scope,
+          scope1,
           "scale", [num_possible_inputs, out_filters],
           fw.ones_init())[prev_cell]
       weight_depthwise = weights.get(
@@ -848,36 +848,28 @@ class MicroChild(Child):
     return loss, train_loss, train_acc, train_op, lr, grad_norm, optimizer
 
   # override
-  def _build_valid(self, x, y):
-    if x is not None:
-      print("-" * 80)
-      print("Build valid graph")
-      m = MicroChild.Model(self, False, True)
-      logits = m(x)
-      predictions = fw.to_int32(fw.argmax(logits, axis=1))
-      retval = (
-        predictions,
-        fw.reduce_sum(fw.to_int32(fw.equal(predictions, y))))
-    else:
-      retval = (None, None)
+  def _build_valid(self, y):
+    print("-" * 80)
+    print("Build valid graph")
+    predictions = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
+    retval = (
+      predictions,
+      lambda logits: fw.reduce_sum(fw.to_int32(fw.equal(predictions(logits), y))))
     return retval
 
   # override
-  def _build_test(self, x, y):
+  def _build_test(self, y):
     print("-" * 80)
     print("Build test graph")
-    m = MicroChild.Model(self, False, True)
-    logits = m(x)
-    predictions = fw.to_int32(fw.argmax(logits, axis=1))
+    predictions = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
     return (
       predictions,
-      fw.reduce_sum(fw.to_int32(fw.equal(predictions, y))))
+      lambda logits: fw.reduce_sum(fw.to_int32(fw.equal(predictions(logits), y))))
 
 
   class ValidationRL(LayeredModel):
-    def __init__(self, child, y):
+    def __init__(self, y):
       self.layers = [
-        MicroChild.Model(child, True, True),
         lambda x: fw.argmax(x, axis=1),
         fw.to_int32,
         lambda x: fw.equal(x, y),
@@ -898,7 +890,7 @@ class MicroChild(Child):
         self.seed,
         25000)
 
-      vrl = MicroChild.ValidationRL(self, y_valid_shuffle)
+      vrl = MicroChild.ValidationRL(y_valid_shuffle)
 
       if shuffle:
         def _pre_process(x):
@@ -922,7 +914,7 @@ class MicroChild(Child):
       self.normal_arc = fixed_arc[:4 * self.num_cells]
       self.reduce_arc = fixed_arc[4 * self.num_cells:]
 
-    self.loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train(self.x_train, self.y_train)
-    self.valid_preds, self.valid_acc = self._build_valid(self.x_valid, self.y_valid)
-    self.test_preds, self.test_acc = self._build_test(self.x_test, self.y_test)
+    self.loss, self.train_loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train(self.y_train)
+    self.valid_preds, self.valid_acc = self._build_valid(self.y_valid)
+    self.test_preds, self.test_acc = self._build_test(self.y_test)
     return train_op, lr, grad_norm, optimizer
