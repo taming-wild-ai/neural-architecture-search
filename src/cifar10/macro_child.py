@@ -194,7 +194,7 @@ class MacroChild(Child):
 
 
   class FinalConv(LayeredModel):
-    def __init__(self, num_branches: int, count: list[int], weights, reuse, scope: str, out_filters: int, is_training: bool, data_format):
+    def __init__(self, num_branches: int, count, weights, reuse, scope: str, out_filters: int, is_training: bool, data_format):
       w_mask = fw.constant([False] * (num_branches * out_filters), fw.bool)
       new_range = fw.range(0, num_branches * out_filters, dtype=fw.int32)
       for i in range(num_branches):
@@ -858,7 +858,6 @@ class MacroChild(Child):
   class ValidationRL(LayeredModel):
     def __init__(self, child, y):
       self.layers = [
-        MacroChild.Model(child, False, True),
         lambda x: fw.argmax(x, axis=1),
         fw.to_int32,
         lambda x: fw.equal(x, y),

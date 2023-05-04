@@ -89,6 +89,8 @@ def get_ops(images, labels):
 
   return {
     "child": {
+      "images": child_model.x_train,
+      "model": ChildClass.Model(child_model, True),
       "global_step": child_model.global_step,
       "loss": child_model.loss,
       "train_op": child_train_op,

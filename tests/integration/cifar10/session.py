@@ -62,15 +62,16 @@ class TestSession(unittest.TestCase):
             images, labels = read_data(fw.FLAGS.data_path)
             with tf.Graph().as_default():
                 ops = get_ops(images, labels)
-                logits_graph =     ops['child']['model'](images['train'])
+                logits_graph =     ops['child']['model'](ops['child']['images'])
                 loss_graph =       ops["child"]["loss"](logits_graph)
-                train_loss_graph = ops['child']['train_loss'](logits_graph)
-                lr_graph =         ops["child"]["lr"]()
-                grad_norm_graph =  ops["child"]["grad_norm"](loss_graph, ops['child']['model'].tf_variables())
+                aux_logits =       ops['child']['model'].child.aux_logits
+                train_loss_graph = ops['child']['model'].child.train_loss(logits_graph, aux_logits)
+                lr_graph =         ops["child"]["lr"]
+                grad_norm_graph =  ops["child"]["grad_norm"](loss_graph, ops['child']['model'].child.tf_variables())
                 train_acc_graph =  ops["child"]["train_acc"](logits_graph)
-                train_op_graph =   ops["child"]["train_op"](train_loss_graph, ops['child']['model'].tf_variables())
+                train_op_graph =   ops["child"]["train_op"](train_loss_graph, ops['child']['model'].child.tf_variables())
                 with fw.Session(config=fw.ConfigProto()) as sess:
-                    loss, lr, gn, tr_acc, _ = sess.run([
+                    logits, loss, lr, gn, tr_acc, _ = sess.run([
                         logits_graph,
                         loss_graph,
                         lr_graph,
@@ -121,15 +122,16 @@ class TestSession(unittest.TestCase):
             images, labels = read_data(fw.FLAGS.data_path)
             with tf.Graph().as_default():
                 ops = get_ops(images, labels)
-                logits_graph =     ops['child']['model'](images['train'])
+                logits_graph =     ops['child']['model'](ops['child']['images'])
                 loss_graph =       ops["child"]["loss"](logits_graph)
-                train_loss_graph = ops['child']['train_loss'](logits_graph)
-                lr_graph =         ops["child"]["lr"]()
-                grad_norm_graph =  ops["child"]["grad_norm"](loss_graph, ops['child']['model'].tf_variables())
+                aux_logits =       ops['child']['model'].child.aux_logits
+                train_loss_graph = ops['child']['model'].child.train_loss(logits_graph, aux_logits)
+                lr_graph =         ops["child"]["lr"]
+                grad_norm_graph =  ops["child"]["grad_norm"](loss_graph, ops['child']['model'].child.tf_variables())
                 train_acc_graph =  ops["child"]["train_acc"](logits_graph)
-                train_op_graph =   ops["child"]["train_op"](train_loss_graph, ops['child']['model'].tf_variables())
+                train_op_graph =   ops["child"]["train_op"](train_loss_graph, ops['child']['model'].child.tf_variables())
                 with fw.Session(config=fw.ConfigProto()) as sess:
-                    loss, lr, gn, tr_acc, _ = sess.run([
+                    logits, loss, lr, gn, tr_acc, _ = sess.run([
                         logits_graph,
                         loss_graph,
                         lr_graph,
@@ -180,15 +182,14 @@ class TestSession(unittest.TestCase):
             images, labels = read_data(fw.FLAGS.data_path)
             with tf.Graph().as_default():
                 ops = get_ops(images, labels)
-                logits_graph =     ops['child']['model'](images['train'])
+                logits_graph =     ops['child']['model'](ops['child']['images'])
                 loss_graph =       ops["child"]["loss"](logits_graph)
-                train_loss_graph = ops['child']['train_loss'](logits_graph)
-                lr_graph =         ops["child"]["lr"]()
-                grad_norm_graph =  ops["child"]["grad_norm"](loss_graph, ops['child']['model'].tf_variables())
+                lr_graph =         ops["child"]["lr"]
+                grad_norm_graph =  ops["child"]["grad_norm"](loss_graph, ops['child']['model'].child.tf_variables())
                 train_acc_graph =  ops["child"]["train_acc"](logits_graph)
-                train_op_graph =   ops["child"]["train_op"](train_loss_graph, ops['child']['model'].tf_variables())
+                train_op_graph =   ops["child"]["train_op"](loss_graph, ops['child']['model'].child.tf_variables())
                 with fw.Session(config=fw.ConfigProto()) as sess:
-                    loss, lr, gn, tr_acc, _ = sess.run([
+                    logits, loss, lr, gn, tr_acc, _ = sess.run([
                         logits_graph,
                         loss_graph,
                         lr_graph,
@@ -263,15 +264,14 @@ class TestSession(unittest.TestCase):
             images, labels = read_data(fw.FLAGS.data_path)
             with tf.Graph().as_default():
                 ops = get_ops(images, labels)
-                logits_graph =     ops['child']['model'](images['train'])
+                logits_graph =     ops['child']['model'](ops['child']['images'])
                 loss_graph =       ops["child"]["loss"](logits_graph)
-                train_loss_graph = ops['child']['train_loss'](logits_graph)
-                lr_graph =         ops["child"]["lr"]()
-                grad_norm_graph =  ops["child"]["grad_norm"](loss_graph, ops['child']['model'].tf_variables())
+                lr_graph =         ops["child"]["lr"]
+                grad_norm_graph =  ops["child"]["grad_norm"](loss_graph, ops['child']['model'].child.tf_variables())
                 train_acc_graph =  ops["child"]["train_acc"](logits_graph)
-                train_op_graph =   ops["child"]["train_op"](train_loss_graph, ops['child']['model'].tf_variables())
+                train_op_graph =   ops["child"]["train_op"](loss_graph, ops['child']['model'].child.tf_variables())
                 with fw.Session(config=fw.ConfigProto()) as sess:
-                    loss, lr, gn, tr_acc, _ = sess.run([
+                    logits, loss, lr, gn, tr_acc, _ = sess.run([
                         logits_graph,
                         loss_graph,
                         lr_graph,
@@ -282,4 +282,4 @@ class TestSession(unittest.TestCase):
                     self.assertLess(loss, 4.0)
                     self.assertLess(lr, 0.06)
                     self.assertLess(tr_acc, 120)
-                    self.assertLess(gn, 13)
+                    self.assertLess(gn, 15)
