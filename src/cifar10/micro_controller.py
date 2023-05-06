@@ -204,7 +204,7 @@ class MicroController(Controller):
       loop_outputs[-6])
 
   def build_trainer(self, child_model):
-    valid_shuffle_acc = child_model.build_valid_rl()
+    valid_shuffle_acc = child_model.build_valid_rl()(child_model.images['valid_original'], child_model.labels['valid_original'])
     self.valid_acc = (fw.to_float(valid_shuffle_acc) /
                       fw.to_float(child_model.batch_size))
     reward = self.valid_acc

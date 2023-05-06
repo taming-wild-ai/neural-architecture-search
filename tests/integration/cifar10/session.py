@@ -267,9 +267,13 @@ class TestSession(unittest.TestCase):
                 logits_graph =     ops['child']['model'](ops['child']['images'])
                 loss_graph =       ops["child"]["loss"](logits_graph)
                 lr_graph =         ops["child"]["lr"]
-                grad_norm_graph =  ops["child"]["grad_norm"](loss_graph, ops['child']['model'].child.tf_variables())
+                grad_norm_graph =  ops["child"]["grad_norm"](
+                    loss_graph,
+                    ops['child']['model'].child.tf_variables())
                 train_acc_graph =  ops["child"]["train_acc"](logits_graph)
-                train_op_graph =   ops["child"]["train_op"](loss_graph, ops['child']['model'].child.tf_variables())
+                train_op_graph =   ops["child"]["train_op"](
+                    loss_graph,
+                    ops['child']['model'].child.tf_variables())
                 with fw.Session(config=fw.ConfigProto()) as sess:
                     logits, loss, lr, gn, tr_acc, _ = sess.run([
                         logits_graph,

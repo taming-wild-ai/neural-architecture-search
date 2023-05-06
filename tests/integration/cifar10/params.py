@@ -244,7 +244,7 @@ class TestParameterCounts(unittest.TestCase):
                 mc._build_test(mc.y_train)
                 num_aux_params = count_model_params([var for var in fw.trainable_variables() if (var.name.startswith(mc.name) and 'aux_head' in var.name)])
                 self.assertEqual(412928, num_aux_params)
-                mc.build_valid_rl()
+                mc.build_valid_rl()(mc.images['valid_original'], mc.labels['valid_original'])
                 num_aux_params = count_model_params([var for var in fw.trainable_variables() if (var.name.startswith(mc.name) and 'aux_head' in var.name)])
                 self.assertEqual(412928, num_aux_params)
 

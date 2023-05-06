@@ -708,7 +708,7 @@ class TestMicroChild(unittest.TestCase):
                 mc.labels = { 'valid_original': np.ndarray((1)) }
                 mc.batch_size = 32
                 mc.seed = None
-                mc.build_valid_rl(shuffle=True)
+                mc.build_valid_rl(shuffle=True)(mc.images['valid_original'], mc.labels['valid_original'])
                 print.assert_any_call('-' * 80)
                 print.assert_any_call('Build valid graph on shuffled data')
                 shuffle_batch.assert_called_with(
@@ -717,7 +717,7 @@ class TestMicroChild(unittest.TestCase):
                     mc.seed,
                     25000)
                 map_fn.assert_called()
-                argmax.assert_called_with('map_fn', axis=1)
+                argmax.assert_called_with('model', axis=1)
                 to_int32.assert_any_call("argmax")
                 equal.assert_called_with("to_int32", "y_valid_shuffle")
                 to_int32.assert_any_call("equal")

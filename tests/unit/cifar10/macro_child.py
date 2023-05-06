@@ -782,14 +782,15 @@ class TestMacroChild(unittest.TestCase):
         mc.labels = { 'valid_original': np.ndarray((1)) }
         mc.batch_size = 32
         mc.seed = None
-        mc.build_valid_rl(shuffle=True)
+        vrl = mc.build_valid_rl(shuffle=True)
+        vrl(mc.images['valid_original'], mc.labels['valid_original'])
         print.assert_any_call('-' * 80)
         print.assert_any_call('Build valid graph on shuffled data')
         shuffle_batch.assert_called_with(
             [mc.images['valid_original'], mc.labels['valid_original']],
             mc.batch_size,
             mc.seed)
-        model.assert_called_with(mc, False, True)
+        model.assert_called_with(mc, True, True)
         model().assert_called_with('map_fn')
         argmax.assert_called_with("model", axis=1)
         to_int32.assert_any_call("argmax")

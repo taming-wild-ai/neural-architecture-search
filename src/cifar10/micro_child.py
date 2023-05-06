@@ -868,43 +868,53 @@ class MicroChild(Child):
 
 
   class ValidationRL(LayeredModel):
-    def __init__(self, y):
-      self.layers = [
-        lambda x: fw.argmax(x, axis=1),
-        fw.to_int32,
-        lambda x: fw.equal(x, y),
-        fw.to_int32,
-        fw.reduce_sum]
+    def __init__(self, child, shuffle):
+      with fw.device('/cpu:0'):
+        # shuffled valid data: for choosing validation model
+        if not shuffle:
+          self.layers = [lambda x: child.data_format.child_init(x)] # 0
+        else:
+          self.layers = [lambda x: x] # 0
+        self.layers.append(lambda x, y: fw.shuffle_batch([x, y], child.batch_size, child.seed, 25000)) # 1
+        if shuffle:
+
+          def _pre_process(x):
+            return child.data_format.child_init_preprocess(
+              fw.image.random_flip_left_right(
+                fw.image.random_crop(
+                  fw.pad(x, [[4, 4], [4, 4], [0, 0]]),
+                  [32, 32, 3],
+                  seed=child.seed),
+                seed=child.seed))
+
+          self.layers.append(lambda x: fw.map_fn(_pre_process, x, back_prop=False)) # 2
+        else:
+          self.layers.append(lambda x: x) # 2
+        self.layers += [
+          MicroChild.Model(child, True, True), # 3
+          lambda logits: fw.argmax(logits, axis=1), # 4
+          fw.to_int32, # 5
+          lambda x, y: fw.equal(x, y), # 6
+          fw.to_int32, # 7
+          fw.reduce_sum] # 8
+
+    def __call__(self, x, y):
+      with fw.device('/cpu:0'):
+        x = self.layers[0](x)
+        x_valid_shuffle, y_valid_shuffle = self.layers[1](x, y)
+        x_valid_shuffle = self.layers[2](x_valid_shuffle)
+        logits = self.layers[3](x_valid_shuffle)
+        valid_shuffle_preds = self.layers[4](logits)
+        valid_shuffle_preds = self.layers[5](valid_shuffle_preds)
+        valid_shuffle_acc = self.layers[6](valid_shuffle_preds, y_valid_shuffle)
+        valid_shuffle_acc = self.layers[7](valid_shuffle_acc)
+        return self.layers[8](valid_shuffle_acc)
 
   # override
   def build_valid_rl(self, shuffle=False):
     print("-" * 80)
     print("Build valid graph on shuffled data")
-    with fw.device("/gpu:0"):
-      # shuffled valid data: for choosing validation model
-      if not shuffle:
-        self.images["valid_original"] = self.data_format.child_init(self.images['valid_original'])
-      x_valid_shuffle, y_valid_shuffle = fw.shuffle_batch(
-        [self.images["valid_original"], self.labels["valid_original"]],
-        self.batch_size,
-        self.seed,
-        25000)
-
-      vrl = MicroChild.ValidationRL(y_valid_shuffle)
-
-      if shuffle:
-        def _pre_process(x):
-          return self.data_format.child_init_preprocess(
-            fw.image.random_flip_left_right(
-              fw.image.random_crop(
-                fw.pad(x, [[4, 4], [4, 4], [0, 0]]),
-                [32, 32, 3],
-                seed=self.seed),
-              seed=self.seed))
-        x_valid_shuffle = fw.map_fn(
-          _pre_process, x_valid_shuffle, back_prop=False)
-
-    return vrl(x_valid_shuffle)
+    return MicroChild.ValidationRL(self, shuffle)
 
   def connect_controller(self, controller_model):
     if self.fixed_arc is None:
