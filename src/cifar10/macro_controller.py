@@ -247,7 +247,11 @@ class MacroController(Controller):
       fw.reduce_mean(fw.stack(skip_penaltys)))
 
   def build_trainer(self, child_model):
-    valid_shuffle_acc = child_model.build_valid_rl()(child_model.images['valid_original'], child_model.labels['valid_original'])
+    shuffle, vrl = child_model.build_valid_rl()
+    x_valid_shuffle, y_valid_shuffle = shuffle(child_model.images['valid_original'], child_model.labels['valid_original'])
+    model = child_model.Model(child_model, True, True)
+    logits = model(x_valid_shuffle)
+    valid_shuffle_acc = vrl(logits, y_valid_shuffle)
     self.valid_acc = (fw.to_float(valid_shuffle_acc) /
                       fw.to_float(child_model.batch_size))
     reward = self.valid_acc

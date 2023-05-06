@@ -129,6 +129,10 @@ class TestMacroController(unittest.TestCase):
             variable(0.0, dtype=fw.float32)._as_graph_element = mock.MagicMock(return_value=graph)
             mc = MacroController(temperature=0.9)
             child_model = mock.MagicMock()
+            child_model.build_valid_rl = mock.MagicMock(
+                return_value=(
+                    mock.MagicMock(return_value=('x_valid_shuffle', 'y_valid_shuffle')),
+                    mock.MagicMock(return_value='vrl')))
             mc.skip_penaltys = 1.0
             self.assertEqual(('train_op', 2, 'grad_norm', 4), mc.build_trainer(child_model))
             child_model.build_valid_rl.assert_called_with()
