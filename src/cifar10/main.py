@@ -117,7 +117,6 @@ def train():
   g = fw.Graph()
   with g.as_default():
     ops = get_ops(images, labels)
-
     hooks = [fw.Hook(FLAGS.output_dir, save_steps=ops["child"]["num_train_batches"], saver=fw.Saver())]
     if FLAGS.child_sync_replicas:
       sync_replicas_hook = ops["child"]["optimizer"].make_session_run_hook(True)
@@ -133,13 +132,31 @@ def train():
       hooks=hooks,
       checkpoint_dir=FLAGS.output_dir) as sess:
         start_time = time.time()
+        child_logits_graph =     ops['child']['model'](ops['child']['images'])
+        child_loss_graph =       ops['child']['loss'](child_logits_graph)
+        child_aux_logits =       ops['child']['model']
+        child_train_loss_graph = ops['child']['model'].child.train_loss(child_logits_graph, child_aux_logits)
+        child_lr =               ops['child']['lr']
+        child_grad_norm_graph =  ops['child']['grad_norm'](child_loss_graph, ops['child']['model'].child.tf_variables())
+        child_train_acc_graph =  ops['child']['train_acc'](child_logits_graph)
+        child_train_op_graph =   ops['child']['train_op'](child_train_loss_graph, ops['child']['model'].child.tf_variables())
+
+        controller_loss_graph =      ops["controller"]["loss"](child_logits_graph, y_valid_shuffle)
+        controller_entropy =         ops["controller"]["entropy"]
+        controller_lr =              ops["controller"]["lr"]
+        controller_grad_norm_graph = ops["controller"]["grad_norm"](controller_loss_graph, ops['controller']['model'].tf_variables())
+        controller_valid_acc_graph = ops["controller"]["valid_acc"](child_logits_graph, y_valid_shuffle)
+        controller_baseline =        ops["controller"]["baseline"]
+        controller_skip_rate =       ops["controller"]["skip_rate"]
+        controller_train_op_graph =  ops["controller"]["train_op"](controller_loss_graph, ops['controller']['model'].tf_variables())
         while True:
-          loss, lr, gn, tr_acc, _ = sess.run([
-            ops["child"]["loss"],
-            ops["child"]["lr"],
-            ops["child"]["grad_norm"],
-            ops["child"]["train_acc"],
-            ops["child"]["train_op"],
+          logits, loss, lr, gn, tr_acc, _ = sess.run([
+            child_logits_graph,
+            child_loss_graph,
+            child_lr,
+            child_grad_norm_graph,
+            child_train_acc_graph,
+            child_train_op_graph,
           ])
           global_step = sess.run(ops["child"]["global_step"])
 
@@ -168,15 +185,16 @@ def train():
               print(("Epoch {}: Training controller".format(epoch)))
               for ct_step in range(FLAGS.controller_train_steps *
                                     FLAGS.controller_num_aggregate):
+
                 loss, entropy, lr, gn, val_acc, bl, skip, _ = sess.run([
-                  ops["controller"]["loss"],
-                  ops["controller"]["entropy"],
-                  ops["controller"]["lr"],
-                  ops["controller"]["grad_norm"],
-                  ops["controller"]["valid_acc"],
-                  ops["controller"]["baseline"],
-                  ops["controller"]["skip_rate"],
-                  ops["controller"]["train_op"],
+                  controller_loss_graph,
+                  controller_entropy,
+                  controller_lr,
+                  controller_grad_norm_graph,
+                  controller_valid_acc_graph,
+                  controller_baseline,
+                  controller_skip_rate,
+                  controller_train_op_graph,
                 ])
 
                 if ct_step % FLAGS.log_every == 0:

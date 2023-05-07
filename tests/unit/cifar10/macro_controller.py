@@ -134,7 +134,7 @@ class TestMacroController(unittest.TestCase):
                     mock.MagicMock(return_value=('x_valid_shuffle', 'y_valid_shuffle')),
                     mock.MagicMock(return_value='vrl')))
             mc.skip_penaltys = 1.0
-            self.assertEqual(('train_op', 2, 'grad_norm', 4), mc.build_trainer(child_model))
+            self.assertEqual((train_op, 2, grad_norm, 4), mc.build_trainer(child_model))
             child_model.build_valid_rl.assert_called_with()
             variable.assert_called_with(0, dtype=tf.int32, name='train_step')
             variable(0.0, dtype=fw.float32).assign_sub.assert_called_with(variable().__sub__().__rmul__())
@@ -147,7 +147,8 @@ class TestMacroController(unittest.TestCase):
             train_op.assert_called_with(mc.loss, [])
             grad_norm.assert_called_with(mc.loss, [])
             to_float.assert_any_call(4.0)
-            to_float.assert_called_with(6.0)
+            to_float.assert_any_call(6.0)
+            to_float.assert_called_with(child_model.batch_size)
             reshape.assert_called_with(2.0, [-1])
             matmul.assert_called_with(2.0, variable())
             sscewl.assert_called_with(logits=0.0, labels=3.0)

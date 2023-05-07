@@ -247,31 +247,31 @@ class MacroController(Controller):
       fw.reduce_mean(fw.stack(skip_penaltys)))
 
   def build_trainer(self, child_model):
-    shuffle, vrl = child_model.build_valid_rl()
-    x_valid_shuffle, y_valid_shuffle = shuffle(child_model.images['valid_original'], child_model.labels['valid_original'])
-    model = child_model.Model(child_model, True, True)
-    logits = model(x_valid_shuffle)
-    valid_shuffle_acc = vrl(logits, y_valid_shuffle)
-    self.valid_acc = (fw.to_float(valid_shuffle_acc) /
-                      fw.to_float(child_model.batch_size))
-    reward = self.valid_acc
-
     self.skip_rate = fw.to_float(self.skip_count) / fw.to_float(self.num_layers * (self.num_layers - 1) / 2)
-
-    if self.entropy_weight is not None:
-      reward += self.entropy_weight * self.sample_entropy
-
     self.sample_log_prob = fw.reduce_sum(self.sample_log_prob)
+    shuffle, vrl = child_model.build_valid_rl()
+    # x_valid_shuffle, y_valid_shuffle = shuffle(child_model.images['valid_original'], child_model.labels['valid_original'])
+    # model = child_model.Model(child_model, True, True)
+    # logits = model(x_valid_shuffle)
+    self.valid_acc = lambda logits, y_valid_shuffle: (fw.to_float(vrl(logits, y_valid_shuffle)) /
+                      fw.to_float(child_model.batch_size))
+    def reward(logits, y_valid_shuffle):
+      retval = self.valid_acc(logits, y_valid_shuffle)
+      if self.entropy_weight is not None:
+        retval += self.entropy_weight * self.sample_entropy
+
     self.baseline = fw.Variable(0.0, dtype=fw.float32)
 
-    with fw.control_dependencies([
-      self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward))]):
-      self.reward = fw.identity(reward)
+    def loss(logits, y_valid_shuffle):
+      with fw.control_dependencies([
+        self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward(logits, y_valid_shuffle)))]):
+        self.reward = fw.identity(reward(logits, y_valid_shuffle))
+      retval = self.sample_log_prob * (self.reward - self.baseline)
+      if self.skip_weight is not None:
+        retval += self.skip_weight * self.skip_penaltys
+      return retval
 
-    self.loss = self.sample_log_prob * (self.reward - self.baseline)
-    if self.skip_weight is not None:
-      self.loss += self.skip_weight * self.skip_penaltys
-
+    self.loss = loss
     self.train_step = fw.Variable(0, dtype=fw.int32, name="train_step")
     tf_variables = [var
         for var in fw.trainable_variables() if var.name.startswith(self.name)]
@@ -285,5 +285,5 @@ class MacroController(Controller):
       clip_mode=self.clip_mode,
       l2_reg=self.l2_reg,
       optim_algo=self.optim_algo)
-    return train_op(self.loss, tf_variables), lr, grad_norm(self.loss, tf_variables), optimizer
+    return train_op, lr, grad_norm, optimizer
 
