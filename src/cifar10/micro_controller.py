@@ -203,34 +203,38 @@ class MicroController(Controller):
       loop_outputs[-7],
       loop_outputs[-6])
 
-  def build_trainer(self, child_model):
-    valid_shuffle_acc = child_model.build_valid_rl()(child_model.images['valid_original'], child_model.labels['valid_original'])
-    self.valid_acc = (fw.to_float(valid_shuffle_acc) /
-                      fw.to_float(child_model.batch_size))
-    reward = self.valid_acc
-
-    if self.entropy_weight is not None:
-      reward += self.entropy_weight * self.sample_entropy
-
+  def build_trainer(self, child_model, vrl):
+    self.skip_rate = fw.constant(0.0, dtype=fw.float32)
     self.sample_log_prob = fw.reduce_sum(self.sample_log_prob)
+    self.valid_acc = lambda logits, y_valid_shuffle: (fw.to_float(vrl(logits, y_valid_shuffle)) /
+                      fw.to_float(child_model.batch_size))
+
+    def reward(logits, y_valid_shuffle):
+      retval = self.valid_acc(logits, y_valid_shuffle)
+      if self.entropy_weight is not None:
+        retval += self.entropy_weight * self.sample_entropy
+      return retval
+
     self.baseline = fw.Variable(0.0, dtype=fw.float32)
 
-    with fw.control_dependencies([self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward))]):
-      self.reward = fw.identity(reward)
+    def loss(logits, y_valid_shuffle):
+      with fw.control_dependencies([
+        self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward(logits, y_valid_shuffle)))]):
+        self.reward = fw.identity(reward(logits, y_valid_shuffle))
+      retval = self.sample_log_prob * (self.reward - self.baseline)
+      return retval
 
-    self.loss = self.sample_log_prob * (self.reward - self.baseline)
+    self.loss = loss
     self.train_step = fw.Variable(0, dtype=fw.int64, name="train_step")
-
-    tf_variables = [var for var in fw.trainable_variables() if var.name.startswith(self.name)]
+    tf_variables = [var
+      for var in fw.trainable_variables() if var.name.startswith(self.name)]
     print("-" * 80)
     for var in tf_variables:
       print(var)
-
-    self.skip_rate = fw.constant(0.0, dtype=fw.float32)
 
     train_op, lr, grad_norm, optimizer = get_train_ops(
       self.train_step,
       self.learning_rate,
       clip_mode=self.clip_mode,
       optim_algo=self.optim_algo)
-    return train_op(self.loss, tf_variables), lr, grad_norm(self.loss, tf_variables), optimizer
+    return train_op, lr, grad_norm, optimizer

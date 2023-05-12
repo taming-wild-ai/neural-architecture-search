@@ -67,8 +67,12 @@ class TestMicroController(unittest.TestCase):
                 variable()._as_graph_element().graph = graph
                 mc = MicroController(temperature=1.0, tanh_constant=1.0, op_tanh_reduce=1.0, entropy_weight=1.0)
                 mock_child = mock.MagicMock(name='mock_child')
-                mc.build_trainer(mock_child)
-                mock_child.build_valid_rl.assert_called_with()
+                shuffle = mock.MagicMock(return_value=('x_valid_shuffle', 'y_valid_shuffle'))
+                vrl = mock.MagicMock(return_value='vrl')
+                self.assertEqual((train_op, 2, grad_norm, 4), mc.build_trainer(mock_child, vrl))
+                train_op(mc.loss, [])
+                grad_norm(mc.loss, [])
+                mc.loss('logits', 'y_valid_shuffle')
                 zeros.assert_called_with([1, 32], tf.float32)
                 variable().assign_sub.assert_called_with(variable().__sub__().__rmul__())
                 get_train_ops.assert_called_with(

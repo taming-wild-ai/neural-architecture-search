@@ -246,19 +246,16 @@ class MacroController(Controller):
       fw.reduce_sum(fw.stack(skip_count)),
       fw.reduce_mean(fw.stack(skip_penaltys)))
 
-  def build_trainer(self, child_model):
+  def build_trainer(self, child_model, vrl):
     self.skip_rate = fw.to_float(self.skip_count) / fw.to_float(self.num_layers * (self.num_layers - 1) / 2)
     self.sample_log_prob = fw.reduce_sum(self.sample_log_prob)
-    shuffle, vrl = child_model.build_valid_rl()
-    # x_valid_shuffle, y_valid_shuffle = shuffle(child_model.images['valid_original'], child_model.labels['valid_original'])
-    # model = child_model.Model(child_model, True, True)
-    # logits = model(x_valid_shuffle)
     self.valid_acc = lambda logits, y_valid_shuffle: (fw.to_float(vrl(logits, y_valid_shuffle)) /
                       fw.to_float(child_model.batch_size))
     def reward(logits, y_valid_shuffle):
       retval = self.valid_acc(logits, y_valid_shuffle)
       if self.entropy_weight is not None:
         retval += self.entropy_weight * self.sample_entropy
+      return retval
 
     self.baseline = fw.Variable(0.0, dtype=fw.float32)
 

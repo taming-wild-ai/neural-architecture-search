@@ -867,7 +867,7 @@ class MicroChild(Child):
       lambda logits: fw.reduce_sum(fw.to_int32(fw.equal(predictions(logits), y))))
 
 
-  class ValidationRL(LayeredModel):
+  class ValidationRLShuffle(LayeredModel):
     def __init__(self, child, shuffle):
       with fw.device('/cpu:0'):
         # shuffled valid data: for choosing validation model
@@ -890,31 +890,32 @@ class MicroChild(Child):
           self.layers.append(lambda x: fw.map_fn(_pre_process, x, back_prop=False)) # 2
         else:
           self.layers.append(lambda x: x) # 2
-        self.layers += [
-          MicroChild.Model(child, True, True), # 3
-          lambda logits: fw.argmax(logits, axis=1), # 4
-          fw.to_int32, # 5
-          lambda x, y: fw.equal(x, y), # 6
-          fw.to_int32, # 7
-          fw.reduce_sum] # 8
 
     def __call__(self, x, y):
       with fw.device('/cpu:0'):
         x = self.layers[0](x)
         x_valid_shuffle, y_valid_shuffle = self.layers[1](x, y)
         x_valid_shuffle = self.layers[2](x_valid_shuffle)
-        logits = self.layers[3](x_valid_shuffle)
-        valid_shuffle_preds = self.layers[4](logits)
-        valid_shuffle_preds = self.layers[5](valid_shuffle_preds)
-        valid_shuffle_acc = self.layers[6](valid_shuffle_preds, y_valid_shuffle)
-        valid_shuffle_acc = self.layers[7](valid_shuffle_acc)
-        return self.layers[8](valid_shuffle_acc)
+        return x_valid_shuffle, y_valid_shuffle
 
-  # override
-  def build_valid_rl(self, shuffle=False):
-    print("-" * 80)
-    print("Build valid graph on shuffled data")
-    return MicroChild.ValidationRL(self, shuffle)
+
+  class ValidationRL(LayeredModel):
+    def __init__(self):
+      with fw.device('/cpu:0'):
+        self.layers = [
+          lambda logits: fw.argmax(logits, axis=1),
+          fw.to_int32,
+          lambda x, y: fw.equal(x, y),
+          fw.to_int32,
+          fw.reduce_sum]
+
+    def __call__(self, logits, y_valid_shuffle):
+      with fw.device('/cpu:0'):
+        valid_shuffle_preds = self.layers[0](logits)
+        valid_shuffle_preds = self.layers[1](valid_shuffle_preds)
+        valid_shuffle_acc =   self.layers[2](valid_shuffle_preds, y_valid_shuffle)
+        valid_shuffle_acc =   self.layers[3](valid_shuffle_acc)
+        return                self.layers[4](valid_shuffle_acc)
 
   def connect_controller(self, controller_model):
     if self.fixed_arc is None:

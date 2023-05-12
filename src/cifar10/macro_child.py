@@ -903,12 +903,6 @@ class MacroChild(Child):
         valid_shuffle_acc = self.layers[3](valid_shuffle_acc)
         return self.layers[4](valid_shuffle_acc)
 
-  # override
-  def build_valid_rl(self, shuffle=False):
-    print("-" * 80)
-    print("Build valid graph on shuffled data")
-    return MacroChild.ValidationRLShuffle(self, shuffle), MacroChild.ValidationRL()
-
   def connect_controller(self, controller_model):
     if self.fixed_arc is None:
       self.sample_arc = controller_model.sample_arc

@@ -66,7 +66,10 @@ def get_ops(images, labels):
       optim_algo="adam")
 
     child_train_op, child_lr, child_grad_norm, child_optimizer = child_model.connect_controller(controller_model)
-    controller_train_op, controller_lr, controller_grad_norm, controller_optimizer = controller_model.build_trainer(child_model)
+    shuffle = child_model.ValidationRLShuffle(child_model, False)
+    vrl = child_model.ValidationRL()
+    x_valid_shuffle, y_valid_shuffle = shuffle(child_model.images['valid_original'], child_model.labels['valid_original'])
+    controller_train_op, controller_lr, controller_grad_norm, controller_optimizer = controller_model.build_trainer(child_model, vrl)
 
     controller_ops = {
       "train_step": controller_model.train_step,
@@ -85,11 +88,13 @@ def get_ops(images, labels):
     assert not FLAGS.controller_training, (
       "--child_fixed_arc is given, cannot train controller")
     child_train_op, child_lr, child_grad_norm, child_optimizer = child_model.connect_controller(None)
+    y_valid_shuffle = None
     controller_ops = None
 
   return {
     "child": {
       "images": child_model.x_train,
+      'y_valid_shuffle': y_valid_shuffle,
       "model": ChildClass.Model(child_model, True),
       "global_step": child_model.global_step,
       "loss": child_model.loss,
@@ -140,12 +145,11 @@ def train():
         child_grad_norm_graph =  ops['child']['grad_norm'](child_loss_graph, ops['child']['model'].child.tf_variables())
         child_train_acc_graph =  ops['child']['train_acc'](child_logits_graph)
         child_train_op_graph =   ops['child']['train_op'](child_train_loss_graph, ops['child']['model'].child.tf_variables())
-
-        controller_loss_graph =      ops["controller"]["loss"](child_logits_graph, y_valid_shuffle)
+        controller_loss_graph =      ops["controller"]["loss"](child_logits_graph, ops['child']['y_valid_shuffle'])
         controller_entropy =         ops["controller"]["entropy"]
         controller_lr =              ops["controller"]["lr"]
         controller_grad_norm_graph = ops["controller"]["grad_norm"](controller_loss_graph, ops['controller']['model'].tf_variables())
-        controller_valid_acc_graph = ops["controller"]["valid_acc"](child_logits_graph, y_valid_shuffle)
+        controller_valid_acc_graph = ops["controller"]["valid_acc"](child_logits_graph, ops['child']['y_valid_shuffle'])
         controller_baseline =        ops["controller"]["baseline"]
         controller_skip_rate =       ops["controller"]["skip_rate"]
         controller_train_op_graph =  ops["controller"]["train_op"](controller_loss_graph, ops['controller']['model'].tf_variables())

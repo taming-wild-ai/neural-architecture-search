@@ -708,9 +708,11 @@ class TestMicroChild(unittest.TestCase):
                 mc.labels = { 'valid_original': np.ndarray((1)) }
                 mc.batch_size = 32
                 mc.seed = None
-                mc.build_valid_rl(shuffle=True)(mc.images['valid_original'], mc.labels['valid_original'])
-                print.assert_any_call('-' * 80)
-                print.assert_any_call('Build valid graph on shuffled data')
+                shuffle = MicroChild.ValidationRLShuffle(mc, True)
+                vrl = MicroChild.ValidationRL()
+                x_valid_shuffle, y_valid_shuffle = shuffle(mc.images['valid_original'], mc.labels['valid_original'])
+                logits = MicroChild.Model(mc, True, True)(x_valid_shuffle)
+                vrl(logits, y_valid_shuffle)
                 shuffle_batch.assert_called_with(
                     [mc.images['valid_original'], mc.labels['valid_original']],
                     mc.batch_size,

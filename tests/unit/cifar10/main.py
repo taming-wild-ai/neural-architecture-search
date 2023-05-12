@@ -98,6 +98,7 @@ class TestCIFAR10Main(unittest.TestCase):
         mco_ctor.return_value = mco
         mch = mock.MagicMock()
         mch.connect_controller = mock.MagicMock(return_value=('train_op', 'lr', 'grad_norm', 'optimizer'))
+        mch.ValidationRLShuffle = mock.MagicMock(return_value=mock.MagicMock(return_value=('x_valid_shuffle', 'y_valid_shuffle')))
         mch_ctor.return_value = mch
         with RestoreFLAGS(search_for="micro", controller_training=True, child_fixed_arc=None):
             main.get_ops(None, None)
@@ -119,6 +120,7 @@ class TestCIFAR10Main(unittest.TestCase):
         gco_ctor.return_value = gco
         gch = mock.MagicMock()
         gch.connect_controller = mock.MagicMock(return_value=('train_op', 'lr', 'grad_norm', 'optimizer'))
+        gch.ValidationRLShuffle = mock.MagicMock(return_value=mock.MagicMock(return_value=('x_valid_shuffle', 'y_valid_shuffle')))
         gch_ctor.return_value = gch
         with RestoreFLAGS(search_for="macro", controller_training=True, child_fixed_arc=None):
             main.get_ops(None, None)
@@ -154,6 +156,8 @@ class TestCIFAR10Main(unittest.TestCase):
                 return (["0", "1"], 0.95)
             elif 5 == len(ops):
                 return (1, 2, 3, 4, None)
+            elif 6 == len(ops):
+                return (1, 2, 3, 4, 5, None)
             elif 8 == len(ops):
                 return (1, 2, 3, 4, 5, 6, 7, None)
         else:
@@ -167,24 +171,28 @@ class TestCIFAR10Main(unittest.TestCase):
                 "eval_every": 1,
                 "num_train_batches": 1,
                 "child": {
+                    'model': mock.MagicMock(name='child model', return_value='logits'),
+                    'y_valid_shuffle': 'y_valid_shuffle',
+                    'images': mock.MagicMock(name='images'),
                     "num_train_batches": 1,
-                    "loss": 2.0,
+                    "loss": mock.MagicMock(return_value=2.0),
                     "lr": 0.01,
-                    "grad_norm": 5,
-                    "train_acc": 0.01,
-                    "train_op": {},
+                    "grad_norm": mock.MagicMock(return_value=5),
+                    "train_acc": mock.MagicMock(return_value=0.01),
+                    "train_op": mock.MagicMock(return_value={}),
                     "global_step": 311,
                     "optimizer": child_optimizer},
                 "controller": {
+                    'model': mock.MagicMock(name='controller model'),
                     "optimizer": controller_optimizer,
-                    "loss": 2.0,
+                    "loss": mock.MagicMock(return_value=2.0),
                     "entropy": 2.0,
                     "lr": 0.01,
-                    "grad_norm": 0.01,
-                    "valid_acc": 0.25,
+                    "grad_norm": mock.MagicMock(return_value=0.01),
+                    "valid_acc": mock.MagicMock(return_value=0.25),
                     "baseline": 2.0,
                     "skip_rate": 0.1,
-                    "train_op": 2.0,
+                    "train_op": mock.MagicMock(return_value=2.0),
                     "train_step": 311,
                     "sample_arc": "0" }})
 
