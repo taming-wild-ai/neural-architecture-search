@@ -251,6 +251,11 @@ class MicroChild(Child):
                   child.data_format))
               with fw.name_scope('fc') as scope:
                 self.aux_logits[layer_id].append(MicroChild.FullyConnected(child.data_format, child.weights, reuse, scope, 768))
+        aux_head_variables = [
+        var for var in fw.trainable_variables() if (
+          var.name.startswith(self.child.name) and "aux_head" in var.name)]
+        num_aux_vars = count_model_params(aux_head_variables)
+        print("Aux head uses {0} params".format(num_aux_vars))
         with fw.name_scope('fc') as scope:
           self.dropout = MicroChild.Dropout(
             child.data_format,
@@ -265,39 +270,35 @@ class MicroChild(Child):
     def __call__(self, images):
       with fw.name_scope(self.child.name):
         with fw.name_scope('stem_conv') as scope:
-          x = self.stem_conv(images)
-          layers = [x, x]
+          logits = self.stem_conv(images)
+          layers = [logits, logits]
+        aux_logits = None
         for layer_id in range(self.child.num_layers + 2):
           with fw.name_scope(f'layer_{layer_id}') as scope:
             if layer_id not in self.child.pool_layers:
-              x = self.layers[layer_id](layers)
+              logits = self.layers[layer_id](layers)
             else:
               if self.child.fixed_arc is None:
-                x = self.layers[layer_id][0](x)
-                layers = [layers[-1], x]
-                x = self.layers[layer_id][1](layers)
+                logits = self.layers[layer_id][0](logits)
+                layers = [layers[-1], logits]
+                logits = self.layers[layer_id][1](layers)
               else:
-                x = self.layers[layer_id](layers)
-            print("Layer {0:>2d}: {1}".format(layer_id, x))
-            layers = [layers[-1], x]
+                logits = self.layers[layer_id](layers)
+            print("Layer {0:>2d}: {1}".format(layer_id, logits))
+            layers = [layers[-1], logits]
           aux_logit_fns = self.aux_logits.get(layer_id)
           if aux_logit_fns:
             with fw.name_scope('aux_head'):
-              aux_logits = aux_logit_fns[0](x)
+              aux_logits = aux_logit_fns[0](logits)
               with fw.name_scope('proj'):
                 aux_logits = aux_logit_fns[1](aux_logits)
               with fw.name_scope('avg_pool'):
                 aux_logits = aux_logit_fns[2](aux_logits)
               with fw.name_scope('fc'):
-                self.child.aux_logits = aux_logit_fns[3](aux_logits)
-            aux_head_variables = [
-            var for var in fw.trainable_variables() if (
-              var.name.startswith(self.child.name) and "aux_head" in var.name)]
-            num_aux_vars = count_model_params(aux_head_variables)
-            print("Aux head uses {0} params".format(num_aux_vars))
+                aux_logits = aux_logit_fns[3](aux_logits)
         with fw.name_scope('fc') as scope:
-          x = self.dropout(x)
-      return x
+          logits = self.dropout(logits)
+      return logits, aux_logits
 
 
   class SeparableConv(LayeredModel):
@@ -825,12 +826,12 @@ class MicroChild(Child):
   def _build_train(self, y):
     print("-" * 80)
     print("Build train graph")
-    loss = MicroChild.Loss(y)
-
+    logit_fn1 = MicroChild.Loss(y)
+    loss = lambda logits_aux_logits: logit_fn1(logits_aux_logits[0])
     if self.use_aux_heads:
-      self.aux_loss = lambda aux_logits: fw.reduce_mean(fw.sparse_softmax_cross_entropy_with_logits(
-        logits=aux_logits, labels=y))
-      train_loss = lambda logits, aux_logits: loss(logits) + 0.4 * self.aux_loss(aux_logits)
+      self.aux_loss = lambda logits_aux_logits: fw.reduce_mean(fw.sparse_softmax_cross_entropy_with_logits(
+        logits=logits_aux_logits[0], labels=y))
+      train_loss = lambda logits_aux_logits: loss(logits_aux_logits) + 0.4 * self.aux_loss(logits_aux_logits)
     else:
       train_loss = loss
 
@@ -843,7 +844,8 @@ class MicroChild(Child):
       num_train_batches=self.num_train_batches,
       optim_algo=self.optim_algo)
 
-    train_acc = MicroChild.Accuracy(y)
+    logit_fn2 = MicroChild.Accuracy(y)
+    train_acc = lambda logits_aux_logits: logit_fn2(logits_aux_logits[0])
 
     return loss, train_loss, train_acc, train_op, lr, grad_norm, optimizer
 

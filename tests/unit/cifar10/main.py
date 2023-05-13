@@ -107,7 +107,7 @@ class TestCIFAR10Main(unittest.TestCase):
         mch_ctor.assert_called_with(None, None, clip_mode='norm', optim_algo='momentum')
         gco_ctor.assert_not_called()
         gch_ctor.assert_not_called()
-        mco.build_trainer.assert_called_with(mch)
+        mco.build_trainer.assert_called_with(mch, mch.ValidationRL())
         mch.connect_controller.assert_called_with(mco)
 
     @patch('src.cifar10.main.MicroController')
@@ -130,7 +130,7 @@ class TestCIFAR10Main(unittest.TestCase):
         gco_ctor.assert_called_with(lstm_size=64, lstm_num_layers=1, lstm_keep_prob=1.0, lr_dec_start=0, lr_dec_every=1000000, optim_algo='adam')
         gch_ctor.assert_called_with(None, None, clip_mode='norm', optim_algo='momentum')
         gch.connect_controller.assert_called_with(gco)
-        gco.build_trainer.assert_called_with(gch)
+        gco.build_trainer.assert_called_with(gch, gch.ValidationRL())
 
     @patch('src.cifar10.main.MicroController')
     @patch('src.cifar10.main.MicroChild')
@@ -176,6 +176,7 @@ class TestCIFAR10Main(unittest.TestCase):
                     'images': mock.MagicMock(name='images'),
                     "num_train_batches": 1,
                     "loss": mock.MagicMock(return_value=2.0),
+                    'train_loss': mock.MagicMock(return_value=2.0),
                     "lr": 0.01,
                     "grad_norm": mock.MagicMock(return_value=5),
                     "train_acc": mock.MagicMock(return_value=0.01),

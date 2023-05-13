@@ -270,10 +270,8 @@ class MacroController(Controller):
 
     self.loss = loss
     self.train_step = fw.Variable(0, dtype=fw.int32, name="train_step")
-    tf_variables = [var
-        for var in fw.trainable_variables() if var.name.startswith(self.name)]
     print("-" * 80)
-    for var in tf_variables:
+    for var in self.tf_variables():
       print(var)
 
     train_op, lr, grad_norm, optimizer = get_train_ops(
