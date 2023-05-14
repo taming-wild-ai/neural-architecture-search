@@ -165,18 +165,15 @@ class LearningRate(object):
 
   class Regular(object):
     def __init__(self, init, start, every, rate, dec_min, lr_warmup_val, lr_warmup_steps):
-      self.init = init
-      self.start = start
-      self.every = every
+      fn = fw.exp_decay(init, every, rate, staircase=True)
+      self.exp_decay = lambda train_step: fn(fw.maximum(train_step - start, 0))
       self.rate = rate
       self.dec_min = dec_min
       self.lr_warmup_val = lr_warmup_val
       self.lr_warmup_steps = lr_warmup_steps
 
     def update(self, _, train_step):
-      learning_rate = fw.exp_decay(
-        self.init, fw.maximum(train_step - self.start, 0), self.every,
-        self.rate, staircase=True)
+      learning_rate = self.exp_decay(train_step)
       if self.dec_min is not None:
         learning_rate = fw.maximum(learning_rate, self.dec_min)
 

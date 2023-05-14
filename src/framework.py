@@ -95,6 +95,7 @@ dropout = tf.nn.dropout
 embedding_lookup = tf.nn.embedding_lookup
 equal = tf.equal
 exp = tf.exp
+exp_decay = tf.keras.optimizers.schedules.ExponentialDecay
 fill = tf.fill
 float32 = tf.float32
 floor = tf.floor
@@ -157,7 +158,6 @@ batch = partial(
     enqueue_many=True,
     num_threads=1,
     allow_smaller_final_batch=True)
-exp_decay = tf.compat.v1.train.exponential_decay
 flags = tf.compat.v1.flags
 get_or_create_global_step = tf.compat.v1.train.get_or_create_global_step
 
