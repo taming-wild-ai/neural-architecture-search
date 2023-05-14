@@ -1,5 +1,6 @@
 import sys
 import tensorflow as tf
+# import tensorflow_addons as tfa
 
 from collections import defaultdict
 from functools import partial
@@ -101,6 +102,14 @@ float32 = tf.float32
 floor = tf.floor
 fused_batch_norm = tf.raw_ops.FusedBatchNorm
 gather = tf.gather
+
+def get_variable(name, shape, initializer=None):
+    assert not tf.compat.v1.get_variable_scope().reuse
+    if initializer is None:
+        return tf.Variable(shape=shape, name=name)
+    else:
+        return tf.Variable(initializer(shape), name=name)
+
 global_norm = tf.linalg.global_norm
 gradients = tf.gradients
 greater_equal = tf.greater_equal
@@ -117,6 +126,7 @@ matmul = tf.matmul
 maximum = tf.maximum
 max_pool2d = tf.keras.layers.MaxPooling2D
 minimum = tf.minimum
+multinomial = tf.random.categorical
 one_hot = tf.one_hot
 pad = tf.pad
 random_crop = tf.image.random_crop
@@ -158,17 +168,7 @@ batch = partial(
     enqueue_many=True,
     num_threads=1,
     allow_smaller_final_batch=True)
-flags = tf.compat.v1.flags
 get_or_create_global_step = tf.compat.v1.train.get_or_create_global_step
-
-def get_variable(name, shape, initializer=None):
-    assert not tf.compat.v1.get_variable_scope().reuse
-    if initializer is None:
-        return tf.Variable(shape=shape, name=name)
-    else:
-        return tf.Variable(initializer(shape), name=name)
-
-multinomial = tf.compat.v1.multinomial
 ones_init = partial(tf.compat.v1.keras.initializers.ones, dtype=tf.float32)
 run = tf.compat.v1.app.run
 scatter_sub = partial(tf.compat.v1.scatter_sub, use_locking=True)
@@ -193,25 +193,21 @@ trainable_variables = tf.compat.v1.trainable_variables
 class Optimizer(object):
     @staticmethod
     def Momentum(learning_rate):
-        return tf.compat.v1.train.MomentumOptimizer(
+        return tf.keras.optimizers.experimental.SGD(
             learning_rate,
             0.9,
-            use_locking=True,
-            use_nesterov=True)
+            True)
 
     @staticmethod
     def SGD(learning_rate):
-        return tf.compat.v1.train.GradientDescentOptimizer(
-            learning_rate,
-            use_locking=True)
+        return tf.keras.optimizers.experimental.SGD(learning_rate)
 
     @staticmethod
     def Adam(learning_rate):
-        return tf.compat.v1.train.AdamOptimizer(
+        return tf.keras.optimizers.Adam(
             learning_rate,
-            beta1=0.0,
-            epsilon=1e-3,
-            use_locking=True)
+            beta_1=0.0,
+            epsilon=1e-3)
 
     @staticmethod
     def SyncReplicas(opt, num_aggregate, num_replicas):
@@ -221,8 +217,8 @@ class Optimizer(object):
             total_num_replicas=num_replicas,
             use_locking=True)
 
-    @staticmethod
-    def MovingAverage(opt, moving_average):
-        return tf.contrib.opt.MovingAverageOptimizer(
-            opt,
-            average_decay=moving_average)
+    # @staticmethod
+    # def MovingAverage(opt, moving_average):
+    #     return tfa.optimizers.MovingAverage(
+    #         opt,
+    #         average_decay=moving_average)
