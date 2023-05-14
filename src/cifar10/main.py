@@ -10,7 +10,6 @@ import src.framework as fw
 from src import utils
 from src.utils import Logger
 from src.utils import DEFINE_boolean
-from src.utils import DEFINE_float
 from src.utils import DEFINE_integer
 from src.utils import DEFINE_string
 from src.utils import print_user_flags
@@ -89,12 +88,14 @@ def get_ops(images, labels):
     assert not FLAGS.controller_training, (
       "--child_fixed_arc is given, cannot train controller")
     child_train_op, child_lr, child_grad_norm, child_optimizer = child_model.connect_controller(None)
+    x_valid_shuffle = None
     y_valid_shuffle = None
     controller_ops = None
 
   return {
     "child": {
       "images": child_model.x_train,
+      'x_valid_shuffle': x_valid_shuffle,
       'y_valid_shuffle': y_valid_shuffle,
       "model": ChildClass.Model(child_model, True),
       "global_step": child_model.global_step,
@@ -131,19 +132,20 @@ def train():
     if FLAGS.controller_training and FLAGS.controller_sync_replicas:
       sync_replicas_hook = ops["controller"]["optimizer"].make_session_run_hook(True)
       hooks.append(sync_replicas_hook)
-    child_logits_graph =     ops['child']['model'](ops['child']['images'])
-    child_loss_graph =       ops['child']['loss'](child_logits_graph)
-    child_lr =               ops['child']['lr']
-    child_grad_norm_graph =  ops['child']['grad_norm'](child_loss_graph, ops['child']['model'].child.tf_variables())
-    child_train_acc_graph =  ops['child']['train_acc'](child_logits_graph)
-    child_train_loss_graph = ops['child']['train_loss'](child_logits_graph)
-    child_train_op_graph =   ops['child']['train_op'](child_train_loss_graph, ops['child']['model'].child.tf_variables())
+    child_train_logits_graph = ops['child']['model'](ops['child']['images'])
+    child_loss_graph =         ops['child']['loss'](child_train_logits_graph)
+    child_lr =                 ops['child']['lr']
+    child_grad_norm_graph =    ops['child']['grad_norm'](child_loss_graph, ops['child']['model'].child.tf_variables())
+    child_train_acc_graph =    ops['child']['train_acc'](child_train_logits_graph)
+    child_train_loss_graph =   ops['child']['train_loss'](child_train_logits_graph)
+    child_train_op_graph =     ops['child']['train_op'](child_train_loss_graph, ops['child']['model'].child.tf_variables())
     if FLAGS.controller_training:
-      controller_loss_graph =      ops["controller"]["loss"](child_logits_graph, ops['child']['y_valid_shuffle'])
+      child_valid_logits_graph =   ops['child']['model'](ops['child']['x_valid_shuffle'])
+      controller_loss_graph =      ops["controller"]["loss"](child_valid_logits_graph, ops['child']['y_valid_shuffle'])
       controller_entropy =         ops["controller"]["entropy"]
       controller_lr =              ops["controller"]["lr"]
       controller_grad_norm_graph = ops["controller"]["grad_norm"](controller_loss_graph, ops['controller']['model'].tf_variables())
-      controller_valid_acc_graph = ops["controller"]["valid_acc"](child_logits_graph, ops['child']['y_valid_shuffle'])
+      controller_valid_acc_graph = ops["controller"]["valid_acc"](child_valid_logits_graph, ops['child']['y_valid_shuffle'])
       controller_baseline =        ops["controller"]["baseline"]
       controller_skip_rate =       ops["controller"]["skip_rate"]
       controller_train_op_graph =  ops["controller"]["train_op"](controller_loss_graph, ops['controller']['model'].tf_variables())
@@ -263,7 +265,7 @@ def main(_):
   print(("Logging to {}".format(log_file)))
   sys.stdout = Logger(log_file)
 
-  utils.print_user_flags()
+  print_user_flags()
   train()
 
 

@@ -30,7 +30,7 @@ class TestCIFAR10Main(unittest.TestCase):
     @patch('src.cifar10.main.print')
     @patch('src.cifar10.main.shutil.rmtree')
     @patch('src.cifar10.main.os.makedirs')
-    @patch('src.cifar10.main.utils.print_user_flags')
+    @patch('src.cifar10.main.print_user_flags')
     def test_main_creates_output_directory(self, print_flags, makedirs, rmtree, print, train, _logger, _isdir):
         main.main(None)
 
@@ -43,7 +43,7 @@ class TestCIFAR10Main(unittest.TestCase):
 
     @patch('src.cifar10.main.os.path.isdir', return_value=True)
     @patch('src.cifar10.main.Logger', return_value=sys.stdout)
-    @patch('src.cifar10.main.utils.print_user_flags')
+    @patch('src.cifar10.main.print_user_flags')
     @patch('src.cifar10.main.os.makedirs')
     @patch('src.cifar10.main.shutil.rmtree')
     @patch('src.cifar10.main.train')
@@ -61,7 +61,7 @@ class TestCIFAR10Main(unittest.TestCase):
 
     @patch('src.cifar10.main.os.path.isdir', return_value=True)
     @patch('src.cifar10.main.Logger', return_value=sys.stdout)
-    @patch('src.cifar10.main.utils.print_user_flags')
+    @patch('src.cifar10.main.print_user_flags')
     @patch('src.cifar10.main.os.makedirs')
     @patch('src.cifar10.main.shutil.rmtree')
     @patch('src.cifar10.main.train')
@@ -172,6 +172,7 @@ class TestCIFAR10Main(unittest.TestCase):
                 "num_train_batches": 1,
                 "child": {
                     'model': mock.MagicMock(name='child model', return_value='logits'),
+                    'x_valid_shuffle': 'x_valid_shuffle',
                     'y_valid_shuffle': 'y_valid_shuffle',
                     'images': mock.MagicMock(name='images'),
                     "num_train_batches": 1,
