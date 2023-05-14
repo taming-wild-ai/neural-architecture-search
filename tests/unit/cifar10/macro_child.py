@@ -657,7 +657,8 @@ class TestMacroChild(unittest.TestCase):
                 batch_norm1.assert_called_with(True, mc.data_format, mc.weights, 24, False)
                 batch_norm1().assert_called_with('conv2d')
                 relu.assert_called_with("batch_norm")
-                max_pool2d.assert_called_with('relu', [3, 3], [1, 1], 'SAME', data_format='channels_first')
+                max_pool2d.assert_called_with([3, 3], [1, 1], 'SAME', data_format='channels_first')
+                max_pool2d().assert_called_with('relu')
                 create_weight.assert_called_with(False, 'conv_1/', 'w', [1, 1, 3, 24], None)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)

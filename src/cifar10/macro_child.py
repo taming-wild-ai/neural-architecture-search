@@ -780,20 +780,14 @@ class MacroChild(Child):
           return input_conv(x)
 
       self.layers = [layer0]
-
       avg_pool2d = fw.avg_pool2d([3, 3], [1, 1], 'SAME', data_format=child.data_format.actual)
-
-      def max_pool2d(x):
-        with fw.name_scope("pool"):
-          return fw.max_pool2d(x, [3, 3], [1, 1], "SAME", data_format=child.data_format.actual)
-
+      max_pool2d = fw.max_pool2d([3, 3], [1, 1], "SAME", data_format=child.data_format.actual)
       if avg_or_max == "avg":
         self.layers.append(avg_pool2d)
       elif avg_or_max == "max":
         self.layers.append(max_pool2d)
       else:
         raise ValueError(f"Unknown pool {avg_or_max}")
-
       if start_idx is not None:
         self.layers.append(lambda x: child.data_format.pool_branch(x, start_idx, count))
 

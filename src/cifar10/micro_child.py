@@ -437,7 +437,7 @@ class MicroChild(Child):
         else:
           inner1 = lambda x: x
         self.layers = [
-          lambda x: fw.max_pool2d(x, [3, 3], [x_stride, x_stride], "SAME", data_format=child.data_format.actual),
+          fw.max_pool2d([3, 3], [x_stride, x_stride], "SAME", data_format=child.data_format.actual),
           inner1,
           lambda x: MicroChild.Operator.inner2(x, child, is_training, layer_id)]
 
@@ -549,7 +549,7 @@ class MicroChild(Child):
   class MaxPool(LayeredModel):
     def __init__(self, data_format, num_input_chan: int, out_filters: int, reuse: bool, scope: str, curr_cell, prev_cell: int, weights):
       self.layers = [
-        lambda x: fw.max_pool2d(x, [3, 3], [1, 1], 'SAME', data_format=data_format.actual)]
+        fw.max_pool2d([3, 3], [1, 1], 'SAME', data_format=data_format.actual)]
       if num_input_chan != out_filters:
         w = weights.get(
           reuse,

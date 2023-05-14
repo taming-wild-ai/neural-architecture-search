@@ -113,6 +113,7 @@ logical_or = tf.logical_or
 map_fn = tf.map_fn
 matmul = tf.matmul
 maximum = tf.maximum
+max_pool2d = tf.keras.layers.MaxPooling2D
 minimum = tf.minimum
 one_hot = tf.one_hot
 pad = tf.pad
@@ -167,7 +168,6 @@ def get_variable(name, shape, initializer=None):
     else:
         return tf.Variable(initializer(shape), name=name)
 
-max_pool2d = tf.compat.v1.layers.max_pooling2d
 multinomial = tf.compat.v1.multinomial
 ones_init = partial(tf.compat.v1.keras.initializers.ones, dtype=tf.float32)
 run = tf.compat.v1.app.run

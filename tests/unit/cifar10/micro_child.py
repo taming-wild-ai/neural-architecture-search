@@ -382,7 +382,7 @@ class TestMicroChild(unittest.TestCase):
                         batch_norm2.assert_called_with(True, mc.data_format, mc.weights, 24, False)
                         batch_norm2().assert_called_with('s_conv2d')
                         s_conv2d.assert_called_with("relu", depthwise_filter="fw.create_weight", pointwise_filter="fw.create_weight", strides=[1, 1, 1, 1], padding="SAME", data_format="NHWC")
-                        adp.assert_called_with(max_pool2d(), 0)
+                        adp.assert_called_with(max_pool2d()(), 0)
                         fc.assert_called_with(mc, np_zeros(), [24] * 7, [16] * 7, 16, 24, True, mc.weights, False)
                         fc().assert_called_with([0, 'batch_norm2', 'adpadp', 'adpadp', 'adpadp', 'adpadp', 0])
 
@@ -392,7 +392,7 @@ class TestMicroChild(unittest.TestCase):
     @patch('src.cifar10.micro_child.fw.conv2d', return_value="conv2d")
     @patch('src.cifar10.micro_child.fw.relu', return_value="relu")
     @patch('src.cifar10.micro_child.fw.reshape', return_value="reshape")
-    @patch('src.cifar10.micro_child.fw.max_pool2d', return_value="max_pool2d")
+    @patch('src.cifar10.micro_child.fw.max_pool2d', return_value=mock.MagicMock(return_value='max_pool2d'))
     @patch('src.cifar10.micro_child.fw.avg_pool2d', return_value=mock.MagicMock(return_value="avg_pool2d"))
     def test_enas_cell(self, avg_pool2d, max_pool2d, reshape, relu, conv2d, batch_norm, stack, ec):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
