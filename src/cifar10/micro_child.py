@@ -224,8 +224,8 @@ class MicroChild(Child):
             print(f'Using aux_head at layer {layer_id}')
             with fw.name_scope('aux_head') as scope:
               self.aux_logits[layer_id] = [
-                lambda x: fw.avg_pool2d(
-                  fw.relu(x),
+                fw.relu,
+                fw.avg_pool2d(
                   [5, 5],
                   [3, 3],
                   "VALID",
@@ -424,7 +424,7 @@ class MicroChild(Child):
         else:
           inner1 = lambda x: x
         self.layers = [
-          lambda x: fw.avg_pool2d(x, [3, 3], [x_stride, x_stride], "SAME", data_format=child.data_format.actual),
+          fw.avg_pool2d([3, 3], [x_stride, x_stride], "SAME", data_format=child.data_format.actual),
           inner1,
           lambda x: MicroChild.Operator.inner2(x, child, is_training, layer_id)]
 
@@ -566,7 +566,7 @@ class MicroChild(Child):
   class AvgPool(LayeredModel):
     def __init__(self, data_format, num_input_chan: int, out_filters: int, reuse: bool, scope: str, curr_cell, prev_cell: int, weights):
       self.layers = [
-        lambda x: fw.avg_pool2d(x, [3, 3], [1, 1], 'SAME', data_format=data_format.actual)]
+        fw.avg_pool2d([3, 3], [1, 1], 'SAME', data_format=data_format.actual)]
       if num_input_chan != out_filters:
         w = weights.get(
           reuse,

@@ -781,9 +781,7 @@ class MacroChild(Child):
 
       self.layers = [layer0]
 
-      def avg_pool2d(x):
-        with fw.name_scope("pool"):
-          return fw.avg_pool2d(x, [3, 3], [1, 1], "SAME", data_format=child.data_format.actual)
+      avg_pool2d = fw.avg_pool2d([3, 3], [1, 1], 'SAME', data_format=child.data_format.actual)
 
       def max_pool2d(x):
         with fw.name_scope("pool"):

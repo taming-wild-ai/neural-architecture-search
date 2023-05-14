@@ -310,7 +310,8 @@ class TestMicroChild(unittest.TestCase):
                     do.assert_called_with(gap(), 0.9)
                     create_weight.assert_called_with(False, 'MicroChild/fc/', "w", [96, 10], None)
                     matmul.assert_called_with('dropout', "fw.create_weight")
-                    avg_pool2d.assert_called_with("relu", [5, 5], [3, 3], "VALID", data_format="channels_first")
+                    avg_pool2d.assert_called_with([5, 5], [3, 3], "VALID", data_format="channels_first")
+                    avg_pool2d().assert_called_with('relu')
 
     @patch('src.cifar10.micro_child.BatchNorm', return_value=mock.MagicMock(return_value="batch_norm"))
     @patch('src.cifar10.micro_child.fw.separable_conv2d', return_value="s_conv2d")
@@ -392,7 +393,7 @@ class TestMicroChild(unittest.TestCase):
     @patch('src.cifar10.micro_child.fw.relu', return_value="relu")
     @patch('src.cifar10.micro_child.fw.reshape', return_value="reshape")
     @patch('src.cifar10.micro_child.fw.max_pool2d', return_value="max_pool2d")
-    @patch('src.cifar10.micro_child.fw.avg_pool2d', return_value="avg_pool2d")
+    @patch('src.cifar10.micro_child.fw.avg_pool2d', return_value=mock.MagicMock(return_value="avg_pool2d"))
     def test_enas_cell(self, avg_pool2d, max_pool2d, reshape, relu, conv2d, batch_norm, stack, ec):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
@@ -400,7 +401,8 @@ class TestMicroChild(unittest.TestCase):
                 with patch.object(mc.weights, 'get', return_value="fw.create_weight") as create_weight:
                     mcec = MicroChild.ENASCell(mc, 0, 1, 3, 24, mc.weights, False)
                     mcec(None, 0)
-                    avg_pool2d.assert_called_with(None, [3, 3], [1, 1], "SAME", data_format="channels_last")
+                    avg_pool2d.assert_called_with([3, 3], [1, 1], "SAME", data_format="channels_last")
+                    avg_pool2d().assert_called_with(None)
                     create_weight.assert_called_with(False, 'x_conv/', "w", [1, 72], None)
                     reshape.assert_called_with('w', [1, 1, 3, 24])
                     relu.assert_called_with(None)

@@ -248,8 +248,8 @@ class TestParameterCounts(unittest.TestCase):
                 shuffle = mc.ValidationRLShuffle(mc, False)
                 vrl = mc.ValidationRL()
                 x_valid_shuffle, y_valid_shuffle = shuffle(mc.images['valid_original'], mc.labels['valid_original'])
-                logits = MicroChild.Model(mc, True, True)(x_valid_shuffle)
-                vrl(logits, y_valid_shuffle)
+                logits_aux_logits = MicroChild.Model(mc, True, True)(x_valid_shuffle)
+                vrl(logits_aux_logits[0], y_valid_shuffle)
                 num_aux_params = count_model_params([var for var in fw.trainable_variables() if (var.name.startswith(mc.name) and 'aux_head' in var.name)])
                 self.assertEqual(412928, num_aux_params)
 

@@ -73,6 +73,7 @@ def Variable(initial, name="Variable", trainable=False, dtype=None, import_scope
 add_n = tf.add_n
 argmax = tf.argmax
 avg_pool = tf.nn.avg_pool
+avg_pool2d = tf.keras.layers.AveragePooling2D
 bool = tf.bool
 boolean_mask = tf.boolean_mask
 case = tf.case
@@ -149,7 +150,6 @@ zeros_like = tf.zeros_like
 ConfigProto = partial(tf.compat.v1.ConfigProto, allow_soft_placement=True)
 Saver = partial(tf.compat.v1.train.Saver, max_to_keep=2)
 Session = tf.compat.v1.train.SingularMonitoredSession
-avg_pool2d = tf.compat.v1.layers.average_pooling2d
 batch = partial(
     tf.compat.v1.train.batch,
     enqueue_many=True,
