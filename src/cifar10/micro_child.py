@@ -656,7 +656,7 @@ class MicroChild(Child):
         [num_possible_inputs, out_filters * out_filters], None)[prev_cell, :]
       def inner(x):
         return fw.fused_batch_norm(
-          fw.separable_conv2d(
+          x=fw.separable_conv2d(
             fw.relu(x),
             depthwise_filter=fw.reshape(
               weight_depthwise,
@@ -667,8 +667,10 @@ class MicroChild(Child):
             strides=[1, 1, 1, 1],
             padding="SAME",
             data_format=data_format.name),
-          scale,
-          offset,
+          scale=scale,
+          offset=offset,
+          mean=x,
+          variance=x,
           epsilon=1e-5,
           data_format=data_format.name,
           is_training=True)[0]

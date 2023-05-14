@@ -15,7 +15,7 @@ class TestImageOps(unittest.TestCase):
     @patch('src.cifar10.image_ops.fw.control_dependencies')
     @patch('src.cifar10.image_ops.moving_averages', return_value="ama")
     @patch('src.cifar10.image_ops.fw.constant_initializer', return_value="constant")
-    @patch('src.cifar10.image_ops.fw.fused_batch_norm', return_value="fbn")
+    @patch('src.cifar10.image_ops.fw.fused_batch_norm', return_value=("fbn", 1.0, 1.0, 1.0, 1.0))
     @patch('src.cifar10.image_ops.fw.identity', return_value="identity")
     def test_batch_norm_nhwc_training(self, identity, fbn, constant, ama, cd):
         mock_weights = mock.MagicMock()
@@ -25,8 +25,8 @@ class TestImageOps(unittest.TestCase):
             bn = BatchNorm(True, DataFormat.new('NHWC'), mock_weights, 3, True)
             self.assertEqual("identity", bn(input_tensor))
             mock_weights.get.assert_any_call(True, 'bn/', "offset", [3], "constant")
-            fbn.assert_called_with(input_tensor, "get_variable", "get_variable", epsilon=1e-5, data_format="NHWC", is_training=True)
-            identity.assert_called_with("f")
+            fbn.assert_called_with(x=input_tensor, scale="get_variable", offset="get_variable", mean=input_tensor, variance=input_tensor, epsilon=1e-5, data_format="NHWC", is_training=True)
+            identity.assert_called_with("fbn")
 
     @patch('src.cifar10.image_ops.fw.constant_initializer', return_value="constant")
     @patch('src.cifar10.image_ops.fw.fused_batch_norm', return_value="fbn")
@@ -45,7 +45,7 @@ class TestImageOps(unittest.TestCase):
     @patch('src.cifar10.image_ops.fw.control_dependencies')
     @patch('src.cifar10.image_ops.fw.identity', return_value="identity")
     @patch('src.cifar10.image_ops.fw.scatter_sub', return_value="scatter_sub")
-    @patch('src.cifar10.image_ops.fw.fused_batch_norm', return_value=("fbn", 1.0, 1.0))
+    @patch('src.cifar10.image_ops.fw.fused_batch_norm', return_value=("fbn", 1.0, 1.0, 1.0, 1.0))
     @patch('src.cifar10.image_ops.fw.boolean_mask', return_value=1.0)
     @patch('src.cifar10.image_ops.fw.constant_initializer', return_value="constant")
     @patch('src.cifar10.image_ops.fw.reshape')
@@ -56,7 +56,7 @@ class TestImageOps(unittest.TestCase):
         bn = BatchNormWithMask(True, None, 3, weights_mock, True)
         self.assertEqual("identity", bn(None))
 
-    @patch('src.cifar10.image_ops.fw.fused_batch_norm', return_value="fbn")
+    @patch('src.cifar10.image_ops.fw.fused_batch_norm', return_value=("fbn", 1.0, 1.0, 1.0, 1.0))
     @patch('src.cifar10.image_ops.fw.boolean_mask', return_value="boolean_mask")
     @patch('src.cifar10.image_ops.fw.constant_initializer', return_value="constant")
     @patch('src.cifar10.image_ops.fw.reshape')
@@ -66,7 +66,7 @@ class TestImageOps(unittest.TestCase):
         weights_mock = mock.MagicMock()
         with tf.Graph().as_default():
             bn = BatchNormWithMask(False, None, 3, weights_mock, True)
-            self.assertEqual('f', bn(None))
+            self.assertEqual('fbn', bn(None))
             where.assert_called_with(None)
             to_int32.assert_called_with("where")
             reshape.assert_called_with("to_int32", [-1])
@@ -75,7 +75,7 @@ class TestImageOps(unittest.TestCase):
             weights_mock.get.assert_any_call(True, 'bn/', "scale", [3], "constant")
             weights_mock.get.assert_any_call(True, 'bn/', "offset", [3], "constant")
             boolean_mask.assert_called_with(weights_mock.get(), None)
-            fbn.assert_called_with(None, "boolean_mask", "boolean_mask", mean="boolean_mask", variance="boolean_mask", epsilon=0.001, data_format="NHWC", is_training=False)
+            fbn.assert_called_with(x=None, scale='boolean_mask', offset='boolean_mask', mean='boolean_mask', variance='boolean_mask', epsilon=0.001, data_format='NHWC', is_training=False)
 
 if "__main__" == __name__:
     unittest.main()

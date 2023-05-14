@@ -27,8 +27,14 @@ class BatchNorm(LayeredModel):
     if is_training:
 
       def identity(x):
-        x, mean, variance = fw.fused_batch_norm(
-          x, scale, offset, epsilon=epsilon, data_format=data_format.name,
+        x, mean, variance, _1, _2 = fw.fused_batch_norm(
+          x=x,
+          scale=scale,
+          offset=offset,
+          mean=x,
+          variance=x,
+          epsilon=epsilon,
+          data_format=data_format.name,
           is_training=True)
         update_mean = moving_averages.assign_moving_average(
           moving_mean, mean, decay)
@@ -85,8 +91,14 @@ class BatchNormWithMask(LayeredModel):
     if is_training:
 
       def identity(x):
-        x, mean, variance = fw.fused_batch_norm(
-          x, scale, offset, epsilon=epsilon, data_format=data_format,
+        x, mean, variance, _1, _2 = fw.fused_batch_norm(
+          x=x,
+          scale=scale,
+          offset=offset,
+          mean=x,
+          variance=x,
+          epsilon=epsilon,
+          data_format=data_format,
           is_training=True)
         with fw.control_dependencies([
             fw.scatter_sub(moving_mean, indices, (1.0 - decay) * (fw.boolean_mask(moving_mean, mask) - mean)),
@@ -97,10 +109,10 @@ class BatchNormWithMask(LayeredModel):
     else:
 
       def fbn(x):
-        x, _, _ = fw.fused_batch_norm(
-          x,
-          scale,
-          offset,
+        x, _, _, _, _ = fw.fused_batch_norm(
+          x=x,
+          scale=scale,
+          offset=offset,
           mean=fw.boolean_mask(moving_mean, mask),
           variance=fw.boolean_mask(moving_variance, mask),
           epsilon=epsilon, data_format=data_format,

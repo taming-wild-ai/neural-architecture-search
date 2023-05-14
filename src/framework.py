@@ -98,6 +98,7 @@ exp = tf.exp
 fill = tf.fill
 float32 = tf.float32
 floor = tf.floor
+fused_batch_norm = tf.raw_ops.FusedBatchNorm
 gather = tf.gather
 global_norm = tf.linalg.global_norm
 gradients = tf.gradients
@@ -158,7 +159,6 @@ batch = partial(
     allow_smaller_final_batch=True)
 exp_decay = tf.compat.v1.train.exponential_decay
 flags = tf.compat.v1.flags
-fused_batch_norm = tf.compat.v1.nn.fused_batch_norm
 get_or_create_global_step = tf.compat.v1.train.get_or_create_global_step
 
 def get_variable(name, shape, initializer=None):

@@ -432,7 +432,7 @@ class TestMicroChild(unittest.TestCase):
                     reshape.assert_called_with(create_weight().__getitem__(), [1, 1, 24, 24])
                     relu.assert_called_with('f')
                     s_conv.assert_called_with('relu', depthwise_filter='reshape', pointwise_filter='reshape', strides=[1, 1, 1, 1], padding="SAME", data_format="NHWC")
-                    fbn.assert_called_with('s_conv2d', create_weight().__getitem__(), create_weight().__getitem__(), epsilon=1e-05, data_format='NHWC', is_training=True)
+                    fbn.assert_called_with(x='s_conv2d', scale=create_weight().__getitem__(), offset=create_weight().__getitem__(), mean='f', variance='f', epsilon=1e-05, data_format='NHWC', is_training=True)
                     zeros.assert_called_with()
                     ones.assert_called_with()
 
