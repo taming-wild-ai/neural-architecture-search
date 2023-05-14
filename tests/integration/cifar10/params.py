@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch
 
 import numpy as np
+from absl import flags
 import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
 
@@ -14,7 +15,7 @@ import src.framework as fw
 import sys
 
 class RestoreFLAGS:
-    fw.FLAGS(sys.argv) # Need to parse flags before accessing them
+    flags.FLAGS(sys.argv) # Need to parse flags before accessing them
 
     def __init__(self, **kwargs):
         self.kwargs = kwargs
@@ -22,12 +23,12 @@ class RestoreFLAGS:
 
     def __enter__(self):
         for key, value in self.kwargs.items():
-            self.old_values[key] = fw.FLAGS.__getattr__(key)
-            fw.FLAGS.__setattr__(key, value)
+            self.old_values[key] = flags.FLAGS.__getattr__(key)
+            flags.FLAGS.__setattr__(key, value)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         for key, value in self.old_values.items():
-            fw.FLAGS.__setattr__(key, value)
+            flags.FLAGS.__setattr__(key, value)
 
 
 class TestParameterCounts(unittest.TestCase):

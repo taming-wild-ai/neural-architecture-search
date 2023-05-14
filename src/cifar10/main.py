@@ -5,6 +5,7 @@ import sys
 import time
 
 import numpy as np
+from absl import flags
 import src.framework as fw
 
 from src import utils
@@ -39,7 +40,7 @@ def get_ops(images, labels):
     images: dict with keys {"train", "valid", "test"}.
     labels: dict with keys {"train", "valid", "test"}.
   """
-  FLAGS = fw.FLAGS
+  FLAGS = flags.FLAGS
   assert FLAGS.search_for is not None, "Please specify --search_for"
 
   if FLAGS.search_for == "micro":
@@ -116,7 +117,7 @@ def get_ops(images, labels):
 
 
 def train():
-  FLAGS = fw.FLAGS
+  FLAGS = flags.FLAGS
   if FLAGS.child_fixed_arc is None:
     images, labels = read_data(FLAGS.data_path)
   else:
@@ -250,7 +251,7 @@ def train():
 
 
 def main(_):
-  FLAGS = fw.FLAGS
+  FLAGS = flags.FLAGS
   print(("-" * 80))
   if not os.path.isdir(FLAGS.output_dir):
     print(("Path {} does not exist. Creating.".format(FLAGS.output_dir)))

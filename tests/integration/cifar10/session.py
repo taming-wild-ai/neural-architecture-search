@@ -1,5 +1,6 @@
 import sys
 import unittest
+from absl import flags
 import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
 
@@ -8,7 +9,7 @@ import src.framework as fw
 
 
 class RestoreFLAGS:
-    fw.FLAGS(sys.argv) # Need to parse flags before accessing them
+    flags.FLAGS(sys.argv) # Need to parse flags before accessing them
 
     def __init__(self, **kwargs):
         self.kwargs = kwargs
@@ -16,12 +17,12 @@ class RestoreFLAGS:
 
     def __enter__(self):
         for key, value in self.kwargs.items():
-            self.old_values[key] = fw.FLAGS.__getattr__(key)
-            fw.FLAGS.__setattr__(key, value)
+            self.old_values[key] = flags.FLAGS.__getattr__(key)
+            flags.FLAGS.__setattr__(key, value)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         for key, value in self.old_values.items():
-            fw.FLAGS.__setattr__(key, value)
+            flags.FLAGS.__setattr__(key, value)
 
 
 class TestSession(unittest.TestCase):
@@ -59,7 +60,7 @@ class TestSession(unittest.TestCase):
             "controller_tanh_constant": 1.1,
             "controller_op_tanh_reduce": 2.5}
         with RestoreFLAGS(**micro_search_flags):
-            images, labels = read_data(fw.FLAGS.data_path)
+            images, labels = read_data(flags.FLAGS.data_path)
             with tf.Graph().as_default():
                 ops = get_ops(images, labels)
                 logits_graph =     ops['child']['model'](ops['child']['images'])
@@ -119,7 +120,7 @@ class TestSession(unittest.TestCase):
             "controller_tanh_constant": 1.5,
             "controller_op_tanh_reduce": 2.5}
         with RestoreFLAGS(**micro_final_flags):
-            images, labels = read_data(fw.FLAGS.data_path)
+            images, labels = read_data(flags.FLAGS.data_path)
             with tf.Graph().as_default():
                 ops = get_ops(images, labels)
                 logits_graph =     ops['child']['model'](ops['child']['images'])
@@ -179,7 +180,7 @@ class TestSession(unittest.TestCase):
             "controller_skip_target": 0.4,
             "controller_skip_weight": 0.8 }
         with RestoreFLAGS(**macro_search_flags):
-            images, labels = read_data(fw.FLAGS.data_path)
+            images, labels = read_data(flags.FLAGS.data_path)
             with tf.Graph().as_default():
                 ops = get_ops(images, labels)
                 logits_graph =     ops['child']['model'](ops['child']['images'])
@@ -261,7 +262,7 @@ class TestSession(unittest.TestCase):
             "controller_skip_target": 0.4,
             "controller_skip_weight": 0.8 }
         with RestoreFLAGS(**macro_search_flags):
-            images, labels = read_data(fw.FLAGS.data_path)
+            images, labels = read_data(flags.FLAGS.data_path)
             with tf.Graph().as_default():
                 ops = get_ops(images, labels)
                 logits_graph =     ops['child']['model'](ops['child']['images'])

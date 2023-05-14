@@ -3,6 +3,7 @@ import unittest.mock as mock
 from unittest.mock import patch
 
 import numpy as np
+from absl import flags
 import src.framework as fw
 
 from src.cifar10.macro_controller import MacroController
@@ -72,11 +73,11 @@ class TestMacroController(unittest.TestCase):
     @patch('src.cifar10.macro_controller.print')
     def test_constructor_whole_channels(self, print, zeros, get_variable, matmul, stack_lstm, multinomial, to_int32, reshape, sscewl, stop_gradient, embedding_lookup, concat, tanh, stack, reduce_sum, reduce_mean, to_float, rui):
         rui.__call__ = mock.MagicMock(return_value='rui')
-        fw.FLAGS.controller_search_whole_channels = True
-        fw.FLAGS.child_num_layers = 4
-        fw.FLAGS.child_num_branches = 6
-        fw.FLAGS.child_out_filters = 24
-        fw.FLAGS.controller_tanh_constant = 0.5
+        flags.FLAGS.controller_search_whole_channels = True
+        flags.FLAGS.child_num_layers = 4
+        flags.FLAGS.child_num_branches = 6
+        flags.FLAGS.child_out_filters = 24
+        flags.FLAGS.controller_tanh_constant = 0.5
         with tf.Graph().as_default():
             self.assertEqual(MacroController, type(MacroController(temperature=0.9)))
         print.assert_any_call('-' * 80)
@@ -120,11 +121,11 @@ class TestMacroController(unittest.TestCase):
         grad_norm = mock.MagicMock(name='grad_norm', return_value='grad_norm')
         get_train_ops.return_value = (train_op, 2, grad_norm, 4)
         variable(0.0, dtype=fw.float32).assign_sub = mock.MagicMock(return_value='assign_sub')
-        fw.FLAGS.child_num_layers = 4
-        fw.FLAGS.child_num_branches = 6
-        fw.FLAGS.child_out_filters = 24
-        fw.FLAGS.controller_tanh_constant = 0.5
-        fw.FLAGS.controller_search_whole_channels = False
+        flags.FLAGS.child_num_layers = 4
+        flags.FLAGS.child_num_branches = 6
+        flags.FLAGS.child_out_filters = 24
+        flags.FLAGS.controller_tanh_constant = 0.5
+        flags.FLAGS.controller_search_whole_channels = False
         with tf.Graph().as_default() as graph:
             variable(0.0, dtype=fw.float32)._as_graph_element = mock.MagicMock(return_value=graph)
             mc = MacroController(temperature=0.9)

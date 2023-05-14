@@ -4,6 +4,9 @@ from __future__ import print_function
 
 import sys
 import numpy as np
+from absl import app
+from absl import flags
+from absl import logging
 
 import src.framework as fw
 
@@ -201,25 +204,25 @@ user_flags = []
 
 
 def DEFINE_string(name, default_value, doc_string):
-  fw.DEFINE_string(name, default_value, doc_string)
+  flags.DEFINE_string(name, default_value, doc_string)
   global user_flags
   user_flags.append(name)
 
 
 def DEFINE_integer(name, default_value, doc_string):
-  fw.DEFINE_integer(name, default_value, doc_string)
+  flags.DEFINE_integer(name, default_value, doc_string)
   global user_flags
   user_flags.append(name)
 
 
 def DEFINE_float(name, default_value, doc_string):
-  fw.DEFINE_float(name, default_value, doc_string)
+  flags.DEFINE_float(name, default_value, doc_string)
   global user_flags
   user_flags.append(name)
 
 
 def DEFINE_boolean(name, default_value, doc_string):
-  fw.DEFINE_boolean(name, default_value, doc_string)
+  flags.DEFINE_boolean(name, default_value, doc_string)
   global user_flags
   user_flags.append(name)
 
@@ -228,7 +231,7 @@ def print_user_flags(line_limit=80):
   print("-" * 80)
 
   global user_flags
-  FLAGS = fw.FLAGS
+  FLAGS = flags.FLAGS
 
   for flag_name in sorted(user_flags):
     value = "{}".format(getattr(FLAGS, flag_name))

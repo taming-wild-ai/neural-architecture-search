@@ -7,6 +7,7 @@ import os
 import time
 
 import numpy as np
+from absl import flags
 import src.framework as fw
 
 from src.controller import Controller
@@ -33,7 +34,7 @@ class MicroController(Controller):
                name="controller",
                **kwargs):
     super(MicroController, self).__init__()
-    FLAGS = fw.FLAGS
+    FLAGS = flags.FLAGS
     print("-" * 80)
     print("Building ConvController")
 

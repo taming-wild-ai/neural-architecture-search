@@ -2,6 +2,7 @@ import unittest
 import unittest.mock as mock
 from unittest.mock import patch
 
+from absl import flags
 import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
 import numpy as np
@@ -36,7 +37,7 @@ class TestChild(unittest.TestCase):
             with patch('src.cifar10.child.fw.batch', return_value=(x_train, y_train)) as batch:
                 with patch('src.cifar10.child.fw.map_fn', return_value=x_train) as map_fn:
                     from src.cifar10.child import fw
-                    fw.FLAGS.data_format = "NCHW"
+                    flags.FLAGS.data_format = "NCHW"
                     m = Child(x_train, y_train, optim_algo="sgd")
                     print.assert_any_call('-' * 80)
                     print.assert_any_call("Build model generic_model")

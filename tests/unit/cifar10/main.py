@@ -2,12 +2,13 @@ import unittest
 import sys
 import unittest.mock as mock
 from unittest.mock import patch
+from absl import flags
 
 import src.cifar10.main as main
 
 
 class RestoreFLAGS:
-    main.fw.FLAGS(sys.argv) # Need to parse flags before accessing them
+    main.flags.FLAGS(sys.argv) # Need to parse flags before accessing them
 
     def __init__(self, **kwargs):
         self.kwargs = kwargs
@@ -15,12 +16,12 @@ class RestoreFLAGS:
 
     def __enter__(self):
         for key, value in self.kwargs.items():
-            self.old_values[key] = main.fw.FLAGS.__getattr__(key)
-            main.fw.FLAGS.__setattr__(key, value)
+            self.old_values[key] = main.flags.FLAGS.__getattr__(key)
+            main.flags.FLAGS.__setattr__(key, value)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         for key, value in self.old_values.items():
-            main.fw.FLAGS.__setattr__(key, value)
+            main.flags.FLAGS.__setattr__(key, value)
 
 
 class TestCIFAR10Main(unittest.TestCase):

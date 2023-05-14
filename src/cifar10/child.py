@@ -2,6 +2,7 @@ import sys
 
 import numpy as np
 import src.framework as fw
+from absl import flags
 
 from src.utils import count_model_params
 from src.utils import get_train_ops
@@ -165,7 +166,7 @@ class Child(object):
     Args:
       lr_dec_every: number of epochs to decay
     """
-    FLAGS = fw.FLAGS
+    FLAGS = flags.FLAGS
     print("-" * 80)
     print("Build model {}".format(name))
 

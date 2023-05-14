@@ -84,6 +84,7 @@ def concat(values, axis, name=None):
   return tf.concat(values, axis, name)
 cond = tf.cond
 constant = tf.constant
+constant_initializer = tf.constant_initializer
 control_dependencies = tf.control_dependencies
 conv2d = tf.nn.conv2d
 cos = tf.cos
@@ -146,12 +147,6 @@ zeros_like = tf.zeros_like
 
 # TensorFlow 1 Compatibility
 ConfigProto = partial(tf.compat.v1.ConfigProto, allow_soft_placement=True)
-constant_initializer = tf.constant_initializer
-DEFINE_boolean = tf.compat.v1.app.flags.DEFINE_boolean
-DEFINE_float = tf.compat.v1.app.flags.DEFINE_float
-DEFINE_integer = tf.compat.v1.app.flags.DEFINE_integer
-DEFINE_string = tf.compat.v1.app.flags.DEFINE_string
-FLAGS = tf.compat.v1.app.flags.FLAGS
 Saver = partial(tf.compat.v1.train.Saver, max_to_keep=2)
 Session = tf.compat.v1.train.SingularMonitoredSession
 avg_pool2d = tf.compat.v1.layers.average_pooling2d

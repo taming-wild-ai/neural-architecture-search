@@ -6,6 +6,7 @@ import os
 import sys
 
 import numpy as np
+from absl import flags
 import src.framework as fw
 
 from src.cifar10.child import Child
@@ -42,7 +43,7 @@ class MicroChild(Child):
       lr_dec_start=lr_dec_start,
       optim_algo=optim_algo,
       name=name)
-    FLAGS = fw.FLAGS
+    FLAGS = flags.FLAGS
 
     self.use_aux_heads = FLAGS.child_use_aux_heads
     self.num_epochs = FLAGS.num_epochs

@@ -5,6 +5,7 @@ from __future__ import print_function
 import sys
 
 import numpy as np
+from absl import flags
 import src.framework as fw
 
 from src.cifar10.child import Child
@@ -33,7 +34,7 @@ class MacroChild(Child):
       lr_dec_start=lr_dec_start,
       optim_algo=optim_algo,
       name=name)
-    FLAGS = fw.FLAGS
+    FLAGS = flags.FLAGS
     self.whole_channels = FLAGS.controller_search_whole_channels
     self.lr_min = lr_min
     self.out_filters_scale = FLAGS.child_out_filters_scale

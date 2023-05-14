@@ -1,4 +1,5 @@
 import src.framework as fw
+from absl import flags
 
 from src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer, DEFINE_string, LearningRate
 
@@ -17,7 +18,7 @@ DEFINE_integer("controller_num_replicas", 1, "")
 
 class Controller(object):
   def __init__(self):
-    FLAGS = fw.FLAGS
+    FLAGS = flags.FLAGS
     self.search_for = FLAGS.search_for
     self.tanh_constant = FLAGS.controller_tanh_constant
     self.temperature = FLAGS.controller_temperature

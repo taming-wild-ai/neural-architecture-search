@@ -3,6 +3,7 @@ import os
 import time
 
 import numpy as np
+from absl import flags
 import src.framework as fw
 
 from src.controller import Controller
@@ -30,7 +31,7 @@ class MacroController(Controller):
                *args,
                **kwargs):
     super(MacroController, self).__init__()
-    FLAGS = fw.FLAGS
+    FLAGS = flags.FLAGS
     print("-" * 80)
     print("Building ConvController")
 

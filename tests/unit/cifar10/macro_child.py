@@ -3,6 +3,7 @@ import unittest.mock as mock
 from unittest.mock import patch
 
 import numpy as np
+from absl import flags
 import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
 import src.framework as fw
@@ -633,7 +634,7 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.macro_child.fw.relu', return_value="relu")
     @patch('src.cifar10.macro_child.fw.max_pool2d')
     def test_pool_branch_nchw_max(self, max_pool2d, relu, batch_norm1, batch_norm, conv2d):
-        fw.FLAGS.controller_search_whole_channels = True
+        flags.FLAGS.controller_search_whole_channels = True
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
             with patch.object(mc.weights, 'get', return_value=tf.Variable(initial_value=np.zeros((24, 24, 24, 1)))) as create_weight:
