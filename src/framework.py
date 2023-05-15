@@ -1,6 +1,5 @@
 import sys
 import tensorflow as tf
-# import tensorflow_addons as tfa
 
 from collections import defaultdict
 from functools import partial
@@ -153,6 +152,8 @@ sqrt = tf.sqrt
 stack = tf.stack
 stop_gradient = tf.stop_gradient
 tanh = tf.tanh
+to_float = lambda x: tf.cast(x, tf.float32)
+to_int32 = lambda x: tf.cast(x, tf.int32)
 transpose = tf.transpose
 where = tf.where
 while_loop = tf.while_loop
@@ -185,8 +186,6 @@ def shuffle_batch(data, batch_size, seed, capacity=25000):
         seed=seed,
         allow_smaller_final_batch=True)
 
-to_float = tf.compat.v1.to_float
-to_int32 = tf.compat.v1.to_int32
 trainable_variables = tf.compat.v1.trainable_variables
 
 
@@ -216,9 +215,3 @@ class Optimizer(object):
             replicas_to_aggregate=num_aggregate,
             total_num_replicas=num_replicas,
             use_locking=True)
-
-    # @staticmethod
-    # def MovingAverage(opt, moving_average):
-    #     return tfa.optimizers.MovingAverage(
-    #         opt,
-    #         average_decay=moving_average)
