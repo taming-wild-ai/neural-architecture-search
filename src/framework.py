@@ -137,10 +137,13 @@ range = tf.range
 reduce_mean = tf.reduce_mean
 reduce_sum = tf.reduce_sum
 relu = tf.nn.relu
+
 def reshape(tensor, shape, name=None):
   if name is None:
     name = name_scope().current() + "Reshape"
   return tf.reshape(tensor, shape, name)
+
+scatter_sub = tf.tensor_scatter_nd_sub
 separable_conv2d = tf.nn.separable_conv2d
 shape = tf.shape
 sigmoid = tf.sigmoid
@@ -173,7 +176,6 @@ batch = partial(
     allow_smaller_final_batch=True)
 get_or_create_global_step = tf.compat.v1.train.get_or_create_global_step
 run = tf.compat.v1.app.run
-scatter_sub = partial(tf.compat.v1.scatter_sub, use_locking=True)
 
 def shuffle_batch(data, batch_size, seed, capacity=25000):
     return tf.compat.v1.train.shuffle_batch(
