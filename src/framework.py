@@ -50,7 +50,7 @@ class WeightRegistry(object):
   def create_weight(self, scope, name, shape, initializer=None, trainable=True):
     if initializer is None:
       initializer = self.default_initializer
-    return Variable(initializer(shape), name=name, trainable=trainable, import_scope=scope)
+    return Variable(initializer(shape, tf.float32), name=name, trainable=trainable, import_scope=scope)
 
   def get(self, reuse: bool, scope, name, shape, initializer, trainable=True):
     if not reuse:
@@ -127,6 +127,7 @@ max_pool2d = tf.keras.layers.MaxPooling2D
 minimum = tf.minimum
 multinomial = tf.random.categorical
 one_hot = tf.one_hot
+ones_init = tf.ones_initializer
 pad = tf.pad
 random_crop = tf.image.random_crop
 random_flip_left_right = tf.image.random_flip_left_right
@@ -158,6 +159,7 @@ transpose = tf.transpose
 where = tf.where
 while_loop = tf.while_loop
 zeros = tf.zeros
+zeros_init = tf.zeros_initializer
 zeros_like = tf.zeros_like
 
 # TensorFlow 1 Compatibility
@@ -170,10 +172,8 @@ batch = partial(
     num_threads=1,
     allow_smaller_final_batch=True)
 get_or_create_global_step = tf.compat.v1.train.get_or_create_global_step
-ones_init = partial(tf.compat.v1.keras.initializers.ones, dtype=tf.float32)
 run = tf.compat.v1.app.run
 scatter_sub = partial(tf.compat.v1.scatter_sub, use_locking=True)
-zeros_init = partial(tf.compat.v1.keras.initializers.zeros, dtype=tf.float32)
 
 def shuffle_batch(data, batch_size, seed, capacity=25000):
     return tf.compat.v1.train.shuffle_batch(
