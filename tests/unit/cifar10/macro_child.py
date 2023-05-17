@@ -26,6 +26,7 @@ def mock_init(self, images, labels, **kwargs):
     self.x_train, self.y_train = None, None
     self.x_valid, self.y_valid = None, None
     self.x_test, self.y_test = None, None
+    self.global_step = fw.get_or_create_global_step()
 
 def mock_init_nhwc(self, images, labels, **kwargs):
     self.whole_channels = False
@@ -693,7 +694,7 @@ class TestMacroChild(unittest.TestCase):
             mc.num_aggregate = None
             mc.num_replicas = None
             mc.name = "macro_child"
-            loss0, train_loss0, train_acc0, global_step0, train_op0, lr, grad_norm0, optimizer = mc._build_train(mc.y_train)
+            loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train(mc.y_train)
             logits = MacroChild.Model(mc, True)(mc.x_train)
             loss = loss0(logits)
             train_acc = train_acc0(logits)
@@ -807,7 +808,7 @@ class TestMacroChild(unittest.TestCase):
     def test_connect_controller_no_fixed_arc(self):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
-        with patch.object(mc, '_build_train', return_value=('loss', 'train_loss', 'acc', 'gs', 'op', 'lr', 'gn', 'o')) as build_train:
+        with patch.object(mc, '_build_train', return_value=('loss', 'train_loss', 'acc', 'op', 'lr', 'gn', 'o')) as build_train:
             with patch.object(mc, '_build_valid', return_value=('predictions', 'accuracy')) as build_valid:
                 with patch.object(mc, '_build_test', return_value=('predictions', 'accuracy')) as build_test:
                     controller_mock = mock.MagicMock()
@@ -821,7 +822,7 @@ class TestMacroChild(unittest.TestCase):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
         mc.fixed_arc = ""
-        with patch.object(mc, '_build_train', return_value=('loss', 'train_loss', 'acc', 'gs', 'op', 'lr', 'gn', 'o')) as build_train:
+        with patch.object(mc, '_build_train', return_value=('loss', 'train_loss', 'acc', 'op', 'lr', 'gn', 'o')) as build_train:
             with patch.object(mc, '_build_valid', return_value=('predictions', 'accuracy')) as build_valid:
                 with patch.object(mc, '_build_test', return_value=('predictions', 'accuracy')) as build_test:
                     controller_mock = mock.MagicMock()

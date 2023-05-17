@@ -52,8 +52,6 @@ class MicroChild(Child):
     self.lr_min = lr_min
     self.num_cells = FLAGS.child_num_cells
 
-    self.global_step = fw.get_or_create_global_step()
-
     if self.drop_path_keep_prob is not None:
       assert self.num_epochs is not None, "Need num_epochs to drop_path"
 

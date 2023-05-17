@@ -816,16 +816,14 @@ class MacroChild(Child):
     train_acc = MacroChild.TrainModel(y)
     print("-" * 80)
     print("Build train graph")
-
-    global_step = fw.get_or_create_global_step()
     train_op, lr, grad_norm, optimizer = get_train_ops(
-      global_step,
+      self.global_step,
       self.learning_rate,
       clip_mode=self.clip_mode,
       l2_reg=self.l2_reg,
       num_train_batches=self.num_train_batches,
       optim_algo=self.optim_algo)
-    return loss, loss, train_acc, global_step, train_op, lr, grad_norm, optimizer
+    return loss, loss, train_acc, train_op, lr, grad_norm, optimizer
 
 
   def _build_valid(self, y):
@@ -902,7 +900,7 @@ class MacroChild(Child):
     else:
       self.sample_arc = np.array([int(x) for x in self.fixed_arc.split(" ") if x])
 
-    self.loss, self.train_loss, self.train_acc, self.global_step, train_op, lr, grad_norm, optimizer = self._build_train(self.y_train)
+    self.loss, self.train_loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train(self.y_train)
     self.valid_preds, self.valid_acc = self._build_valid(self.y_valid) # unused?
     self.test_preds, self.test_acc = self._build_test(self.y_test) # unused?
     return train_op, lr, grad_norm, optimizer

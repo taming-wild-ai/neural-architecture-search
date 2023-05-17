@@ -185,8 +185,7 @@ class Child(object):
     self.data_format = DataFormat.new(FLAGS.data_format)
     self.name = name
     self.seed = seed
-
-    self.global_step = None
+    self.global_step = fw.get_or_create_global_step()
     self.valid_acc = None
     self.test_acc = None
     print("Build data ops")

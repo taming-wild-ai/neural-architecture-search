@@ -6,7 +6,7 @@ import numpy as np
 
 from src.cifar10.micro_child import MicroChild
 from src.cifar10.child import Child, DataFormat
-from src.framework import WeightRegistry
+from src.framework import WeightRegistry, get_or_create_global_step
 
 import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
@@ -25,6 +25,7 @@ def mock_init_nhwc(self, images, labels, **kwargs):
     self.x_train, self.y_train = None, None
     self.x_valid, self.y_valid = None, None
     self.x_test, self.y_test = None, None
+    self.global_step = get_or_create_global_step()
 
 def mock_init_nchw(self, images, labels, **kwargs):
     self.data_format = DataFormat.new("NCHW")
@@ -40,6 +41,7 @@ def mock_init_nchw(self, images, labels, **kwargs):
     self.x_train, self.y_train = None, None
     self.x_valid, self.y_valid = None, None
     self.x_test, self.y_test = None, None
+    self.global_step = get_or_create_global_step()
 
 def mock_init_invalid_data_format(self, images, labels, **kwargs):
     self.data_format = DataFormat.new("INVALID")
@@ -156,6 +158,7 @@ class TestMicroChild(unittest.TestCase):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
+                mc.global_step = get_or_create_global_step()
                 mc._apply_drop_path(None, 0)
                 to_float.assert_called_with(310)
                 minimum.assert_called_with(1.0, 1.0)
