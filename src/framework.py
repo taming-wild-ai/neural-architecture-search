@@ -174,7 +174,6 @@ batch = partial(
     enqueue_many=True,
     num_threads=1,
     allow_smaller_final_batch=True)
-get_or_create_global_step = tf.compat.v1.train.get_or_create_global_step
 run = tf.compat.v1.app.run
 
 def shuffle_batch(data, batch_size, seed, capacity=25000):

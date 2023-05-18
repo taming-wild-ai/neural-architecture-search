@@ -26,7 +26,7 @@ def mock_init(self, images, labels, **kwargs):
     self.x_train, self.y_train = None, None
     self.x_valid, self.y_valid = None, None
     self.x_test, self.y_test = None, None
-    self.global_step = fw.get_or_create_global_step()
+    self.global_step = fw.Variable(0, dtype=fw.int64)
 
 def mock_init_nhwc(self, images, labels, **kwargs):
     self.whole_channels = False
@@ -664,7 +664,6 @@ class TestMacroChild(unittest.TestCase):
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     @patch('src.cifar10.macro_child.MacroChild.Model', return_value=mock.MagicMock(return_value='model'))
-    @patch('src.cifar10.macro_child.fw.get_or_create_global_step', return_value='global_step')
     @patch('src.cifar10.macro_child.fw.reduce_sum', return_value="reduce_sum")
     @patch('src.cifar10.macro_child.fw.equal', return_value="equal")
     @patch('src.cifar10.macro_child.fw.to_int32', return_value="to_int32")
@@ -673,7 +672,7 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.macro_child.fw.reduce_mean', return_value="reduce_mean")
     @patch('src.cifar10.macro_child.fw.argmax', return_value=10)
     @patch('src.cifar10.macro_child.get_train_ops')
-    def test_build_train(self, get_train_ops, argmax, reduce_mean, sscewl, print1, to_int32, equal, reduce_sum, global_step, model):
+    def test_build_train(self, get_train_ops, argmax, reduce_mean, sscewl, print1, to_int32, equal, reduce_sum, model):
         train_op = mock.MagicMock(name='train_op', return_value='train_op')
         grad_norm = mock.MagicMock(name='grad_norm', return_value='grad_norm')
         get_train_ops.return_value = (train_op, 2, grad_norm, 4)
@@ -712,10 +711,9 @@ class TestMacroChild(unittest.TestCase):
             model().assert_called_with(mc.x_train)
             sscewl.assert_called_with(logits="model", labels=mc.y_train)
             reduce_mean.assert_called_with("sscewl")
-            global_step.assert_called_with
             reduce_sum.assert_called_with('to_int32')
             argmax.assert_called_with("model", axis=1)
-            get_train_ops.assert_called_with('global_step', mc.learning_rate, clip_mode=None, l2_reg=mc.l2_reg, num_train_batches=310, optim_algo=None)
+            get_train_ops.assert_called_with(mc.global_step, mc.learning_rate, clip_mode=None, l2_reg=mc.l2_reg, num_train_batches=310, optim_algo=None)
             to_int32.assert_called_with('equal')
             equal.assert_called_with('to_int32', 2)
 

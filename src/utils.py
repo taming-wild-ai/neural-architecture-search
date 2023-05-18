@@ -280,6 +280,27 @@ class GradientCalculator(object):
     return fw.gradients(self.adjuster(loss, tf_variables), tf_variables)
 
 
+class TrainStep(object):
+  def __init__(self, train_step, l2_reg, updater, clip_mode, num_train_batches, optim_algo, moving_average):
+    self.train_step = train_step
+    self.updater = updater
+    self.clip_mode = clip_mode
+    self.num_train_batches = num_train_batches
+    self.grads = GradientCalculator(l2_reg)
+    self.opt = optim_algo.get(self.learning_rate, moving_average)
+
+  def train_op(self, loss, vars):
+    self.train_step.assign_add(1)
+    return self.opt.apply_gradients(
+      zip(self.clip_mode.clip(self.grads(loss, vars)), vars))
+
+  def learning_rate(self):
+    return self.updater.update(self.num_train_batches, self.train_step)
+
+  def grad_norm(self, loss, vars):
+    return fw.global_norm(self.grads(loss, vars))
+
+
 def get_train_ops(
     train_step,
     updater,
@@ -294,19 +315,11 @@ def get_train_ops(
     clip_mode: "global", "norm", or None.
     moving_average: store the moving average of parameters
   """
-  grads = GradientCalculator(l2_reg)
-  grad_norm = lambda l, v: fw.global_norm(grads(l, v))
-
-  learning_rate = updater.update(num_train_batches, train_step)
-  opt = optim_algo.get(learning_rate, moving_average)
-  train_op = lambda l, v: opt.apply_gradients(
-    zip(clip_mode.clip(grads(l, v)), v),
-    global_step=train_step)
-
+  ts = TrainStep(train_step, l2_reg, updater, clip_mode, num_train_batches, optim_algo, moving_average)
   if get_grad_norms:
     def grad_norms(loss, tf_variables):
       retval = {}
-      for v, g in zip(tf_variables, grads(loss, tf_variables)):
+      for v, g in zip(tf_variables, ts.grads(loss, tf_variables)):
         if v is None or g is None:
           continue
         if isinstance(g, fw.IndexedSlices):
@@ -314,9 +327,9 @@ def get_train_ops(
         else:
           retval[v.name] = fw.sqrt(fw.reduce_sum(g ** 2))
       return retval
-    return train_op, learning_rate, grad_norm, opt, grad_norms
+    return ts.train_op, ts.learning_rate, ts.grad_norm, ts.opt, grad_norms
   else:
-    return train_op, learning_rate, grad_norm, opt
+    return ts.train_op, ts.learning_rate, ts.grad_norm, ts.opt
 
 
 class LayeredModel(object):

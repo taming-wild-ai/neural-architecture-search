@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from src.utils import print_user_flags, Logger, get_train_ops
 from src.cifar10.child import ClipMode, Optimizer, LearningRate
+import src.framework as fw
 
 import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
@@ -29,7 +30,14 @@ class TestUtils(unittest.TestCase):
         var = tf.ones((1))
         mock_momentum = mock.MagicMock()
         with patch('src.cifar10.child.fw.Optimizer.Momentum', return_value=mock_momentum) as mom:
-            train_op, _lr, grad_norm, _opt, grad_norms = get_train_ops(0, LearningRate.new(False, 0.1, 2, 10000, 0.1, 5, 6, 7, 8, 9), get_grad_norms=True, optim_algo=Optimizer.new("momentum", False, 1, 1), clip_mode=ClipMode.new("global", 0.0), num_train_batches=1)
+            train_op, lr, grad_norm, _opt, grad_norms = get_train_ops(
+                fw.Variable(0, dtype=fw.int64),
+                LearningRate.new(False, 0.1, 2, 10000, 0.1, 5, 6, 7, 8, 9),
+                get_grad_norms=True,
+                optim_algo=Optimizer.new("momentum", False, 1, 1),
+                clip_mode=ClipMode.new("global", 0.0),
+                num_train_batches=1)
+            lr()
             train_op(0.0, [var])
             grad_norm(0.0, [var])
             grad_norms(0.0, [var])
@@ -40,8 +48,8 @@ class TestUtils(unittest.TestCase):
             max.assert_called_with('exp_decay', 5)
             exp_decay.assert_called_with(0.1, 10000, 0.1, staircase=True)
             exp_decay().assert_called_with('maximum')
-            mom.assert_called_with('maximum')
-            mock_momentum.apply_gradients.assert_called_with(zip.return_value, global_step=0)
+            mom.assert_called_with(lr)
+            mock_momentum.apply_gradients.assert_called_with(zip.return_value)
 
     @patch('src.utils.zip', return_value=[[mock.MagicMock(), 2]])
     @patch('src.utils.fw.exp_decay', return_value=mock.MagicMock(return_value="exp_decay"))
@@ -55,8 +63,15 @@ class TestUtils(unittest.TestCase):
         mock_adam = mock.MagicMock()
         with patch('src.utils.fw.Optimizer.Adam', return_value=mock_adam) as mom:
             var = tf.ones((1))
-            train_op, _lr, grad_norm, _opt, grad_norms = get_train_ops(0, LearningRate.new(False, 0.1, 2, 10000, 0.1, 5, 6, 7, 8, 9), get_grad_norms=True, optim_algo=Optimizer.new("adam", False, 1, 1), clip_mode=ClipMode.new("global", 0.0), num_train_batches=1)
+            train_op, lr, grad_norm, _opt, grad_norms = get_train_ops(
+                fw.Variable(0, dtype=fw.int32),
+                LearningRate.new(False, 0.1, 2, 10000, 0.1, 5, 6, 7, 8, 9),
+                get_grad_norms=True,
+                optim_algo=Optimizer.new("adam", False, 1, 1),
+                clip_mode=ClipMode.new("global", 0.0),
+                num_train_batches=1)
             train_op(0.0, [var])
+            lr()
             grad_norm(0.0, [var])
             grad_norms(0.0, [var])
             add_n.assert_called_with([reduce_sum()])
@@ -66,8 +81,8 @@ class TestUtils(unittest.TestCase):
             max.assert_called_with('exp_decay', 5)
             exp_decay.assert_called_with(0.1, 10000, 0.1, staircase=True)
             exp_decay().assert_called_with('maximum')
-            mom.assert_called_with('maximum')
-            mock_adam.apply_gradients.assert_called_with(zip.return_value, global_step=0)
+            mom.assert_called_with(lr)
+            mock_adam.apply_gradients.assert_called_with(zip.return_value)
 
     @patch('src.utils.fw.cond')
     @patch('src.utils.fw.greater_equal', return_value="ge")
@@ -88,14 +103,15 @@ class TestUtils(unittest.TestCase):
                 'src.utils.fw.Optimizer.SyncReplicas',
                 return_value=mock_sro) as sro:
                 var = tf.ones((1))
-                train_op, _lr, grad_norm, _opt, grad_norms = get_train_ops(
-                    0,
+                train_op, lr, grad_norm, _opt, grad_norms = get_train_ops(
+                    fw.Variable(0, dtype=fw.int64),
                     LearningRate.new(True, 1, 2, 3, 4, 5, 6, 7, 8, 9),
                     optim_algo=Optimizer.new("sgd", True, 1, 1),
                     clip_mode=ClipMode.new("norm", 0.0),
                     num_train_batches=1,
                     get_grad_norms=True)
                 train_op(0.0, [var])
+                lr()
                 grad_norm(0.0, [var])
                 grad_norms(0.0, [var])
                 add_n.assert_called_with([reduce_sum()])
@@ -108,12 +124,11 @@ class TestUtils(unittest.TestCase):
                 less.assert_not_called()
                 ge.assert_called()
                 cond.assert_called()
-                sgd.assert_called_with(cond())
+                sgd.assert_called_with(lr)
                 sro.assert_called_with(mock_sgd, 1, 1)
                 mock_sgd.apply_gradients.assert_not_called()
                 mock_sro.apply_gradients.assert_called_with(
-                    zip.return_value,
-                    global_step=0)
+                    zip.return_value)
 
 
 class TestLogger(unittest.TestCase):
