@@ -150,7 +150,7 @@ class TestMacroChild(unittest.TestCase):
                     model({})
                     create_weight.assert_any_call(False, 'generic_model/stem_conv/', "w", [3, 3, 3, 24], None)
                     conv2d.assert_called_with({}, 'w', [1, 1, 1, 1], 'SAME', data_format='NHWC')
-                    enas_layer.assert_called_with(mc, 1, 18, 24, 24, True, mc.weights, False, 'input_conv', 'input_conv')
+                    enas_layer.assert_called_with(mc, 1, 18, 24, 24, True, mc.weights, False)
                     enas_layer().assert_called_with(['final_path', 'enas_layer', 'enas_layer'])
                     global_avg_pool.assert_called_with('enas_layer')
                     dropout.assert_called_with('gap', 0.9)
@@ -182,7 +182,7 @@ class TestMacroChild(unittest.TestCase):
                     batch_norm().assert_called_with('conv2d')
                     fr.assert_called_with(mc, 24, 24, 2, True, mc.weights, False)
                     fr().assert_called_with('enas_layer')
-                    enas_layer.assert_called_with(mc, 1, 18, 24, 24, True, mc.weights, False, 'input_conv', 'input_conv')
+                    enas_layer.assert_called_with(mc, 1, 18, 24, 24, True, mc.weights, False)
                     enas_layer().assert_called_with([fr()(), fr()(), 'enas_layer'])
                     global_avg_pool.assert_called_with('enas_layer')
                     dropout.assert_called_with('global_avg_pool', 0.9)
@@ -235,7 +235,7 @@ class TestMacroChild(unittest.TestCase):
             mc.sample_arc = np.array([int(x) for x in "0 3 0 0 1 0".split(" ") if x])
             with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
                 input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
-                el = MacroChild.ENASLayer(mc, 1, 0, 3, 24, True, mc.weights, False, None, None)
+                el = MacroChild.ENASLayer(mc, 1, 0, 3, 24, True, mc.weights, False)
                 el([input_tensor])
                 conv_branch.assert_called_with(mc, 5, True, 24, 3, 24, mc.weights, False, 1, 0, True)
                 conv_branch().assert_called_with(input_tensor)
@@ -243,7 +243,7 @@ class TestMacroChild(unittest.TestCase):
                 batch_norm.assert_called_with(True, mc.data_format, mc.weights, 3, False)
                 batch_norm().assert_called_with('add_n')
                 create_weight.assert_not_called()
-                pool_branch.assert_called_with(mc, 24, 'max', None, 0)
+                pool_branch.assert_called_with(mc, False, 24, True, 24, 'max', 0)
                 pool_branch().assert_called_with(input_tensor)
 
     @patch('src.cifar10.macro_child.MacroChild.PoolBranch')
@@ -259,7 +259,7 @@ class TestMacroChild(unittest.TestCase):
         mc.sample_arc = np.array([int(x) for x in "0 3 0 0 1 0".split(" ") if x])
         with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
             input_tensor = tf.constant(np.ndarray((4, 3, 32, 32)), name="hashable")
-            el = MacroChild.ENASLayer(mc, 1, 0, 3, 24, True, mc.weights, False, None, None)
+            el = MacroChild.ENASLayer(mc, 1, 0, 3, 24, True, mc.weights, False)
             el([input_tensor])
             conv_branch.assert_called_with(mc, 5, True, 24, 3, 24, mc.weights, False, 1, 0, True)
             conv_branch().assert_called_with(input_tensor)
@@ -267,7 +267,7 @@ class TestMacroChild(unittest.TestCase):
             batch_norm.assert_called_with(True, mc.data_format, mc.weights, 3, False)
             batch_norm().assert_called_with('add_n')
             create_weight.assert_not_called() # Assumes called inside mocked PoolBranch or ConvBranch
-            pool_branch.assert_called_with(mc, 24, 'max', None, 0)
+            pool_branch.assert_called_with(mc, False, 24, True, 24, 'max', 0)
             pool_branch().assert_called_with(input_tensor)
 
     @patch('src.cifar10.macro_child.MacroChild.PoolBranch')
@@ -288,11 +288,11 @@ class TestMacroChild(unittest.TestCase):
             mc.sample_arc = np.array([int(x) for x in "0 3 0 0 1 0 2 0 0 1 2 0 0 0 0".split(" ") if x])
             with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
                 input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
-                el = MacroChild.ENASLayer(mc, 1, 0, 3, 24, True, mc.weights, False, None, None)
+                el = MacroChild.ENASLayer(mc, 1, 0, 3, 24, True, mc.weights, False)
                 el([input_tensor])
                 conv_branch.assert_called_with(mc, 5, True, 0, 3, 24, mc.weights, False, 1, 2, True)
                 conv_branch().assert_called_with(input_tensor)
-                pool_branch.assert_called_with(mc, 0, 'max', None, 2)
+                pool_branch.assert_called_with(mc, False, 24, True, 0, 'max', 2)
                 pool_branch().assert_called_with(input_tensor)
                 concat.assert_called_with([conv_branch()(), conv_branch()(), conv_branch()(), conv_branch()(), pool_branch()(), pool_branch()()], axis=3)
                 conv_2d.assert_called_with('concat', 'reshape', [1, 1, 1, 1], 'SAME', data_format='NHWC')
@@ -323,11 +323,11 @@ class TestMacroChild(unittest.TestCase):
             mc.sample_arc = np.array([int(x) for x in "0 3 0 0 1 0 2 0 0 1 2 0 0 0 0".split(" ") if x])
             with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
                 input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
-                el = MacroChild.ENASLayer(mc, 1, 0, 3, 24, True, mc.weights, False, None, None)
+                el = MacroChild.ENASLayer(mc, 1, 0, 3, 24, True, mc.weights, False)
                 el([input_tensor])
                 conv_branch.assert_called_with(mc, 5, True, 0, 3, 24, mc.weights, False, 1, 2, True)
                 conv_branch().assert_called_with(input_tensor)
-                pool_branch.assert_called_with(mc, 0, 'max', None, 2)
+                pool_branch.assert_called_with(mc, False, 24, True, 0, 'max', 2)
                 pool_branch().assert_called_with(input_tensor)
                 concat.assert_called_with([conv_branch()(), conv_branch()(), conv_branch()(), conv_branch()(), pool_branch()(), pool_branch()()], axis=1)
                 conv_2d.assert_called_with('reshape', 'reshape', [1, 1, 1, 1], 'SAME', data_format='NCHW')
@@ -431,7 +431,7 @@ class TestMacroChild(unittest.TestCase):
                 conv2d.assert_called_with('relu', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NHWC')
                 batch_norm.assert_called_with(True, mc.data_format, mc.weights, 24, False)
                 batch_norm().assert_called_with('conv2d')
-                pool_branch.assert_called_with(mc, 0, "max", input_conv())
+                pool_branch.assert_called_with(mc, False, 24, True, 0, 'max', input_conv())
                 pool_branch().assert_called_with(input_tensor)
                 concat.assert_called_with([conv_branch()(), conv_branch()(), conv_branch()(), conv_branch()(), pool_branch()(), pool_branch()()], axis=3)
                 create_weight.assert_called_with(False, 'final_conv/', 'w', [1, 1, 4, 24], None)
@@ -459,7 +459,7 @@ class TestMacroChild(unittest.TestCase):
                 conv2d.assert_called_with('relu', 'fw.create_weight', [1, 1, 1, 1], 'SAME', data_format='NCHW')
                 batch_norm.assert_called_with(True, mc.data_format, mc.weights, 24, False)
                 batch_norm().assert_called_with('conv2d')
-                pool_branch.assert_called_with(mc, 0, "max", input_conv())
+                pool_branch.assert_called_with(mc, False, 24, True, 0, 'max', input_conv())
                 pool_branch().assert_called_with(input_tensor)
                 concat.assert_called_with(['batch_norm'], axis=1)
                 create_weight.assert_called_with(False, 'skip/', 'w', [1, 1, 24, 24], None)
@@ -595,7 +595,7 @@ class TestMacroChild(unittest.TestCase):
                     mc.out_filters,
                     True,
                     mc.data_format)
-        self.assertRaises(AssertionError, MacroChild.PoolBranch, mc, None, None, input_conv, None)
+        self.assertRaises(AssertionError, MacroChild.PoolBranch, mc, False, 24, True, None, None, None)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init_nhwc)
     @patch('src.cifar10.macro_child.fw.conv2d', return_value="conv2d")
@@ -619,7 +619,7 @@ class TestMacroChild(unittest.TestCase):
                         mc.out_filters,
                         True,
                         mc.data_format)
-                pb = MacroChild.PoolBranch(mc, 0, "avg", input_conv, True)
+                pb = MacroChild.PoolBranch(mc, False, 3, True, 0, "avg", None)
                 pb(input_tensor)
                 conv2d.assert_called_with(input_tensor, mc.weights.get.return_value, [1, 1, 1, 1], 'SAME', data_format='NHWC')
                 batch_norm1.assert_called_with(True, mc.data_format, mc.weights, 24, False)
@@ -652,7 +652,7 @@ class TestMacroChild(unittest.TestCase):
                         mc.out_filters,
                         True,
                         mc.data_format)
-                pb = MacroChild.PoolBranch(mc, 0, "max", input_conv, True)
+                pb = MacroChild.PoolBranch(mc, False, 3, True, 0, "max", None)
                 pb(input_tensor)
                 conv2d.assert_called_with(input_tensor, mc.weights.get.return_value, [1, 1, 1, 1], 'SAME', data_format='NCHW')
                 batch_norm1.assert_called_with(True, mc.data_format, mc.weights, 24, False)

@@ -108,26 +108,7 @@ class MacroChild(Child):
         for layer_id in range(child.num_layers):
           with fw.name_scope("layer_{0}".format(layer_id)):
             if child.fixed_arc is None:
-              with fw.name_scope("conv_1") as scope:
-                input_conv4 = Child.InputConv(
-                  child.weights,
-                  reuse,
-                  scope,
-                  1,
-                  out_filters,
-                  child.out_filters,
-                  is_training,
-                  child.data_format)
-                input_conv5 = Child.InputConv(
-                  child.weights,
-                  reuse,
-                  scope,
-                  1,
-                  out_filters,
-                  child.out_filters,
-                  is_training,
-                  child.data_format)
-              self.model_layers.append(MacroChild.ENASLayer(child, layer_id, start_idx, out_filters, out_filters, is_training, child.weights, reuse, input_conv4, input_conv5))
+              self.model_layers.append(MacroChild.ENASLayer(child, layer_id, start_idx, out_filters, out_filters, is_training, child.weights, reuse))
               layers_channels.append(out_filters)
             else:
               self.model_layers.append(MacroChild.FixedLayer(child, layer_id, start_idx, out_filters, out_filters, is_training, child.weights, reuse))
@@ -225,14 +206,20 @@ class MacroChild(Child):
 
   # Because __call__ is overridden, this superclass is just for ease of find.
   class ENASLayerNotWholeChannels(LayeredModel):
-    def __init__(self, child, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse, input_conv_avg, input_conv_max):
+    def __init__(self, child, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse):
       count = child.sample_arc[start_idx:start_idx + 2 * child.num_branches]
-      branch_0 = MacroChild.ConvBranch(child, 3, is_training, count[1], num_input_chan, out_filters, weights, reuse, 1, count[0], False)
-      branch_1 = MacroChild.ConvBranch(child, 3, is_training, count[3], num_input_chan, out_filters, weights, reuse, 1, count[2], True)
-      branch_2 = MacroChild.ConvBranch(child, 5, is_training, count[5], num_input_chan, out_filters, weights, reuse, 1, count[4], False)
-      branch_3 = MacroChild.ConvBranch(child, 5, is_training, count[7], num_input_chan, out_filters, weights, reuse, 1, count[6], True)
-      branch_4 = MacroChild.PoolBranch(child, count[9], "avg", input_conv_avg, count[8])
-      branch_5 = MacroChild.PoolBranch(child, count[11], "max", input_conv_max, count[10])
+      with fw.name_scope('branch_0'):
+          branch_0 = MacroChild.ConvBranch(child, 3, is_training, count[1], num_input_chan, out_filters, weights, reuse, 1, count[0], False)
+      with fw.name_scope('branch_1'):
+          branch_1 = MacroChild.ConvBranch(child, 3, is_training, count[3], num_input_chan, out_filters, weights, reuse, 1, count[2], True)
+      with fw.name_scope('branch_2'):
+          branch_2 = MacroChild.ConvBranch(child, 5, is_training, count[5], num_input_chan, out_filters, weights, reuse, 1, count[4], False)
+      with fw.name_scope('branch_3'):
+          branch_3 = MacroChild.ConvBranch(child, 5, is_training, count[7], num_input_chan, out_filters, weights, reuse, 1, count[6], True)
+      with fw.name_scope('branch_4'):
+          branch_4 = MacroChild.PoolBranch(child, reuse, out_filters, is_training, count[9], "avg", count[8])
+      with fw.name_scope('branch_5'):
+          branch_5 = MacroChild.PoolBranch(child, reuse, out_filters, is_training, count[11], "max", count[10])
       with fw.name_scope("final_conv") as scope:
         final_conv = MacroChild.FinalConv(
               child.num_branches,
@@ -285,15 +272,21 @@ class MacroChild(Child):
 
   # Because __call__ is overridden, this superclass is just for ease of find.
   class ENASLayerWholeChannels(LayeredModel):
-    def __init__(self, child, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse, input_conv_avg, input_conv_max):
+    def __init__(self, child, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse):
       self.layers = [lambda inputs: child.data_format.get_HW(inputs)]
       count = child.sample_arc[start_idx]
-      branch_0 = MacroChild.ConvBranch(child, 3, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, False)
-      branch_1 = MacroChild.ConvBranch(child, 3, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, True)
-      branch_2 = MacroChild.ConvBranch(child, 5, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, False)
-      branch_3 = MacroChild.ConvBranch(child, 5, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, True)
-      branch_4 = MacroChild.PoolBranch(child, out_filters, "avg", input_conv_avg, 0)
-      branch_5 = MacroChild.PoolBranch(child, out_filters, "max", input_conv_max, 0)
+      with fw.name_scope('branch_0'):
+          branch_0 = MacroChild.ConvBranch(child, 3, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, False)
+      with fw.name_scope('branch_1'):
+          branch_1 = MacroChild.ConvBranch(child, 3, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, True)
+      with fw.name_scope('branch_2'):
+          branch_2 = MacroChild.ConvBranch(child, 5, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, False)
+      with fw.name_scope('branch_3'):
+          branch_3 = MacroChild.ConvBranch(child, 5, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, True)
+      with fw.name_scope('branch_4'):
+          branch_4 = MacroChild.PoolBranch(child, reuse, out_filters, is_training, out_filters, "avg", 0)
+      with fw.name_scope('branch_5'):
+          branch_5 = MacroChild.PoolBranch(child, reuse, out_filters, is_training, out_filters, "max", 0)
       def branches(inputs):
         arms = {}
         with fw.name_scope("branch_0"):
@@ -346,7 +339,7 @@ class MacroChild(Child):
         return out
 
 
-  def ENASLayer(self, layer_id, start_idx, num_input_chan: int, out_filters: int, is_training: bool, weights, reuse: bool, input_conv_avg, input_conv_max):
+  def ENASLayer(self, layer_id, start_idx, num_input_chan: int, out_filters: int, is_training: bool, weights, reuse: bool):
     """
     Args:
       layer_id: current layer
@@ -356,9 +349,9 @@ class MacroChild(Child):
       is_training: for batch_norm
     """
     if self.whole_channels:
-      return MacroChild.ENASLayerWholeChannels(self, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse, input_conv_avg, input_conv_max)
+      return MacroChild.ENASLayerWholeChannels(self, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse)
     else:
-      return MacroChild.ENASLayerNotWholeChannels(self, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse, input_conv_avg, input_conv_max)
+      return MacroChild.ENASLayerNotWholeChannels(self, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse)
 
 
   # Because __call__ is overridden, this superclass is just for ease of find.
@@ -423,7 +416,7 @@ class MacroChild(Child):
             child.data_format)
         with fw.name_scope("branch_4"):
           total_out_channels += count[9]
-          branch_4 = MacroChild.PoolBranch(self, count[9], "avg", input_conv4)
+          branch_4 = MacroChild.PoolBranch(child, reuse, out_filters, is_training, count[9], "avg", input_conv4)
       if child.num_branches >= 6:
         with fw.name_scope("conv_1") as scope:
           input_conv5 = Child.InputConv(
@@ -437,7 +430,7 @@ class MacroChild(Child):
             child.data_format)
         with fw.name_scope("branch_5"):
           total_out_channels += count[11]
-          branch_5 = MacroChild.PoolBranch(child, count[11], "max", input_conv5)
+          branch_5 = MacroChild.PoolBranch(child, reuse, out_filters, is_training, count[11], "max", input_conv5)
       with fw.name_scope("final_conv") as scope:
         final_conv = MacroChild.Conv1x1(weights, reuse, scope, total_out_channels, out_filters, is_training, child.data_format)
 
@@ -765,7 +758,7 @@ class MacroChild(Child):
 
 
   class PoolBranch(LayeredModel):
-    def __init__(self, child, count, avg_or_max: str, input_conv, start_idx=None):
+    def __init__(self, child, reuse, out_filters, is_training: bool, count, avg_or_max: str, start_idx=None):
       """
       Args:
         start_idx: where to start taking the output channels. if None, assuming
@@ -774,6 +767,17 @@ class MacroChild(Child):
       """
       if start_idx is None:
         assert child.fixed_arc is not None, "you screwed up!"
+
+      with fw.name_scope("conv_1") as scope:
+        input_conv = Child.InputConv(
+          child.weights,
+          reuse,
+          scope,
+          1,
+          out_filters,
+          child.out_filters,
+          is_training,
+          child.data_format)
 
       def layer0(x):
         with fw.name_scope("conv_1"):
