@@ -60,6 +60,10 @@ class MicroController(Controller):
     self.sample_entropy = entropy_1 + entropy_2
     self.sample_log_prob = log_prob_1 + log_prob_2
 
+  def trainable_variables(self):
+    new_vars = self.w_lstm + [self.g_emb, self.w_emb, self.w_soft, self.w_attn_1, self.w_attn_2, self.v_attn]
+    return new_vars
+
   def _create_params(self):
     with fw.name_scope(self.name) as scope:
       initializer = fw.random_uniform_initializer(minval=-0.1, maxval=0.1)
@@ -207,7 +211,7 @@ class MicroController(Controller):
   def build_trainer(self, child_model, vrl):
     self.skip_rate = fw.constant(0.0, dtype=fw.float32)
     self.sample_log_prob = fw.reduce_sum(self.sample_log_prob)
-    self.valid_acc = lambda logits, y_valid_shuffle: (fw.to_float(vrl(logits, y_valid_shuffle)) /
+    self.valid_acc = lambda logits_aux_logits, y_valid_shuffle: (fw.to_float(vrl(logits_aux_logits[0], y_valid_shuffle)) /
                       fw.to_float(child_model.batch_size))
 
     def reward(logits, y_valid_shuffle):
@@ -218,17 +222,17 @@ class MicroController(Controller):
 
     self.baseline = fw.Variable(0.0, dtype=fw.float32)
 
-    def loss(logits, y_valid_shuffle):
+    def loss(logits_aux_logits, y_valid_shuffle):
       with fw.control_dependencies([
-        self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward(logits, y_valid_shuffle)))]):
-        self.reward = fw.identity(reward(logits, y_valid_shuffle))
+        self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward(logits_aux_logits[0], y_valid_shuffle)))]):
+        self.reward = fw.identity(reward(logits_aux_logits[0], y_valid_shuffle))
       retval = self.sample_log_prob * (self.reward - self.baseline)
       return retval
 
     self.loss = loss
     self.train_step = fw.Variable(0, dtype=fw.int64, name="train_step")
     print("-" * 80)
-    for var in self.tf_variables():
+    for var in self.trainable_variables():
       print(var)
 
     train_op, lr, grad_norm, optimizer = get_train_ops(

@@ -80,12 +80,12 @@ class TestParameterCounts(unittest.TestCase):
                 model = MacroChild.Model(mc, True)
                 # Parameters should be allocated before graph execution. Number of weight parameters used to be
                 # printed in original code
-                self.assertEqual(42559392, count_model_params(mc.tf_variables()))
+                self.assertEqual(42559392, count_model_params(mc.trainable_variables()))
                 logits = model(mc.x_train)
                 loss = loss0(logits)
                 train_acc = train_acc0(logits)
-                train_op = train_op0(loss, mc.tf_variables())
-                grad_norm = grad_norm0(loss, mc.tf_variables())
+                train_op = train_op0(loss, mc.trainable_variables())
+                grad_norm = grad_norm0(loss, mc.trainable_variables())
                 print2.assert_any_call("-" * 80)
                 print2.assert_any_call("Build model child")
                 print2.assert_any_call("Build data ops")
@@ -138,12 +138,12 @@ class TestParameterCounts(unittest.TestCase):
                 model = MacroChild.Model(mc, True)
                 # Parameters should be allocated before graph execution. Number of weight parameters used to be
                 # printed in original code
-                self.assertEqual(810756, count_model_params(mc.tf_variables()))
+                self.assertEqual(810756, count_model_params(mc.trainable_variables()))
                 logits = model(mc.x_train)
                 loss = loss0(logits)
                 train_acc = train_acc0(logits)
-                train_op = train_op0(loss, mc.tf_variables())
-                grad_norm = grad_norm0(loss, mc.tf_variables())
+                train_op = train_op0(loss, mc.trainable_variables())
+                grad_norm = grad_norm0(loss, mc.trainable_variables())
                 print2.assert_any_call("-" * 80)
                 print2.assert_any_call("Build model child")
                 print2.assert_any_call("Build data ops")
@@ -173,13 +173,13 @@ class TestParameterCounts(unittest.TestCase):
                 model = MicroChild.Model(mc, True)
                 # Parameters should be allocated before graph execution. Number of weight parameters used to be
                 # printed in original code
-                self.assertEqual(3894372, count_model_params(mc.tf_variables()))
+                self.assertEqual(3894372, count_model_params(mc.trainable_variables()))
                 logits_aux_logits = model(mc.x_train)
                 train_loss = train_loss0(logits_aux_logits)
                 loss = loss0(logits_aux_logits)
                 train_acc = train_acc0(logits_aux_logits)
-                train_op = train_op0(train_loss, mc.tf_variables())
-                grad_norm = grad_norm0(train_loss, mc.tf_variables())
+                train_op = train_op0(train_loss, mc.trainable_variables())
+                grad_norm = grad_norm0(train_loss, mc.trainable_variables())
                 print2.assert_any_call("-" * 80)
                 print2.assert_any_call("Build model child")
                 print2.assert_any_call("Build data ops")
@@ -219,13 +219,13 @@ class TestParameterCounts(unittest.TestCase):
                 train_model = MicroChild.Model(mc, True)
                 # Parameters should be allocated before graph execution. Number of weight parameters used to be
                 # printed in original code
-                self.assertEqual(5373140, count_model_params(mc.tf_variables()))
+                self.assertEqual(5373140, count_model_params(mc.trainable_variables()))
                 logits_aux_logits = train_model(mc.x_train)
                 train_loss = train_loss0(logits_aux_logits)
                 loss = loss0(logits_aux_logits)
                 train_acc = train_acc0(logits_aux_logits)
-                train_op = train_op0(train_loss, mc.tf_variables())
-                grad_norm = grad_norm0(train_loss, mc.tf_variables())
+                train_op = train_op0(train_loss, mc.trainable_variables())
+                grad_norm = grad_norm0(train_loss, mc.trainable_variables())
                 for layer_num in range(8):
                     if 2 > layer_num:
                         expected_shape = (None, 20, 32, 32)
@@ -240,17 +240,17 @@ class TestParameterCounts(unittest.TestCase):
                 print1.assert_any_call("Aux head uses 412928 params")
                 print1.reset_mock()
                 mc._build_valid(mc.y_valid)
-                num_aux_params = count_model_params([var for var in fw.trainable_variables() if (var.name.startswith(mc.name) and 'aux_head' in var.name)])
+                num_aux_params = count_model_params([var for _, var in mc.weights.weight_map.items() if (var.trainable and var.name.startswith(mc.name) and 'aux_head' in var.name)])
                 self.assertEqual(412928, num_aux_params)
                 mc._build_test(mc.y_train)
-                num_aux_params = count_model_params([var for var in fw.trainable_variables() if (var.name.startswith(mc.name) and 'aux_head' in var.name)])
+                num_aux_params = count_model_params([var for _, var in mc.weights.weight_map.items() if (var.trainable and var.name.startswith(mc.name) and 'aux_head' in var.name)])
                 self.assertEqual(412928, num_aux_params)
                 shuffle = mc.ValidationRLShuffle(mc, False)
                 vrl = mc.ValidationRL()
                 x_valid_shuffle, y_valid_shuffle = shuffle(mc.images['valid_original'], mc.labels['valid_original'])
-                logits_aux_logits = MicroChild.Model(mc, True, True)(x_valid_shuffle)
+                logits_aux_logits = MicroChild.Model(mc, True, True)(x_valid_shuffle) # https://github.com/melodyguan/enas/blob/master/src/cifar10/micro_child.py#L804
                 vrl(logits_aux_logits[0], y_valid_shuffle)
-                num_aux_params = count_model_params([var for var in fw.trainable_variables() if (var.name.startswith(mc.name) and 'aux_head' in var.name)])
+                num_aux_params = count_model_params([var for _, var in mc.weights.weight_map.items() if (var.trainable and var.name.startswith(mc.name) and 'aux_head' in var.name)])
                 self.assertEqual(412928, num_aux_params)
 
 if "__main__" == __name__:

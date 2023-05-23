@@ -1,0 +1,35 @@
+<tf.Variable 'child/stem_conv/w:0' shape=(3, 3, 3, 36) dtype=float32>
+<tf.Variable 'child/stem_conv/bn/offset:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/stem_conv/bn/scale:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_0/inp_conv_1/w:0' shape=(1, 1, 36, 36) dtype=float32>
+<tf.Variable 'child/layer_0/branch_0/inp_conv_1/bn/offset:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_0/inp_conv_1/bn/scale:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_0/out_conv_3/w:0' shape=(3, 3, 36, 36) dtype=float32>
+<tf.Variable 'child/layer_0/branch_0/out_conv_3/bn/offset:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_0/out_conv_3/bn/scale:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_1/inp_conv_1/w:0' shape=(1, 1, 36, 36) dtype=float32>
+<tf.Variable 'child/layer_0/branch_1/inp_conv_1/bn/offset:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_1/inp_conv_1/bn/scale:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_1/out_conv_3/w_depth:0' shape=(3, 3, 36, 1) dtype=float32>
+<tf.Variable 'child/layer_0/branch_1/out_conv_3/w_point:0' shape=(36, 36) dtype=float32>
+<tf.Variable 'child/layer_0/branch_1/out_conv_3/bn/offset:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_1/out_conv_3/bn/scale:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_2/inp_conv_1/w:0' shape=(1, 1, 36, 36) dtype=float32>
+<tf.Variable 'child/layer_0/branch_2/inp_conv_1/bn/offset:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_2/inp_conv_1/bn/scale:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_2/out_conv_5/w:0' shape=(5, 5, 36, 36) dtype=float32>
+<tf.Variable 'child/layer_0/branch_2/out_conv_5/bn/offset:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_2/out_conv_5/bn/scale:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_3/inp_conv_1/w:0' shape=(1, 1, 36, 36) dtype=float32>
+<tf.Variable 'child/layer_0/branch_3/inp_conv_1/bn/offset:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_3/inp_conv_1/bn/scale:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_3/out_conv_5/w_depth:0' shape=(5, 5, 36, 1) dtype=float32>
+<tf.Variable 'child/layer_0/branch_3/out_conv_5/w_point:0' shape=(36, 36) dtype=float32>
+<tf.Variable 'child/layer_0/branch_3/out_conv_5/bn/offset:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_3/out_conv_5/bn/scale:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_4/conv_1/w:0' shape=(1, 1, 36, 36) dtype=float32>
+<tf.Variable 'child/layer_0/branch_4/conv_1/bn/offset:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_4/conv_1/bn/scale:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_5/conv_1/w:0' shape=(1, 1, 36, 36) dtype=float32>
+<tf.Variable 'child/layer_0/branch_5/conv_1/bn/offset:0' shape=(36,) dtype=float32>
+<tf.Variable 'child/layer_0/branch_5/conv_1/bn/scale:0' shape=(36,) dtype=float32>

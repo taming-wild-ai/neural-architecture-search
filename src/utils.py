@@ -292,7 +292,8 @@ class TrainStep(object):
   def train_op(self, loss, vars):
     self.train_step.assign_add(1)
     return self.opt.apply_gradients(
-      zip(self.clip_mode.clip(self.grads(loss, vars)), vars))
+      zip(self.clip_mode.clip(self.grads(loss, vars)), vars),
+      global_step=self.train_step)
 
   def learning_rate(self):
     return self.updater.update(self.num_train_batches, self.train_step)

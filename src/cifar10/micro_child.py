@@ -250,9 +250,7 @@ class MicroChild(Child):
                   child.data_format))
               with fw.name_scope('fc') as scope:
                 self.aux_logits[layer_id].append(MicroChild.FullyConnected(child.data_format, child.weights, reuse, scope, 768))
-        aux_head_variables = [
-        var for var in fw.trainable_variables() if (
-          var.name.startswith(self.child.name) and "aux_head" in var.name)]
+        aux_head_variables = [var for _, var in child.weights.weight_map.items() if var.trainable and var.name.startswith(child.name) and "aux_head" in var.name]
         num_aux_vars = count_model_params(aux_head_variables)
         print("Aux head uses {0} params".format(num_aux_vars))
         with fw.name_scope('fc') as scope:
@@ -264,16 +262,16 @@ class MicroChild(Child):
             reuse,
             scope,
             x_chan)
-        print("Model has {0} params".format(count_model_params(child.tf_variables())))
+        print("Model has {0} params".format(count_model_params(child.trainable_variables())))
 
     def __call__(self, images):
       with fw.name_scope(self.child.name):
-        with fw.name_scope('stem_conv') as scope:
+        with fw.name_scope('stem_conv'):
           logits = self.stem_conv(images)
           layers = [logits, logits]
         aux_logits = None
         for layer_id in range(self.child.num_layers + 2):
-          with fw.name_scope(f'layer_{layer_id}') as scope:
+          with fw.name_scope(f'layer_{layer_id}'):
             if layer_id not in self.child.pool_layers:
               logits = self.layers[layer_id](layers)
             else:
@@ -295,7 +293,7 @@ class MicroChild(Child):
                 aux_logits = aux_logit_fns[2](aux_logits)
               with fw.name_scope('fc'):
                 aux_logits = aux_logit_fns[3](aux_logits)
-        with fw.name_scope('fc') as scope:
+        with fw.name_scope('fc'):
           logits = self.dropout(logits)
       return logits, aux_logits
 

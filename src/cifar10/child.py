@@ -309,8 +309,10 @@ class Child(object):
   def _model(self, images, is_training, reuse=None):
     raise NotImplementedError("Abstract method")
 
-  def tf_variables(self):
-    return [var for var in fw.trainable_variables() if var.name.startswith(self.name) and "aux_head" not in var.name]
+  def trainable_variables(self):
+    new_vars = [var for _, var in self.weights.weight_map.items() if var.trainable and var.name.startswith(self.name) and "aux_head" not in var.name]
+    new_vars.sort(key=lambda v: v.name)
+    return new_vars
 
 
   class PathConv(LayeredModel):

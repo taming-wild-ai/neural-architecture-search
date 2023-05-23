@@ -58,6 +58,14 @@ class MacroController(Controller):
 
     self.sample_arc, self.sample_entropy, self.sample_log_prob, self.skip_count, self.skip_penaltys = self._build_sampler()
 
+  def trainable_variables(self):
+    new_vars = self.w_lstm + [self.g_emb]
+    if self.search_whole_channels:
+      new_vars += [self.w_emb, self.w_soft]
+    else:
+      new_vars += self.w_emb['start'] + self.w_emb['count'] + self.w_soft['start'] + self.w_soft['count'] + [self.w_attn_1, self.w_attn_2, self.v_attn]
+    return new_vars
+
   def _create_params(self):
     initializer = fw.random_uniform_initializer(minval=-0.1, maxval=0.1)
     with fw.name_scope(self.name):
@@ -272,7 +280,7 @@ class MacroController(Controller):
     self.loss = loss
     self.train_step = fw.Variable(0, dtype=fw.int32, name="train_step")
     print("-" * 80)
-    for var in self.tf_variables():
+    for var in self.trainable_variables():
       print(var)
 
     train_op, lr, grad_norm, optimizer = get_train_ops(

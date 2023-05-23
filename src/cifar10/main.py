@@ -136,20 +136,20 @@ def train():
     child_train_logits_graph = ops['child']['model'](ops['child']['images'])
     child_loss_graph =         ops['child']['loss'](child_train_logits_graph)
     child_lr =                 ops['child']['lr']
-    child_grad_norm_graph =    ops['child']['grad_norm'](child_loss_graph, ops['child']['model'].child.tf_variables())
+    child_grad_norm_graph =    ops['child']['grad_norm'](child_loss_graph, ops['child']['model'].child.trainable_variables())
     child_train_acc_graph =    ops['child']['train_acc'](child_train_logits_graph)
     child_train_loss_graph =   ops['child']['train_loss'](child_train_logits_graph)
-    child_train_op_graph =     ops['child']['train_op'](child_train_loss_graph, ops['child']['model'].child.tf_variables())
+    child_train_op_graph =     ops['child']['train_op'](child_train_loss_graph, ops['child']['model'].child.trainable_variables())
     if FLAGS.controller_training:
       child_valid_logits_graph =   ops['child']['model'](ops['child']['x_valid_shuffle'])
       controller_loss_graph =      ops["controller"]["loss"](child_valid_logits_graph, ops['child']['y_valid_shuffle'])
       controller_entropy =         ops["controller"]["entropy"]
       controller_lr =              ops["controller"]["lr"]
-      controller_grad_norm_graph = ops["controller"]["grad_norm"](controller_loss_graph, ops['controller']['model'].tf_variables())
+      controller_grad_norm_graph = ops["controller"]["grad_norm"](controller_loss_graph, ops['controller']['model'].trainable_variables())
       controller_valid_acc_graph = ops["controller"]["valid_acc"](child_valid_logits_graph, ops['child']['y_valid_shuffle'])
       controller_baseline =        ops["controller"]["baseline"]
       controller_skip_rate =       ops["controller"]["skip_rate"]
-      controller_train_op_graph =  ops["controller"]["train_op"](controller_loss_graph, ops['controller']['model'].tf_variables())
+      controller_train_op_graph =  ops["controller"]["train_op"](controller_loss_graph, ops['controller']['model'].trainable_variables())
 
     print(("-" * 80))
     print("Starting session")

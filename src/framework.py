@@ -187,8 +187,6 @@ def shuffle_batch(data, batch_size, seed, capacity=25000):
         seed=seed,
         allow_smaller_final_batch=True)
 
-trainable_variables = tf.compat.v1.trainable_variables
-
 
 class Optimizer(object):
     @staticmethod

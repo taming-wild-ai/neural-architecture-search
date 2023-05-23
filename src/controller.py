@@ -42,10 +42,6 @@ class Controller(object):
     self.num_aggregate = FLAGS.controller_num_aggregate
     self.num_replicas = FLAGS.controller_num_replicas
 
-  def tf_variables(self):
-    return [var
-      for var in fw.trainable_variables() if var.name.startswith(self.name)]
-
   def _build_sample(self):
     raise NotImplementedError("Abstract method.")
 

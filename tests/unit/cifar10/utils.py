@@ -30,8 +30,9 @@ class TestUtils(unittest.TestCase):
         var = tf.ones((1))
         mock_momentum = mock.MagicMock()
         with patch('src.cifar10.child.fw.Optimizer.Momentum', return_value=mock_momentum) as mom:
+            global_step = fw.Variable(0, dtype=fw.int64)
             train_op, lr, grad_norm, _opt, grad_norms = get_train_ops(
-                fw.Variable(0, dtype=fw.int64),
+                global_step,
                 LearningRate.new(False, 0.1, 2, 10000, 0.1, 5, 6, 7, 8, 9),
                 get_grad_norms=True,
                 optim_algo=Optimizer.new("momentum", False, 1, 1),
@@ -49,7 +50,9 @@ class TestUtils(unittest.TestCase):
             exp_decay.assert_called_with(0.1, 10000, 0.1, staircase=True)
             exp_decay().assert_called_with('maximum')
             mom.assert_called_with(lr)
-            mock_momentum.apply_gradients.assert_called_with(zip.return_value)
+            mock_momentum.apply_gradients.assert_called_with(
+                zip.return_value,
+                global_step=global_step)
 
     @patch('src.utils.zip', return_value=[[mock.MagicMock(), 2]])
     @patch('src.utils.fw.exp_decay', return_value=mock.MagicMock(return_value="exp_decay"))
@@ -63,8 +66,9 @@ class TestUtils(unittest.TestCase):
         mock_adam = mock.MagicMock()
         with patch('src.utils.fw.Optimizer.Adam', return_value=mock_adam) as mom:
             var = tf.ones((1))
+            global_step = fw.Variable(0, dtype=fw.int32)
             train_op, lr, grad_norm, _opt, grad_norms = get_train_ops(
-                fw.Variable(0, dtype=fw.int32),
+                global_step,
                 LearningRate.new(False, 0.1, 2, 10000, 0.1, 5, 6, 7, 8, 9),
                 get_grad_norms=True,
                 optim_algo=Optimizer.new("adam", False, 1, 1),
@@ -82,7 +86,9 @@ class TestUtils(unittest.TestCase):
             exp_decay.assert_called_with(0.1, 10000, 0.1, staircase=True)
             exp_decay().assert_called_with('maximum')
             mom.assert_called_with(lr)
-            mock_adam.apply_gradients.assert_called_with(zip.return_value)
+            mock_adam.apply_gradients.assert_called_with(
+                zip.return_value,
+                global_step=global_step)
 
     @patch('src.utils.fw.cond')
     @patch('src.utils.fw.greater_equal', return_value="ge")
@@ -103,8 +109,9 @@ class TestUtils(unittest.TestCase):
                 'src.utils.fw.Optimizer.SyncReplicas',
                 return_value=mock_sro) as sro:
                 var = tf.ones((1))
+                global_step = fw.Variable(0, dtype=fw.int64)
                 train_op, lr, grad_norm, _opt, grad_norms = get_train_ops(
-                    fw.Variable(0, dtype=fw.int64),
+                    global_step,
                     LearningRate.new(True, 1, 2, 3, 4, 5, 6, 7, 8, 9),
                     optim_algo=Optimizer.new("sgd", True, 1, 1),
                     clip_mode=ClipMode.new("norm", 0.0),
@@ -128,7 +135,7 @@ class TestUtils(unittest.TestCase):
                 sro.assert_called_with(mock_sgd, 1, 1)
                 mock_sgd.apply_gradients.assert_not_called()
                 mock_sro.apply_gradients.assert_called_with(
-                    zip.return_value)
+                    zip.return_value, global_step=global_step)
 
 
 class TestLogger(unittest.TestCase):

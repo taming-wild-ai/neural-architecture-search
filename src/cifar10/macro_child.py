@@ -137,7 +137,7 @@ class MacroChild(Child):
             reuse,
             scope,
             layers_channels[-1])
-        print("Model has {0} params".format(count_model_params(child.tf_variables())))
+        print("Model has {0} params".format(count_model_params(child.trainable_variables())))
 
     def __call__(self, images):
       with fw.name_scope(self.child.name):
