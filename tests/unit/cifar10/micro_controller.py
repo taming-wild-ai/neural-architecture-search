@@ -5,7 +5,8 @@ from unittest.mock import patch
 from src.cifar10.micro_controller import MicroController
 
 import tensorflow as tf
-tf.compat.v1.disable_eager_execution()
+from absl import flags
+flags.FLAGS(['test'])
 
 class TestMicroController(unittest.TestCase):
     @patch('src.cifar10.micro_controller.fw.reduce_sum', return_value="reduce_sum")

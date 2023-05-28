@@ -1,9 +1,11 @@
+import sys
 import unittest
 import unittest.mock as mock
 from unittest.mock import patch
 
 import numpy as np
 from absl import flags
+flags.FLAGS(['test'])
 import src.framework as fw
 
 from src.cifar10.macro_controller import MacroController
@@ -33,25 +35,30 @@ class TestMacroController(unittest.TestCase):
     @patch('src.cifar10.macro_controller.print')
     def test_constructor_not_whole_channels(self, print, zeros, get_variable, matmul, stack_lstm, multinomial, to_int32, reshape, sscewl, stop_gradient, embedding_lookup, concat, tanh, stack, reduce_mean, reduce_sum, to_float, rui):
         rui.__call__ = mock.MagicMock(return_value='rui')
-        with tf.Graph().as_default():
-            mc = MacroController(temperature=0.9)
-            self.assertEqual(MacroController, type(mc))
-            print.assert_any_call('-' * 80)
-            zeros.assert_called_with([1, 32], tf.float32)
-            rui().assert_called_with([32, 1])
-            get_variable.assert_called_with(rui()(), name='v', trainable=True)
-            matmul.assert_called_with(2.0, 'get_variable')
-            stack_lstm.assert_called_with('embedding_lookup', [1.0], [2.0], ['get_variable', 'get_variable'])
-            multinomial.assert_called_with(0.5, 1)
-            to_int32.assert_called_with('multinomial')
-            reshape.assert_called_with(2.0, [-1])
-            sscewl.assert_called_with(logits=0.5, labels=3.0)
-            stop_gradient.assert_called_with(4.0)
-            embedding_lookup.assert_called_with('get_variable', 3.0)
-            concat.assert_called_with([3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0], axis=0)
-            tanh.assert_called_with(2.0)
-            reduce_sum.assert_called_with('stack')
-            to_float.assert_called_with(3.0)
+        mc = MacroController(temperature=0.9)
+        logits, branch_ids = mc.sampler_logit()
+        mc.sample_arc(branch_ids)
+        log_prob, log_probs = mc.sample_log_prob(logits, branch_ids)
+        mc.sample_entropy(log_probs)
+        mc.skip_count(branch_ids)
+        mc.skip_penaltys(logits)
+        self.assertEqual(MacroController, type(mc))
+        print.assert_any_call('-' * 80)
+        zeros.assert_called_with([1, 32], tf.float32)
+        rui().assert_called_with([32, 1])
+        get_variable.assert_called_with(rui()(), name='v', trainable=True)
+        matmul.assert_called_with(2.0, 'get_variable')
+        stack_lstm.assert_called_with('embedding_lookup', [1.0], [2.0], ['get_variable', 'get_variable'])
+        multinomial.assert_any_call(0.5, 1)
+        to_int32.assert_called_with('multinomial')
+        reshape.assert_any_call(2.0, [-1])
+        sscewl.assert_called_with(logits=0.5, labels=3.0)
+        stop_gradient.assert_called_with(4.0)
+        embedding_lookup.assert_called_with('get_variable', 3.0)
+        concat.assert_called_with([3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0], axis=0)
+        tanh.assert_called_with(2.0)
+        reduce_sum.assert_called_with('stack')
+        to_float.assert_called_with(3.0)
 
     @patch('src.cifar10.macro_controller.fw.random_uniform_initializer')
     @patch('src.cifar10.macro_controller.fw.to_float', return_value=tf.constant(np.ones((1, 2))))
@@ -78,8 +85,14 @@ class TestMacroController(unittest.TestCase):
         flags.FLAGS.child_num_branches = 6
         flags.FLAGS.child_out_filters = 24
         flags.FLAGS.controller_tanh_constant = 0.5
-        with tf.Graph().as_default():
-            self.assertEqual(MacroController, type(MacroController(temperature=0.9)))
+        mc = MacroController(temperature=0.9)
+        self.assertEqual(MacroController, type(mc))
+        logits, branch_ids = mc.sampler_logit()
+        mc.sample_arc(branch_ids)
+        log_prob, log_probs = mc.sample_log_prob(logits, branch_ids)
+        mc.sample_entropy(log_probs)
+        mc.skip_count(branch_ids)
+        mc.skip_penaltys(logits)
         print.assert_any_call('-' * 80)
         zeros.assert_called_with([1, 32], tf.float32)
         rui().assert_called_with([32, 1])
@@ -88,7 +101,7 @@ class TestMacroController(unittest.TestCase):
         stack_lstm.assert_called_with('embedding_lookup', [1.0], [2.0], ['get_variable', 'get_variable'])
         multinomial.assert_called_with(0.5, 1)
         to_int32.assert_called_with('multinomial')
-        reshape.assert_called_with(2.0, [-1])
+        reshape.assert_any_call(2.0, [-1])
         sscewl.assert_called_with(logits=0.5, labels=3.0)
         stop_gradient.assert_called_with(4.0)
         embedding_lookup.assert_called_with('get_variable', 3.0)
@@ -126,49 +139,56 @@ class TestMacroController(unittest.TestCase):
         flags.FLAGS.child_out_filters = 24
         flags.FLAGS.controller_tanh_constant = 0.5
         flags.FLAGS.controller_search_whole_channels = False
-        with tf.Graph().as_default() as graph:
-            variable(0.0, dtype=fw.float32)._as_graph_element = mock.MagicMock(return_value=graph)
-            mc = MacroController(temperature=0.9)
-            child_model = mock.MagicMock()
-            shuffle = mock.MagicMock(return_value=('x_valid_shuffle', 'y_valid_shuffle'))
-            vrl = mock.MagicMock(return_value='vrl')
-            mc.skip_penaltys = 1.0
-            self.assertEqual((train_op, 2, grad_norm, 4), mc.build_trainer(child_model, vrl))
-            train_op(mc.loss, [])
-            grad_norm(mc.loss, [])
-            mc.loss('logits', 'y_valid_shuffle')
-            variable.assert_called_with(0, dtype=tf.int32, name='train_step')
-            variable(0.0, dtype=fw.float32).assign_sub.assert_called_with(variable().__sub__().__rmul__())
-            print.assert_any_call("-" * 80)
-            print.assert_any_call("Building ConvController")
-            print.assert_any_call("Build controller sampler")
-            zeros.assert_called_with([1, 32], tf.float32)
-            variable().assign_sub.assert_called_with(variable().__sub__().__rmul__())
-            get_train_ops.assert_called_with(variable(), mc.learning_rate, clip_mode=mc.clip_mode, l2_reg=0.0, optim_algo=mc.optim_algo)
-            train_op.assert_called_with(mc.loss, [])
-            grad_norm.assert_called_with(mc.loss, [])
-            to_float.assert_any_call(4.0)
-            to_float.assert_any_call(6.0)
-            to_float.assert_called_with(child_model.batch_size)
-            reshape.assert_called_with(2.0, [-1])
-            matmul.assert_called_with(2.0, variable())
-            sscewl.assert_called_with(logits=0.0, labels=3.0)
-            embedding_lookup.assert_called_with(variable(), 3.0)
-            stack_lstm.assert_called_with('embedding_lookup', [1.0], [2.0], [variable(), variable()])
-            multinomial.assert_called_with(0.0, 1)
-            to_int32.assert_called_with('multinomial')
-            where.assert_called_with('less_equal', x=0.0, y='fill')
-            concat.assert_called_with([
-                3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0,
-                3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0,
-                3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0,
-                3.0,
-                3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0,
-                3.0, 4.0, 3.0, 4.0, 3.0,
-                3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0,
-                3.0, 4.0, 3.0, 4.0, 3.0], axis=0)
-            reduce_sum.assert_called_with(4.0)
-            cd.assert_called_with(['assign_sub'])
+        variable(0.0, dtype=fw.float32)._as_graph_element = mock.MagicMock(return_value=tf.Graph())
+        mc = MacroController(temperature=0.9)
+        logits, branch_ids = mc.sampler_logit()
+        mc.sample_arc(branch_ids)
+        log_prob, log_probs = mc.sample_log_prob(logits, branch_ids)
+        mc.sample_entropy(log_probs)
+        mc.skip_count(branch_ids)
+        mc.skip_penaltys(logits)
+        child_model = mock.MagicMock()
+        shuffle = mock.MagicMock(return_value=('x_valid_shuffle', 'y_valid_shuffle'))
+        vrl = mock.MagicMock(return_value='vrl')
+        mc.skip_penaltys = 1.0
+        self.assertEqual((train_op, 2, grad_norm, 4), mc.build_trainer(child_model, vrl))
+        mc.skip_rate(branch_ids)
+        mc.sample_log_prob(logits, branch_ids)
+        train_op(mc.loss, [])
+        grad_norm(mc.loss, [])
+        mc.loss('logits', 'y_valid_shuffle')
+        variable.assert_called_with(0, dtype=tf.int32, name='train_step')
+        variable(0.0, dtype=fw.float32).assign_sub.assert_called_with(variable().__sub__().__rmul__())
+        print.assert_any_call("-" * 80)
+        print.assert_any_call("Building ConvController")
+        print.assert_any_call("Build controller sampler")
+        zeros.assert_called_with([1, 32], tf.float32)
+        variable().assign_sub.assert_called_with(variable().__sub__().__rmul__())
+        get_train_ops.assert_called_with(variable(), mc.learning_rate, clip_mode=mc.clip_mode, l2_reg=0.0, optim_algo=mc.optim_algo)
+        train_op.assert_called_with(mc.loss, [])
+        grad_norm.assert_called_with(mc.loss, [])
+        to_float.assert_any_call(4.0)
+        to_float.assert_any_call(6.0)
+        to_float.assert_called_with(child_model.batch_size)
+        reshape.assert_any_call(2.0, [-1])
+        matmul.assert_called_with(2.0, variable())
+        sscewl.assert_called_with(logits=0.0, labels=3.0)
+        embedding_lookup.assert_called_with(variable(), 3.0)
+        stack_lstm.assert_called_with('embedding_lookup', [1.0], [2.0], [variable(), variable()])
+        multinomial.assert_called_with(0.0, 1)
+        to_int32.assert_called_with('multinomial')
+        where.assert_called_with('less_equal', x=0.0, y='fill')
+        concat.assert_called_with([
+            3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0,
+            3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0,
+            3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0,
+            3.0,
+            3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0,
+            3.0, 4.0, 3.0, 4.0, 3.0,
+            3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0,
+            3.0, 4.0, 3.0, 4.0, 3.0], axis=0)
+        reduce_sum.assert_any_call(4.0)
+        cd.assert_called_with(['assign_sub'])
 
 if "__main__" == __name__:
     unittest.main()

@@ -135,21 +135,24 @@ def train():
       hooks.append(sync_replicas_hook)
     child_train_logits_graph = ops['child']['model'](ops['child']['images'])
     child_loss_graph =         ops['child']['loss'](child_train_logits_graph)
-    child_lr =                 ops['child']['lr']
+    child_lr =                 ops['child']['lr']()
     child_grad_norm_graph =    ops['child']['grad_norm'](child_loss_graph, ops['child']['model'].child.trainable_variables())
     child_train_acc_graph =    ops['child']['train_acc'](child_train_logits_graph)
     child_train_loss_graph =   ops['child']['train_loss'](child_train_logits_graph)
     child_train_op_graph =     ops['child']['train_op'](child_train_loss_graph, ops['child']['model'].child.trainable_variables())
+    child_train_step_var =   ops['child']['global_step']
     if FLAGS.controller_training:
-      child_valid_logits_graph =   ops['child']['model'](ops['child']['x_valid_shuffle'])
-      controller_loss_graph =      ops["controller"]["loss"](child_valid_logits_graph, ops['child']['y_valid_shuffle'])
-      controller_entropy =         ops["controller"]["entropy"]
-      controller_lr =              ops["controller"]["lr"]
-      controller_grad_norm_graph = ops["controller"]["grad_norm"](controller_loss_graph, ops['controller']['model'].trainable_variables())
-      controller_valid_acc_graph = ops["controller"]["valid_acc"](child_valid_logits_graph, ops['child']['y_valid_shuffle'])
-      controller_baseline =        ops["controller"]["baseline"]
-      controller_skip_rate =       ops["controller"]["skip_rate"]
-      controller_train_op_graph =  ops["controller"]["train_op"](controller_loss_graph, ops['controller']['model'].trainable_variables())
+        child_valid_logits_graph =    ops['child']['model'](ops['child']['x_valid_shuffle'])
+        controller_loss_graph =       ops['controller']['loss'](child_valid_logits_graph, ops['child']['y_valid_shuffle'])
+        controller_entropy =          ops['controller']['entropy']()
+        controller_lr =               ops['controller']['lr']()
+        controller_grad_norm_graph =  ops['controller']['grad_norm'](controller_loss_graph, ops['controller']['model'].trainable_variables())
+        controller_valid_acc_graph =  ops['controller']['valid_acc'](child_valid_logits_graph, ops['child']['y_valid_shuffle'])
+        controller_baseline =         ops['controller']['baseline']()
+        controller_skip_rate =        ops['controller']['skip_rate']()
+        controller_sample_arc_graph = ops['controller']['sample_arc']()
+        controller_train_op_graph =   ops['controller']['train_op'](controller_loss_graph, ops['controller']['model'].trainable_variables())
+        controller_train_step_var = ops['controller']['train_step']
 
     print(("-" * 80))
     print("Starting session")
@@ -166,7 +169,7 @@ def train():
             child_train_acc_graph,
             child_train_op_graph,
           ])
-          global_step = sess.run(ops["child"]["global_step"])
+          global_step = sess.run(child_train_step_var)
 
           if FLAGS.child_sync_replicas:
             actual_step = global_step * FLAGS.child_num_aggregate
@@ -208,7 +211,7 @@ def train():
                 if ct_step % FLAGS.log_every == 0:
                   curr_time = time.time()
                   log_string = ""
-                  log_string += "ctrl_step={:<6d}".format(sess.run(ops["controller"]["train_step"]))
+                  log_string += "ctrl_step={:<6d}".format(sess.run(controller_train_step_var))
                   log_string += " loss={:<7.3f}".format(loss)
                   log_string += " ent={:<5.2f}".format(entropy)
                   log_string += " lr={:<6.4f}".format(lr)
@@ -222,8 +225,8 @@ def train():
               print("Here are 10 architectures")
               for _ in range(10):
                 arc, acc = sess.run([
-                  ops["controller"]["sample_arc"],
-                  ops["controller"]["valid_acc"],
+                  controller_sample_arc_graph,
+                  controller_valid_acc_graph,
                 ])
                 if FLAGS.search_for == "micro":
                   normal_arc, reduce_arc = arc

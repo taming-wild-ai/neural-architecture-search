@@ -179,7 +179,7 @@ class TestCIFAR10Main(unittest.TestCase):
                     "num_train_batches": 1,
                     "loss": mock.MagicMock(return_value=2.0),
                     'train_loss': mock.MagicMock(return_value=2.0),
-                    "lr": 0.01,
+                    "lr": mock.MagicMock(return_value=0.01),
                     "grad_norm": mock.MagicMock(return_value=5),
                     "train_acc": mock.MagicMock(return_value=0.01),
                     "train_op": mock.MagicMock(return_value={}),
@@ -189,15 +189,15 @@ class TestCIFAR10Main(unittest.TestCase):
                     'model': mock.MagicMock(name='controller model'),
                     "optimizer": controller_optimizer,
                     "loss": mock.MagicMock(return_value=2.0),
-                    "entropy": 2.0,
-                    "lr": 0.01,
+                    "entropy": mock.MagicMock(return_value=2.0),
+                    "lr": mock.MagicMock(return_value=0.01),
                     "grad_norm": mock.MagicMock(return_value=0.01),
                     "valid_acc": mock.MagicMock(return_value=0.25),
-                    "baseline": 2.0,
-                    "skip_rate": 0.1,
+                    "baseline": mock.MagicMock(return_value=2.0),
+                    "skip_rate": mock.MagicMock(return_value=0.1),
                     "train_op": mock.MagicMock(return_value=2.0),
                     "train_step": 311,
-                    "sample_arc": "0" }})
+                    "sample_arc": mock.MagicMock(return_value="0") }})
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
