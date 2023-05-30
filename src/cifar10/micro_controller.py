@@ -54,13 +54,17 @@ class MicroController(Controller):
     self.name = name
 
     self._create_params()
-    s1 = MicroController.Sampler(self.num_cells, self.temperature, self.tanh_constant, self.op_tanh_reduce, None, None, True, self.lstm_num_layers, self.lstm_size, self.g_emb, self.w_emb, self.w_lstm, self.w_attn_1, self.w_attn_2, self.v_attn, self.w_soft, self.b_soft, self.b_soft_no_learn)
-    arc_seq_1, entropy_1, log_prob_1, c, h = s1()
-    s2 = MicroController.Sampler(self.num_cells, self.temperature, self.tanh_constant, self.op_tanh_reduce, c, h, False, self.lstm_num_layers, self.lstm_size, self.g_emb, self.w_emb, self.w_lstm, self.w_attn_1, self.w_attn_2, self.v_attn, self.w_soft, self.b_soft, self.b_soft_no_learn)
-    arc_seq_2, entropy_2, log_prob_2, _, _ = s2()
+    self.sample_logit1 = MicroController.SamplerLogit(self.num_cells, self.lstm_num_layers, self.lstm_size, self.g_emb, self.w_lstm, self.w_attn_1)
+    self.sample_logit2 = MicroController.SamplerLogit(self.num_cells, self.lstm_num_layers, self.lstm_size, self.g_emb, self.w_lstm, self.w_attn_1)
+    arc_seq_1 = MicroController.SampleArc(self.num_cells)
+    arc_seq_2 = MicroController.SampleArc(self.num_cells)
     self.sample_arc = (arc_seq_1, arc_seq_2)
-    self.sample_entropy = entropy_1 + entropy_2
-    self.sample_log_prob = log_prob_1 + log_prob_2
+    entropy_1 = MicroController.Entropy(self.num_cells)
+    entropy_2 = MicroController.Entropy(self.num_cells)
+    self.sample_entropy = lambda logits1, logits2: entropy_1(logits1) + entropy_2(logits2)
+    log_prob_1 = MicroController.LogProbabilities(self.num_cells)
+    log_prob_2 = MicroController.LogProbabilities(self.num_cells)
+    self.sample_log_prob = lambda logits1, logits2: log_prob_1(logits1) + log_prob_2(logits2)
 
   def trainable_variables(self):
     new_vars = self.w_lstm + [self.g_emb, self.w_emb, self.w_soft, self.w_attn_1, self.w_attn_2, self.v_attn]
@@ -99,62 +103,17 @@ class MicroController(Controller):
         self.v_attn = fw.Variable(initializer([self.lstm_size, 1]), "v", import_scope=scope, trainable=True)
 
 
-  class SampleArc(LayeredModel):
-      def __init__(self, controller):
-          self.layers = [
-              lambda x: x.stack(),
-              lambda x: fw.reshape(x, [-1])]
-
-
-  class Entropy(LayeredModel):
-      def __init__(self, controller):
-          self.layers = [fw.reduce_sum]
-
-
-  class LogProbabilities(LayeredModel):
-      def __init__(self, controller):
-          self.layers = [fw.reduce_sum]
-
-
-  class LSTMOutputs(LayeredModel):
-      def __init__(self, controller):
-          self.layers = [lambda x: x]
-
-
-  class LSTMHiddens(LayeredModel):
-      def __init__(self, controller):
-          self.layers = [lambda x: x]
-
-
-  class Sampler(LayeredModel):
-      def __init__(self, num_cells, temperature, tanh_constant, op_tanh_reduce, prev_c, prev_h, use_bias, lstm_num_layers, lstm_size, g_emb, w_emb, w_lstm, w_attn_1, w_attn_2, v_attn, w_soft, b_soft, b_soft_no_learn):
-          print("-" * 80)
-          print("Build controller sampler")
+  class SamplerLogit(LayeredModel):
+      def __init__(self, num_cells, lstm_num_layers, lstm_size, g_emb, w_lstm, w_attn_1):
           self.num_cells = num_cells
-          self.temperature = temperature
-          self.tanh_constant = tanh_constant
-          self.op_tanh_reduce = op_tanh_reduce
-          self.prev_c = prev_c
-          self.prev_h = prev_h
-          self.use_bias = use_bias
           self.lstm_num_layers = lstm_num_layers
           self.lstm_size = lstm_size
           self.g_emb = g_emb
-          self.w_emb = w_emb
           self.w_lstm = w_lstm
           self.w_attn_1 = w_attn_1
-          self.w_attn_2 = w_attn_2
-          self.v_attn = v_attn
-          self.w_soft = w_soft
-          self.b_soft = b_soft
-          self.b_soft_no_learn = b_soft_no_learn
-          self.sa = MicroController.SampleArc(self)
-          self.e = MicroController.Entropy(self)
-          self.lp = MicroController.LogProbabilities(self)
-          self.lo = MicroController.LSTMOutputs(self)
-          self.lh = MicroController.LSTMHiddens(self)
 
-      def __call__(self):
+      def __call__(self, prev_c, prev_h):
+          logits = fw.TensorArray(fw.float32, size=((self.num_cells + 2) * 4))
           anchors = fw.TensorArray(
               fw.float32,
               size=self.num_cells + 2,
@@ -163,17 +122,16 @@ class MicroController(Controller):
               fw.float32,
               size=self.num_cells + 2,
               clear_after_read=False)
-          arc_seq = fw.TensorArray(fw.int32, size=self.num_cells * 4)
-          if self.prev_c is None:
-              assert self.prev_h is None, "prev_c and prev_h must both be None"
-              self.prev_c = [fw.zeros([1, self.lstm_size], fw.float32)
+          if prev_c is None:
+              assert prev_h is None, "prev_c and prev_h must both be None"
+              prev_c = [fw.zeros([1, self.lstm_size], fw.float32)
                         for _ in range(self.lstm_num_layers)]
-              self.prev_h = [fw.zeros([1, self.lstm_size], fw.float32)
+              prev_h = [fw.zeros([1, self.lstm_size], fw.float32)
                         for _ in range(self.lstm_num_layers)]
           inputs = self.g_emb
           for layer_id in range(2):
-              next_c, next_h = stack_lstm(inputs, self.prev_c, self.prev_h, self.w_lstm)
-              self.prev_c, self.prev_h = next_c, next_h
+              next_c, next_h = stack_lstm(inputs, prev_c, prev_h, self.w_lstm)
+              prev_c, prev_h = next_c, next_h
               anchors = anchors.write(layer_id, fw.zeros_like(next_h[-1]))
               anchors_w_1 = anchors_w_1.write(
                   layer_id,
@@ -182,14 +140,13 @@ class MicroController(Controller):
           def _condition(layer_id, *args):
               return fw.less(layer_id, self.num_cells + 2)
 
-          def _body(layer_id, inputs, prev_c, prev_h, anchors, anchors_w_1, arc_seq, entropy, log_prob):
+          def _body(layer_id, inputs, prev_c, prev_h, anchors, anchors_w_1, logits):
               indices = fw.range(0, layer_id, dtype=fw.int32)
-              start_id = 4 * (layer_id - 2)
               prev_layers = []
               for i in range(2):  # index_1, index_2
                   next_c, next_h = stack_lstm(inputs, prev_c, prev_h, self.w_lstm)
                   prev_c, prev_h = next_c, next_h
-                  logits = fw.reshape(
+                  logit = fw.reshape(
                       fw.matmul(
                           fw.tanh(
                               fw.reshape(
@@ -200,66 +157,136 @@ class MicroController(Controller):
                           self.v_attn),
                       [1, layer_id])
                   if self.temperature is not None:
-                      logits /= self.temperature
+                      logit /= self.temperature
                   if self.tanh_constant is not None:
-                      logits = self.tanh_constant * fw.tanh(logits)
-                  index = fw.reshape(fw.to_int32(fw.multinomial(logits, 1)), [1])
-                  arc_seq = arc_seq.write(start_id + 2 * i, index)
-                  log_prob += fw.sparse_softmax_cross_entropy_with_logits(
-                      logits=logits,
-                      labels=index)
-                  entropy += fw.stop_gradient(fw.softmax_cross_entropy_with_logits(
-                      logits=logits,
-                      labels=fw.softmax(logits)))
+                      logit = self.tanh_constant * fw.tanh(logit)
+                  logits = logits.write(layer_id * 4 + i, logit)
+                  index = fw.reshape(fw.to_int32(fw.multinomial(logit, 1)), [1])
                   prev_layers.append(anchors.read(fw.reduce_sum(index)))
                   inputs = prev_layers[-1]
               for i in range(2):  # op_1, op_2
                   next_c, next_h = stack_lstm(inputs, prev_c, prev_h, self.w_lstm)
                   prev_c, prev_h = next_c, next_h
-                  logits = fw.matmul(next_h[-1], self.w_soft) + self.b_soft
+                  logit = fw.matmul(next_h[-1], self.w_soft) + self.b_soft
                   if self.temperature is not None:
-                      logits /= self.temperature
+                      logit /= self.temperature
                   if self.tanh_constant is not None:
                       op_tanh = self.tanh_constant / self.op_tanh_reduce
-                      logits = op_tanh * fw.tanh(logits)
+                      logit = op_tanh * fw.tanh(logit)
                   if self.use_bias:
-                      logits += self.b_soft_no_learn
-                  op_id = fw.reshape(fw.to_int32(fw.multinomial(logits, 1)), [1])
-                  arc_seq = arc_seq.write(start_id + 2 * i + 1, op_id)
-                  log_prob += fw.sparse_softmax_cross_entropy_with_logits(
-                      logits=logits,
-                      labels=op_id)
-                  entropy += fw.stop_gradient(fw.softmax_cross_entropy_with_logits(
-                      logits=logits,
-                      labels=fw.softmax(logits)))
+                      logit += self.b_soft_no_learn
+                  logits.write(layer_id * 4 + 2 + i, logit)
+                  op_id = fw.reshape(fw.to_int32(fw.multinomial(logit, 1)), [1])
                   inputs = fw.embedding_lookup(self.w_emb, op_id)
               next_c, next_h = stack_lstm(inputs, prev_c, prev_h, self.w_lstm)
               anchors = anchors.write(layer_id, next_h[-1])
               anchors_w_1 = anchors_w_1.write(layer_id, fw.matmul(next_h[-1], self.w_attn_1))
               inputs = self.g_emb
-              return (layer_id + 1, inputs, next_c, next_h, anchors, anchors_w_1,
-                      arc_seq, entropy, log_prob)
+              return (layer_id + 1, inputs, next_c, next_h, anchors, anchors_w_1)
 
           loop_outputs = fw.while_loop(
               _condition,
               _body,
               [
-                  fw.constant(2, dtype=fw.int32, name="layer_id"),
+                  fw.constant(2, dtype=fw.int32, name='layer_id'),
                   inputs,
-                  self.prev_c,
-                  self.prev_h,
+                  prev_c,
+                  prev_h,
                   anchors,
                   anchors_w_1,
-                  arc_seq,
-                  fw.constant([0.0], dtype=fw.float32, name="entropy"),
-                  fw.constant([0.0], dtype=fw.float32, name="log_prob")],
+                  logits],
               parallel_iterations=1)
-          return (
-            self.sa(loop_outputs[-3]),
-            self.e( loop_outputs[-2]),
-            self.lp(loop_outputs[-1]),
-            self.lo(loop_outputs[-7]),
-            self.lh(loop_outputs[-6]))
+          return loop_outputs[-1], loop_outputs[-5], loop_outputs[-4]
+
+
+  class SampleArc(LayeredModel):
+      def __init__(self, num_cells):
+          self.num_cells = num_cells
+
+      def __call__(self, logits):
+          arc_seq = fw.TensorArray(fw.int32, size=self.num_cells * 4)
+
+          def _condition(layer_id, *args):
+              return fw.less(layer_id, self.num_cells + 2)
+
+          def _body(layer_id, arc_seq):
+              start_id = 4 * (layer_id - 2)
+              for i in range(2):  # index_1, index_2
+                  index = fw.reshape(fw.to_int32(fw.multinomial(logits[layer_id * 4 + i], 1)), [1])
+                  logits_index += 1
+                  arc_seq = arc_seq.write(start_id + 2 * i, index)
+              for i in range(2):  # op_1, op_2
+                  op_id = fw.reshape(fw.to_int32(fw.multinomial(logits[layer_id * 4 + 2 + i], 1)), [1])
+                  logits_index += 1
+                  arc_seq = arc_seq.write(start_id + 2 * i + 1, op_id)
+              return (layer_id + 1, arc_seq)
+
+          loop_outputs = fw.while_loop(
+              _condition,
+              _body,
+              [fw.constant(2, dtype=fw.int32, name="layer_id"), arc_seq],
+              parallel_iterations=1)
+          retval = loop_outputs[-1].stack()
+          retval = fw.reshape(retval, [-1])
+          return retval
+
+
+  class Entropy(LayeredModel):
+      def __init__(self, num_cells):
+          self.num_cells = num_cells
+
+      def __call__(self, logits):
+          entropys = fw.constant([0.0], dtype=fw.float32, name="entropy")
+
+          def _condition(layer_id, *args):
+              return fw.less(layer_id, self.num_cells + 2)
+
+          def _body(layer_id, entropy):
+              for i in range(2):  # index_1, index_2
+                  entropy += fw.stop_gradient(fw.softmax_cross_entropy_with_logits(
+                      logits=logits[layer_id * 4 + i],
+                      labels=fw.softmax(logits[layer_id * 4 + i])))
+              for i in range(2):  # op_1, op_2
+                  entropy += fw.stop_gradient(fw.softmax_cross_entropy_with_logits(
+                      logits=logits[layer_id * 4 + 2 + i],
+                      labels=fw.softmax(logits[layer_id * 4 + 2 + i])))
+              return (layer_id + 1, entropy)
+
+          loop_outputs = fw.while_loop(
+              _condition,
+              _body,
+              [fw.constant(2, dtype=fw.int32, name='layer_id'), entropys])
+          return fw.reduce_sum(loop_outputs[-1])
+
+
+  class LogProbabilities(LayeredModel):
+      def __init__(self, num_cells):
+          self.num_cells = num_cells
+
+      def __call__(self, logits):
+          log_probs = fw.constant([0.0], dtype=fw.float32, name='log_prob')
+
+          def _condition(layer_id, *args):
+              return fw.less(layer_id, self.num_cells + 2)
+
+          def _body(layer_id, log_prob):
+              for i in range(2):  # index_1, index_2
+                  index = fw.reshape(fw.to_int32(fw.multinomial(logits[layer_id * 4 + i], 1)), [1])
+                  log_prob += fw.sparse_softmax_cross_entropy_with_logits(
+                      logits=logits[layer_id * 4 + i],
+                      labels=index)
+              for i in range(2):  # op_1, op_2
+                  op_id = fw.reshape(fw.to_int32(fw.multinomial(logits[layer_id * 4 + 2 + i], 1)), [1])
+                  log_prob += fw.sparse_softmax_cross_entropy_with_logits(
+                      logits=logits[layer_id * 4 + 2 + i],
+                      labels=op_id)
+              return (layer_id + 1, log_prob)
+
+          loop_outputs = fw.while_loop(
+              _condition,
+              _body,
+              [fw.constant(2, dtype=fw.int32, name='layer_id'), log_probs])
+          return fw.reduce_sum(loop_outputs[-1])
 
 
   def build_trainer(self, child_model, vrl):

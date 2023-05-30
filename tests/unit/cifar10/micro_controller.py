@@ -27,9 +27,16 @@ class TestMicroController(unittest.TestCase):
         tensor_array.return_value = mock_tensor_array
         with patch('src.cifar10.micro_controller.fw.while_loop', return_value=mock_tensor_array) as while_loop:
             with tf.Graph().as_default():
-                _ = MicroController(temperature=1.0, tanh_constant=1.0, op_tanh_reduce=1.0)
+                mc = MicroController(temperature=1.0, tanh_constant=1.0, op_tanh_reduce=1.0)
+                logits1, c, h = mc.sample_logit1(None, None)
+                logits2, _c, _h = mc.sample_logit2(c, h)
+                mc.sample_arc[0](logits1)
+                mc.sample_arc[1](logits2)
+                mc.sample_entropy(logits1, logits2)
+                mc.sample_log_prob(logits1, logits2)
                 print.assert_any_call('-' * 80)
                 print.assert_any_call("Building ConvController")
+                zeros.assert_any_call([1, 32], tf.float32)
                 zeros.assert_called_with([1, 32], tf.float32)
                 rui().assert_called_with([32, 1])
                 gv.assert_called_with(rui()(), 'v', import_scope='controller/attention/', trainable=True)
@@ -37,6 +44,7 @@ class TestMicroController(unittest.TestCase):
                 mock_tensor_array.write.assert_called_with(1, 'matmul')
                 matmul.assert_called_with(2, 'gv')
                 while_loop.assert_called()
+                reshape.assert_any_call(tensor_array().__getitem__().stack(), [-1])
                 reshape.assert_called_with(tensor_array().__getitem__().stack(), [-1])
                 reduce_sum.assert_called_with(tensor_array().__getitem__())
 
@@ -67,6 +75,12 @@ class TestMicroController(unittest.TestCase):
             with tf.Graph().as_default() as graph:
                 variable()._as_graph_element().graph = graph
                 mc = MicroController(temperature=1.0, tanh_constant=1.0, op_tanh_reduce=1.0, entropy_weight=1.0)
+                logits1, c, h = mc.sample_logit1(None, None)
+                logits2, _c, _h = mc.sample_logit2(c, h)
+                mc.sample_arc[0](logits1)
+                mc.sample_arc[1](logits2)
+                mc.sample_entropy(logits1, logits2)
+                mc.sample_log_prob(logits1, logits2)
                 mock_child = mock.MagicMock(name='mock_child')
                 shuffle = mock.MagicMock(return_value=('x_valid_shuffle', 'y_valid_shuffle'))
                 vrl = mock.MagicMock(return_value='vrl')
