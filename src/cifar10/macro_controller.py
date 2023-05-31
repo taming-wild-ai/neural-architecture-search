@@ -175,6 +175,7 @@ class MacroController(Controller):
           self.lstm_num_layers = lstm_num_layers
 
       def __call__(self):
+          """Return the logits and branch IDs, generated from the LSTM."""
           anchors = []
           anchors_w_1 = []
           prev_c = [fw.zeros([1, self.lstm_size], fw.float32) for _ in
@@ -241,6 +242,7 @@ class MacroController(Controller):
           self.search_whole_channels = search_whole_channels
 
       def __call__(self, branch_ids):
+          """Generate the sample arc, based on branch IDs from SamplerLogit."""
           branch_ids_index = 0
           arc_seq = []
           for layer_id in range(self.num_layers):
@@ -386,14 +388,14 @@ class MacroController(Controller):
 
     self.baseline = fw.Variable(0.0, dtype=fw.float32)
 
-    def loss(logits, y_valid_shuffle):
-      with fw.control_dependencies([
-        self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward(logits, y_valid_shuffle)))]):
-        self.reward = fw.identity(reward(logits, y_valid_shuffle))
-      retval = self.sample_log_prob * (self.reward - self.baseline)
-      if self.skip_weight is not None:
-        retval += self.skip_weight * self.skip_penaltys
-      return retval
+    def loss(child_logits, y_valid_shuffle, controller_logits, branch_ids):
+        with fw.control_dependencies([
+            self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward(child_logits, y_valid_shuffle)))]):
+            self.reward = fw.identity(reward(child_logits, y_valid_shuffle))
+        retval = self.sample_log_prob(controller_logits, branch_ids) * (self.reward - self.baseline)
+        if self.skip_weight is not None:
+            retval += self.skip_weight * self.skip_penaltys
+        return retval
 
     self.loss = loss
     self.train_step = fw.Variable(0, dtype=fw.int32, name="train_step")

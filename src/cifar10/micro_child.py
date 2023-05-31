@@ -876,28 +876,34 @@ class MicroChild(Child):
           self.layers = [lambda x: child.data_format.child_init(x)] # 0
         else:
           self.layers = [lambda x: x] # 0
-        self.layers.append(lambda x, y: fw.shuffle_batch([x, y], child.batch_size, child.seed, 25000)) # 1
+        self.layers.append(lambda x, y: fw.shuffle_batch((x, y), child.batch_size, child.seed, 25000)) # 1
         if shuffle:
 
-          def _pre_process(x):
-            return child.data_format.child_init_preprocess(
-              fw.image.random_flip_left_right(
-                fw.image.random_crop(
-                  fw.pad(x, [[4, 4], [4, 4], [0, 0]]),
-                  [32, 32, 3],
-                  seed=child.seed),
-                seed=child.seed))
+          def _pre_process2(image):
+              return child.data_format.child_init_preprocess(
+                  fw.random_flip_left_right(
+                      fw.random_crop(
+                          fw.pad(image, [[4, 4], [4, 4], [0, 0]]),
+                          [32, 32, 3],
+                          seed=child.seed),
+                      seed=child.seed))
 
-          self.layers.append(lambda x: fw.map_fn(_pre_process, x, back_prop=False)) # 2
+          def _pre_process(image_batch, label_batch):
+              return fw.map_fn(_pre_process2, image_batch), label_batch
+
+          def layer2(x):
+            return x.map(_pre_process)
+
+          self.layers.append(layer2) # 2
         else:
           self.layers.append(lambda x: x) # 2
 
     def __call__(self, x, y):
       with fw.device('/cpu:0'):
         x = self.layers[0](x)
-        x_valid_shuffle, y_valid_shuffle = self.layers[1](x, y)
-        x_valid_shuffle = self.layers[2](x_valid_shuffle)
-        return x_valid_shuffle, y_valid_shuffle
+        dataset_valid_shuffle = self.layers[1](x, y)
+        dataset_valid_shuffle = self.layers[2](dataset_valid_shuffle)
+        return dataset_valid_shuffle
 
 
   class ValidationRL(LayeredModel):
@@ -926,7 +932,7 @@ class MicroChild(Child):
       self.normal_arc = fixed_arc[:4 * self.num_cells]
       self.reduce_arc = fixed_arc[4 * self.num_cells:]
 
-    self.loss, self.train_loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train(self.y_train)
-    self.valid_preds, self.valid_acc = self._build_valid(self.y_valid)
-    self.test_preds, self.test_acc = self._build_test(self.y_test)
+    self.loss, self.train_loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train(self.dataset)
+    self.valid_preds, self.valid_acc = self._build_valid(self.dataset_valid)
+    self.test_preds, self.test_acc = self._build_test(self.dataset_test)
     return train_op, lr, grad_norm, optimizer

@@ -8,7 +8,6 @@ from src.cifar10.child import ClipMode, Optimizer, LearningRate
 import src.framework as fw
 
 import tensorflow as tf
-tf.compat.v1.disable_eager_execution()
 
 class TestUtils(unittest.TestCase):
     @patch('src.utils.print')

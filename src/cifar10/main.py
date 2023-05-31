@@ -5,7 +5,7 @@ import sys
 import time
 
 import numpy as np
-from absl import flags
+from absl import flags, app
 import src.framework as fw
 
 from src import utils
@@ -68,7 +68,7 @@ def get_ops(images, labels):
     child_train_op, child_lr, child_grad_norm, child_optimizer = child_model.connect_controller(controller_model)
     shuffle = child_model.ValidationRLShuffle(child_model, False)
     vrl = child_model.ValidationRL()
-    x_valid_shuffle, y_valid_shuffle = shuffle(child_model.images['valid_original'], child_model.labels['valid_original'])
+    dataset_valid_shuffle = shuffle(child_model.images['valid_original'], child_model.labels['valid_original'])
     controller_train_op, controller_lr, controller_grad_norm, controller_optimizer = controller_model.build_trainer(child_model, vrl)
 
     controller_ops = {
@@ -89,16 +89,14 @@ def get_ops(images, labels):
     assert not FLAGS.controller_training, (
       "--child_fixed_arc is given, cannot train controller")
     child_train_op, child_lr, child_grad_norm, child_optimizer = child_model.connect_controller(None)
-    x_valid_shuffle = None
-    y_valid_shuffle = None
+    dataset_valid_shuffle = None
     controller_ops = None
 
   return {
     "child": {
-      "images": child_model.x_train,
-      'x_valid_shuffle': x_valid_shuffle,
-      'y_valid_shuffle': y_valid_shuffle,
-      "model": ChildClass.Model(child_model, True),
+      "dataset": child_model.dataset,
+      'dataset_valid_shuffle': dataset_valid_shuffle,
+      "model_ctor": lambda controller_sample_arc: ChildClass.Model(child_model, controller_sample_arc, True),
       "global_step": child_model.global_step,
       "loss": child_model.loss,
       "train_loss": child_model.train_loss,
@@ -122,135 +120,114 @@ def train():
     images, labels = read_data(FLAGS.data_path)
   else:
     images, labels = read_data(FLAGS.data_path, num_valids=0)
+  ops = get_ops(images, labels)
+  hooks = [
+      fw.Hook(
+          FLAGS.output_dir,
+          save_steps=ops["child"]["num_train_batches"],
+          saver=fw.Saver(var_list=ops['child']['model'].trainable_variables() + ops['controller']['model'].trainable_variables()))]
+  if FLAGS.child_sync_replicas:
+    sync_replicas_hook = ops["child"]["optimizer"].make_session_run_hook(True)
+    hooks.append(sync_replicas_hook)
+  if FLAGS.controller_training and FLAGS.controller_sync_replicas:
+    sync_replicas_hook = ops["controller"]["optimizer"].make_session_run_hook(True)
+    hooks.append(sync_replicas_hook)
+  batch_iterator = None
 
-  g = fw.Graph()
-  with g.as_default():
-    ops = get_ops(images, labels)
-    hooks = [fw.Hook(FLAGS.output_dir, save_steps=ops["child"]["num_train_batches"], saver=fw.Saver())]
-    if FLAGS.child_sync_replicas:
-      sync_replicas_hook = ops["child"]["optimizer"].make_session_run_hook(True)
-      hooks.append(sync_replicas_hook)
-    if FLAGS.controller_training and FLAGS.controller_sync_replicas:
-      sync_replicas_hook = ops["controller"]["optimizer"].make_session_run_hook(True)
-      hooks.append(sync_replicas_hook)
-    child_train_logits_graph = ops['child']['model'](ops['child']['images'])
-    child_loss_graph =         ops['child']['loss'](child_train_logits_graph)
-    child_lr =                 ops['child']['lr']()
-    child_grad_norm_graph =    ops['child']['grad_norm'](child_loss_graph, ops['child']['model'].child.trainable_variables())
-    child_train_acc_graph =    ops['child']['train_acc'](child_train_logits_graph)
-    child_train_loss_graph =   ops['child']['train_loss'](child_train_logits_graph)
-    child_train_op_graph =     ops['child']['train_op'](child_train_loss_graph, ops['child']['model'].child.trainable_variables())
-    child_train_step_var =   ops['child']['global_step']
-    if FLAGS.controller_training:
-        child_valid_logits_graph =    ops['child']['model'](ops['child']['x_valid_shuffle'])
-        controller_loss_graph =       ops['controller']['loss'](child_valid_logits_graph, ops['child']['y_valid_shuffle'])
-        controller_entropy =          ops['controller']['entropy']()
-        controller_lr =               ops['controller']['lr']()
-        controller_grad_norm_graph =  ops['controller']['grad_norm'](controller_loss_graph, ops['controller']['model'].trainable_variables())
-        controller_valid_acc_graph =  ops['controller']['valid_acc'](child_valid_logits_graph, ops['child']['y_valid_shuffle'])
-        controller_baseline =         ops['controller']['baseline']()
-        controller_skip_rate =        ops['controller']['skip_rate']()
-        controller_sample_arc_graph = ops['controller']['sample_arc']()
-        controller_train_op_graph =   ops['controller']['train_op'](controller_loss_graph, ops['controller']['model'].trainable_variables())
-        controller_train_step_var = ops['controller']['train_step']
+  print(("-" * 80))
+  print("Starting session")
+  config = fw.ConfigProto()
+  start_time = time.time()
+  while True:
+      if batch_iterator is None:
+          batch_iterator = ops['child']['dataset'].as_numpy_iterator()
+      try:
+          images, labels = batch_iterator.__next__()
+      except StopIteration:
+          batch_iterator = ops['child']['dataset'].as_numpy_iterator()
+          images, labels = batch_iterator.__next__()
+      child_train_logits = ops['child']['model'](images)
+      loss = ops['child']['loss'](child_train_logits)
+      lr = ops['child']['lr']()
+      gn = ops['child']['grad_norm'](loss, ops['child']['model'].child.trainable_variables())
+      tr_acc = ops['child']['train_acc'](child_train_logits)
+      global_step = ops["child"]["global_step"]
 
-    print(("-" * 80))
-    print("Starting session")
-    with fw.Session(
-      config=fw.ConfigProto(),
-      hooks=hooks,
-      checkpoint_dir=FLAGS.output_dir) as sess:
-        start_time = time.time()
-        while True:
-          loss, lr, gn, tr_acc, _ = sess.run([
-            child_loss_graph,
-            child_lr,
-            child_grad_norm_graph,
-            child_train_acc_graph,
-            child_train_op_graph,
-          ])
-          global_step = sess.run(child_train_step_var)
+      if FLAGS.child_sync_replicas:
+          actual_step = global_step * FLAGS.child_num_aggregate
+      else:
+          actual_step = global_step
+      epoch = actual_step // ops["num_train_batches"]
+      curr_time = time.time()
+      if global_step % FLAGS.log_every == 0:
+          log_string = ""
+          log_string += "epoch={:<6d}".format(epoch)
+          log_string += "ch_step={:<6d}".format(global_step)
+          log_string += " loss={:<8.6f}".format(loss)
+          log_string += " lr={:<8.4f}".format(lr)
+          log_string += " |g|={:<8.4f}".format(gn)
+          log_string += " tr_acc={:<3d}/{:>3d}".format(
+              tr_acc, FLAGS.batch_size)
+          log_string += " mins={:<10.2f}".format(
+              float(curr_time - start_time) / 60)
+          print(log_string)
 
-          if FLAGS.child_sync_replicas:
-            actual_step = global_step * FLAGS.child_num_aggregate
-          else:
-            actual_step = global_step
-          epoch = actual_step // ops["num_train_batches"]
-          curr_time = time.time()
-          if global_step % FLAGS.log_every == 0:
-            log_string = ""
-            log_string += "epoch={:<6d}".format(epoch)
-            log_string += "ch_step={:<6d}".format(global_step)
-            log_string += " loss={:<8.6f}".format(loss)
-            log_string += " lr={:<8.4f}".format(lr)
-            log_string += " |g|={:<8.4f}".format(gn)
-            log_string += " tr_acc={:<3d}/{:>3d}".format(
-                tr_acc, FLAGS.batch_size)
-            log_string += " mins={:<10.2f}".format(
-                float(curr_time - start_time) / 60)
-            print(log_string)
+      if actual_step % ops["eval_every"] == 0:
+        if (FLAGS.controller_training and
+            epoch % FLAGS.controller_train_every == 0):
+          print(("Epoch {}: Training controller".format(epoch)))
+          for ct_step in range(FLAGS.controller_train_steps *
+                                FLAGS.controller_num_aggregate):
+            child_valid_logits = ops['child']['model'](ops['child']['dataset_valid_shuffle'])
+            loss = ops["controller"]["loss"](child_valid_logits, ops['child']['dataset_valid_shuffle'])
+            entropy = ops["controller"]["entropy"]()
+            lr = ops["controller"]["lr"]()
+            gn = ops["controller"]["grad_norm"](loss, ops['controller']['model'].trainable_variables())
+            val_acc = ops["controller"]["valid_acc"](child_valid_logits, ops['child']['dataset_valid_shuffle'])
+            bl = ops["controller"]["baseline"]()
+            skip = ops["controller"]["skip_rate"]()
 
-          if actual_step % ops["eval_every"] == 0:
-            if (FLAGS.controller_training and
-                epoch % FLAGS.controller_train_every == 0):
-              print(("Epoch {}: Training controller".format(epoch)))
-              for ct_step in range(FLAGS.controller_train_steps *
-                                    FLAGS.controller_num_aggregate):
+            if ct_step % FLAGS.log_every == 0:
+              curr_time = time.time()
+              log_string = ""
+              log_string += "ctrl_step={:<6d}".format(ops["controller"]["train_step"])
+              log_string += " loss={:<7.3f}".format(loss)
+              log_string += " ent={:<5.2f}".format(entropy)
+              log_string += " lr={:<6.4f}".format(lr)
+              log_string += " |g|={:<8.4f}".format(gn)
+              log_string += " acc={:<6.4f}".format(val_acc)
+              log_string += " bl={:<5.2f}".format(bl)
+              log_string += " mins={:<.2f}".format(
+                  float(curr_time - start_time) / 60)
+              print(log_string)
 
-                loss, entropy, lr, gn, val_acc, bl, skip, _ = sess.run([
-                  controller_loss_graph,
-                  controller_entropy,
-                  controller_lr,
-                  controller_grad_norm_graph,
-                  controller_valid_acc_graph,
-                  controller_baseline,
-                  controller_skip_rate,
-                  controller_train_op_graph,
-                ])
-
-                if ct_step % FLAGS.log_every == 0:
-                  curr_time = time.time()
-                  log_string = ""
-                  log_string += "ctrl_step={:<6d}".format(sess.run(controller_train_step_var))
-                  log_string += " loss={:<7.3f}".format(loss)
-                  log_string += " ent={:<5.2f}".format(entropy)
-                  log_string += " lr={:<6.4f}".format(lr)
-                  log_string += " |g|={:<8.4f}".format(gn)
-                  log_string += " acc={:<6.4f}".format(val_acc)
-                  log_string += " bl={:<5.2f}".format(bl)
-                  log_string += " mins={:<.2f}".format(
-                      float(curr_time - start_time) / 60)
-                  print(log_string)
-
-              print("Here are 10 architectures")
-              for _ in range(10):
-                arc, acc = sess.run([
-                  controller_sample_arc_graph,
-                  controller_valid_acc_graph,
-                ])
-                if FLAGS.search_for == "micro":
-                  normal_arc, reduce_arc = arc
-                  print((np.reshape(normal_arc, [-1])))
-                  print((np.reshape(reduce_arc, [-1])))
+          print("Here are 10 architectures")
+          for _ in range(10):
+            arc = ops["controller"]["sample_arc"]
+            acc = ops["controller"]["valid_acc"](child_valid_logits, ops['child']['dataset_valid_shuffle'])
+            if FLAGS.search_for == "micro":
+              normal_arc, reduce_arc = arc
+              print((np.reshape(normal_arc, [-1])))
+              print((np.reshape(reduce_arc, [-1])))
+            else:
+              start = 0
+              for layer_id in range(FLAGS.child_num_layers):
+                if FLAGS.controller_search_whole_channels:
+                  end = start + 1 + layer_id
                 else:
-                  start = 0
-                  for layer_id in range(FLAGS.child_num_layers):
-                    if FLAGS.controller_search_whole_channels:
-                      end = start + 1 + layer_id
-                    else:
-                      end = start + 2 * FLAGS.child_num_branches + layer_id
-                    print((np.reshape(arc[start: end], [-1])))
-                    start = end
-                print(("val_acc={:<6.4f}".format(acc)))
-                print(("-" * 80))
+                  end = start + 2 * FLAGS.child_num_branches + layer_id
+                print((np.reshape(arc[start: end], [-1])))
+                start = end
+            print(("val_acc={:<6.4f}".format(acc)))
+            print(("-" * 80))
 
-            print(("Epoch {}: Eval".format(epoch)))
-            if FLAGS.child_fixed_arc is None:
-              ops["eval_func"](sess, "valid")
-            ops["eval_func"](sess, "test")
+        print(("Epoch {}: Eval".format(epoch)))
+        if FLAGS.child_fixed_arc is None:
+          ops["eval_func"]("valid")
+        ops["eval_func"]("test")
 
-          if epoch >= FLAGS.num_epochs:
-            break
+      if epoch >= FLAGS.num_epochs:
+        break
 
 
 def main(_):
@@ -274,4 +251,4 @@ def main(_):
 
 
 if __name__ == "__main__":
-  fw.run()
+    app.run(main)

@@ -194,12 +194,7 @@ class Child(object):
       self.num_train_examples = np.shape(images["train"])[0]
       self.num_train_batches = (
         self.num_train_examples + self.batch_size - 1) // self.batch_size
-      x_train, y_train = fw.shuffle_batch(
-        [images["train"], labels["train"]],
-        self.batch_size,
-        self.seed,
-        50000
-      )
+      dataset = fw.Dataset(images['train'], labels['train']).shuffle(50000, self.seed)
 
       self.learning_rate = LearningRate.new(
         FLAGS.child_lr_cosine,
@@ -213,7 +208,7 @@ class Child(object):
         FLAGS.child_lr_T_0,
         FLAGS.child_lr_T_mul)
 
-      def _pre_process(x):
+      def _pre_process(x, _y):
         x = fw.random_flip_left_right(fw.random_crop(fw.pad(x, [[4, 4], [4, 4], [0, 0]]), [32, 32, 3], seed=self.seed), seed=self.seed)
         if self.cutout_size is not None:
           start = fw.random_uniform([2], minval=0, maxval=32, dtype=fw.int32)
@@ -231,10 +226,9 @@ class Child(object):
               x=x,
               y=fw.zeros_like(x))
         x = self.data_format.child_init_preprocess(x)
+        return x, _y
 
-        return x
-      self.x_train = fw.map_fn(_pre_process, x_train, back_prop=False)
-      self.y_train = y_train
+      self.dataset = dataset.map(_pre_process).batch(self.batch_size)
 
       # valid data
       self.x_valid, self.y_valid = None, None
@@ -246,10 +240,7 @@ class Child(object):
         self.num_valid_batches = (
           (self.num_valid_examples + self.eval_batch_size - 1)
           // self.eval_batch_size)
-        self.x_valid, self.y_valid = fw.batch(
-          [images["valid"], labels["valid"]],
-          batch_size=self.eval_batch_size,
-          capacity=5000)
+        self.dataset_valid = fw.Dataset(images['valid'], labels['valid']).batch(self.eval_batch_size)
 
       # test data
       images["test"] = self.data_format.child_init(images["test"])
@@ -257,16 +248,13 @@ class Child(object):
       self.num_test_batches = (
         (self.num_test_examples + self.eval_batch_size - 1)
         // self.eval_batch_size)
-      self.x_test, self.y_test = fw.batch(
-        [images["test"], labels["test"]],
-        batch_size=self.eval_batch_size,
-        capacity=10000)
+      self.dataset_test = fw.Dataset(images['test'], labels['test']).batch(self.eval_batch_size)
 
     # cache images and labels
     self.images = images
     self.labels = labels
 
-  def eval_once(self, sess, eval_set, feed_dict=None, verbose=False):
+  def eval_once(self, eval_set, feed_dict=None, verbose=False):
     """Expects self.acc and self.global_step to be defined.
 
     Args:
@@ -276,11 +264,11 @@ class Child(object):
     """
 
     assert self.global_step is not None
-    global_step = sess.run(self.global_step)
+    global_step = self.global_step
     print("Eval at {}".format(global_step))
 
     if eval_set == "valid":
-      assert self.x_valid is not None
+      assert self.dataset_valid is not None
       assert self.valid_acc is not None
       num_examples = self.num_valid_examples
       num_batches = self.num_valid_batches
@@ -296,7 +284,7 @@ class Child(object):
     total_acc = 0
     total_exp = 0
     for batch_id in range(num_batches):
-      acc = sess.run(acc_op, feed_dict=feed_dict)
+      acc = acc_op(feed_dict)
       total_acc += acc
       total_exp += self.eval_batch_size
       if verbose:

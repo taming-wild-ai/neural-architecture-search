@@ -166,27 +166,35 @@ class TestCIFAR10Main(unittest.TestCase):
 
     @staticmethod
     def mock_get_ops(controller_optimizer, child_optimizer, eval_func):
+        ds_iter = mock.MagicMock(name='ds_iter')
+        ds_iter.__next__ = mock.MagicMock(return_value=('x', 'y'))
+        dataset = mock.MagicMock(name='dataset')
+        dataset.as_numpy_iterator = mock.MagicMock(return_value=ds_iter)
+        child_model = mock.MagicMock(name='child model', return_value='logits')
+        child_model.trainable_variables = mock.MagicMock(return_value=['child trainable variables'])
+        controller_model = mock.MagicMock(name='controller model')
+        controller_model.trainable_variables = mock.MagicMock(return_value=['controller trainable variables'])
         return mock.MagicMock(
             return_value={
                 "eval_func": eval_func,
                 "eval_every": 1,
                 "num_train_batches": 1,
                 "child": {
-                    'model': mock.MagicMock(name='child model', return_value='logits'),
-                    'x_valid_shuffle': 'x_valid_shuffle',
-                    'y_valid_shuffle': 'y_valid_shuffle',
+                    'dataset': dataset,
+                    'model': child_model,
+                    'dataset_valid_shuffle': mock.MagicMock(name='dataset_valid_shuffle'),
                     'images': mock.MagicMock(name='images'),
                     "num_train_batches": 1,
                     "loss": mock.MagicMock(return_value=2.0),
                     'train_loss': mock.MagicMock(return_value=2.0),
                     "lr": mock.MagicMock(return_value=0.01),
                     "grad_norm": mock.MagicMock(return_value=5),
-                    "train_acc": mock.MagicMock(return_value=0.01),
+                    "train_acc": mock.MagicMock(return_value=10),
                     "train_op": mock.MagicMock(return_value={}),
                     "global_step": 311,
                     "optimizer": child_optimizer},
                 "controller": {
-                    'model': mock.MagicMock(name='controller model'),
+                    'model': controller_model,
                     "optimizer": controller_optimizer,
                     "loss": mock.MagicMock(return_value=2.0),
                     "entropy": mock.MagicMock(return_value=2.0),
@@ -197,7 +205,7 @@ class TestCIFAR10Main(unittest.TestCase):
                     "skip_rate": mock.MagicMock(return_value=0.1),
                     "train_op": mock.MagicMock(return_value=2.0),
                     "train_step": 311,
-                    "sample_arc": mock.MagicMock(return_value="0") }})
+                    "sample_arc": ('arc1', 'arc2') }})
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
@@ -214,19 +222,13 @@ class TestCIFAR10Main(unittest.TestCase):
             child_optimizer = mock.MagicMock()
             controller_optimizer = mock.MagicMock()
             main.get_ops = self.mock_get_ops(controller_optimizer, child_optimizer, mock.MagicMock())
-            mock_session = mock.MagicMock()
-            mock_session.run = self.mock_session_run
-            mock_session_context_mgr = mock.MagicMock()
-            mock_session_context_mgr.__enter__ = mock.MagicMock(return_value=mock_session)
-            with patch('src.cifar10.main.fw.Session', return_value=mock_session_context_mgr) as sess:
-                main.train()
-                print.assert_any_call(("-" * 80))
-                print.assert_any_call("Starting session")
-                cp.assert_called_with()
-                sess.assert_called_with(config=cp(), hooks=[hook(), child_optimizer.make_session_run_hook(True), controller_optimizer.make_session_run_hook(True)], checkpoint_dir='')
-                child_optimizer.make_session_run_hook.assert_called_with(True)
-                saver.assert_called_with()
-                controller_optimizer.make_session_run_hook.assert_called_with(True)
+            main.train()
+            print.assert_any_call(("-" * 80))
+            print.assert_any_call("Starting session")
+            cp.assert_called_with()
+            child_optimizer.make_session_run_hook.assert_called_with(True)
+            saver.assert_called_with(var_list=['child trainable variables', 'controller trainable variables'])
+            controller_optimizer.make_session_run_hook.assert_called_with(True)
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
@@ -244,20 +246,15 @@ class TestCIFAR10Main(unittest.TestCase):
             controller_optimizer = mock.MagicMock()
             eval_func = mock.MagicMock()
             main.get_ops = self.mock_get_ops(controller_optimizer, child_optimizer, eval_func)
-            mock_session = mock.MagicMock()
-            mock_session.run = self.mock_session_run
-            mock_session_context_mgr = mock.MagicMock()
-            mock_session_context_mgr.__enter__ = mock.MagicMock(return_value=mock_session)
-            with patch('src.cifar10.main.fw.Session', return_value=mock_session_context_mgr) as sess:
-                main.train()
-                saver.assert_any_call()
-                child_optimizer.make_session_run_hook.assert_not_called()
-                controller_optimizer.make_session_run_hook.assert_not_called()
-                print.assert_any_call(("-" * 80))
-                print.assert_any_call("Starting session")
-                sess.assert_called_with(config=cp(), hooks=[hook()], checkpoint_dir='')
-                print.assert_called_with("Epoch 311: Eval")
-                eval_func.assert_called_with(mock_session, "test")
+            main.train()
+            saver.assert_called_with(var_list=['child trainable variables', 'controller trainable variables'])
+            hook.assert_called_with('', save_steps=1, saver=saver())
+            child_optimizer.make_session_run_hook.assert_not_called()
+            controller_optimizer.make_session_run_hook.assert_not_called()
+            print.assert_any_call(("-" * 80))
+            print.assert_any_call("Starting session")
+            print.assert_called_with("Epoch 311: Eval")
+            eval_func.assert_called_with("test")
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
@@ -276,20 +273,15 @@ class TestCIFAR10Main(unittest.TestCase):
             controller_optimizer = mock.MagicMock()
             eval_func = mock.MagicMock()
             main.get_ops = self.mock_get_ops(controller_optimizer, child_optimizer, eval_func)
-            mock_session = mock.MagicMock()
-            mock_session.run = self.mock_session_run # mock.MagicMock(return_value=(1, 2, 3, 4, None))
-            mock_session_context_mgr = mock.MagicMock()
-            mock_session_context_mgr.__enter__ = mock.MagicMock(return_value=mock_session)
-            with patch('src.cifar10.main.fw.Session', return_value=mock_session_context_mgr) as sess:
-                main.train()
-                saver.assert_any_call()
-                controller_optimizer.make_session_run_hooks.assert_not_called()
-                print.assert_any_call(("-" * 80))
-                print.assert_any_call("Starting session")
-                sess.assert_called_with(config=cp(), hooks=[hook(), controller_optimizer.make_session_run_hook(True)], checkpoint_dir='')
-                print.assert_any_call("Epoch 311: Training controller")
-                print.assert_called_with("Epoch 311: Eval")
-                eval_func.assert_called_with(mock_session, "test")
+            main.train()
+            saver.assert_called_with(var_list=['child trainable variables', 'controller trainable variables'])
+            hook.assert_any_call('', save_steps=1, saver=saver())
+            controller_optimizer.make_session_run_hooks.assert_not_called()
+            print.assert_any_call(("-" * 80))
+            print.assert_any_call("Starting session")
+            print.assert_any_call("Epoch 311: Training controller")
+            print.assert_called_with("Epoch 311: Eval")
+            eval_func.assert_called_with("test")
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
@@ -308,21 +300,15 @@ class TestCIFAR10Main(unittest.TestCase):
             controller_optimizer = mock.MagicMock()
             eval_func = mock.MagicMock()
             main.get_ops = self.mock_get_ops(controller_optimizer, child_optimizer, eval_func)
-            mock_session = mock.MagicMock()
-            mock_session.run = self.mock_session_run
-            mock_session_context_mgr = mock.MagicMock()
-            mock_session_context_mgr.__enter__ = mock.MagicMock(return_value=mock_session)
-            with patch('src.cifar10.main.fw.Session', return_value=mock_session_context_mgr) as sess:
-                main.train()
-
-                saver.assert_any_call()
-                controller_optimizer.make_session_run_hook.assert_called_with(True)
-                print.assert_any_call("-" * 80)
-                print.assert_any_call("Starting session")
-                sess.assert_called_with(config=cp(), hooks=[hook(), controller_optimizer.make_session_run_hook(True)], checkpoint_dir='')
-                print.assert_any_call("Epoch 311: Training controller")
-                print.assert_called_with("Epoch 311: Eval")
-                eval_func.assert_called_with(mock_session, "test")
+            main.train()
+            saver.assert_called_with(var_list=['child trainable variables', 'controller trainable variables'])
+            hook.assert_called_with('', save_steps=1, saver=saver())
+            controller_optimizer.make_session_run_hook.assert_called_with(True)
+            print.assert_any_call("-" * 80)
+            print.assert_any_call("Starting session")
+            print.assert_any_call("Epoch 311: Training controller")
+            print.assert_called_with("Epoch 311: Eval")
+            eval_func.assert_called_with("test")
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
@@ -338,18 +324,11 @@ class TestCIFAR10Main(unittest.TestCase):
             child_optimizer = mock.MagicMock()
             controller_optimizer = mock.MagicMock()
             main.get_ops = self.mock_get_ops(controller_optimizer, child_optimizer, mock.MagicMock())
-            mock_session = mock.MagicMock()
-            mock_session.run = self.mock_session_run
-            mock_session_context_mgr = mock.MagicMock()
-            mock_session_context_mgr.__enter__ = mock.MagicMock(return_value=mock_session)
-            with patch('src.cifar10.main.fw.Session', return_value=mock_session_context_mgr):
-
-                main.train()
-
-                controller_optimizer.make_session_run_hook.assert_called_with(True)
-                print.assert_any_call(("-" * 80))
-                print.assert_any_call("Starting session")
-                saver.assert_any_call()
+            main.train()
+            controller_optimizer.make_session_run_hook.assert_called_with(True)
+            print.assert_any_call(("-" * 80))
+            print.assert_any_call("Starting session")
+            saver.assert_called_with(var_list=['child trainable variables', 'controller trainable variables'])
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
@@ -368,14 +347,9 @@ class TestCIFAR10Main(unittest.TestCase):
             child_optimizer = mock.MagicMock()
             controller_optimizer = mock.MagicMock()
             main.get_ops = self.mock_get_ops(controller_optimizer, child_optimizer, mock.MagicMock())
-            mock_session = mock.MagicMock()
-            mock_session.run = self.mock_session_run
-            mock_session_context_mgr = mock.MagicMock()
-            mock_session_context_mgr.__enter__ = mock.MagicMock(return_value=mock_session)
-            with patch('src.cifar10.main.fw.Session', return_value=mock_session_context_mgr) as sess:
-                main.train()
-                controller_optimizer.make_session_run_hooks.assert_not_called()
-                print.assert_any_call(("-" * 80))
-                print.assert_any_call("Starting session")
-                saver.assert_any_call()
-                sess.assert_called_with(config=cp(), hooks=[hook(), controller_optimizer.make_session_run_hook(True)], checkpoint_dir='')
+            main.train()
+            controller_optimizer.make_session_run_hooks.assert_not_called()
+            print.assert_any_call(("-" * 80))
+            print.assert_any_call("Starting session")
+            saver.assert_called_with(var_list=['child trainable variables', 'controller trainable variables'])
+            hook.assert_called_with('', save_steps=1, saver=saver())

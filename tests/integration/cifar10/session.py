@@ -2,7 +2,6 @@ import sys
 import unittest
 from absl import flags
 import tensorflow as tf
-tf.compat.v1.disable_eager_execution()
 
 from src.cifar10.main import get_ops, read_data
 import src.framework as fw
