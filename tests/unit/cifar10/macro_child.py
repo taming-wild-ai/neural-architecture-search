@@ -232,7 +232,7 @@ class TestMacroChild(unittest.TestCase):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
             mc.whole_channels = True
-            mc.sample_arc = np.array([int(x) for x in "0 3 0 0 1 0".split(" ") if x])
+            mc.current_controller_arc = lambda: np.array([int(x) for x in "0 3 0 0 1 0".split(" ") if x])
             with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
                 input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
                 el = MacroChild.ENASLayer(mc, 1, 0, 3, 24, True, mc.weights, False)
@@ -256,7 +256,7 @@ class TestMacroChild(unittest.TestCase):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
         mc.whole_channels = True
-        mc.sample_arc = np.array([int(x) for x in "0 3 0 0 1 0".split(" ") if x])
+        mc.current_controller_arc = lambda: np.array([int(x) for x in "0 3 0 0 1 0".split(" ") if x])
         with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
             input_tensor = tf.constant(np.ndarray((4, 3, 32, 32)), name="hashable")
             el = MacroChild.ENASLayer(mc, 1, 0, 3, 24, True, mc.weights, False)
@@ -285,7 +285,7 @@ class TestMacroChild(unittest.TestCase):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
             mc.whole_channels = False
-            mc.sample_arc = np.array([int(x) for x in "0 3 0 0 1 0 2 0 0 1 2 0 0 0 0".split(" ") if x])
+            mc.current_controller_arc = lambda: np.array([int(x) for x in "0 3 0 0 1 0 2 0 0 1 2 0 0 0 0".split(" ") if x])
             with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
                 input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
                 el = MacroChild.ENASLayer(mc, 1, 0, 3, 24, True, mc.weights, False)
@@ -320,7 +320,7 @@ class TestMacroChild(unittest.TestCase):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
             mc.whole_channels = False
-            mc.sample_arc = np.array([int(x) for x in "0 3 0 0 1 0 2 0 0 1 2 0 0 0 0".split(" ") if x])
+            mc.current_controller_arc = lambda: np.array([int(x) for x in "0 3 0 0 1 0 2 0 0 1 2 0 0 0 0".split(" ") if x])
             with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
                 input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
                 el = MacroChild.ENASLayer(mc, 1, 0, 3, 24, True, mc.weights, False)
@@ -351,7 +351,7 @@ class TestMacroChild(unittest.TestCase):
             mc = MacroChild({}, {})
             with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
                 mc.whole_channels = True
-                mc.sample_arc = np.array([int(x) for x in "0 3 0 0 1 0".split(" ") if x])
+                mc.current_controller_arc = lambda: np.array([int(x) for x in "0 3 0 0 1 0".split(" ") if x])
                 input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
                 fl = MacroChild.FixedLayer(mc, 0, 0, 3, 24, True, mc.weights, False)
                 fl([input_tensor])
@@ -371,7 +371,7 @@ class TestMacroChild(unittest.TestCase):
             mc = MacroChild({}, {})
             with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
                 mc.whole_channels = True
-                mc.sample_arc = np.array([int(x) for x in "0 3 0 0 1 0".split(" ") if x])
+                mc.current_controller_arc = lambda: np.array([int(x) for x in "0 3 0 0 1 0".split(" ") if x])
                 input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
                 fl = MacroChild.FixedLayer(mc, 1, 0, 3, 24, True, mc.weights, False)
                 fl([input_tensor])
@@ -390,7 +390,7 @@ class TestMacroChild(unittest.TestCase):
             mc = MacroChild({}, {})
             with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
                 mc.whole_channels = True
-                mc.sample_arc = np.array([int(x) for x in "0 3 0 0 1 0".split(" ") if x])
+                mc.current_controller_arc = lambda: np.array([int(x) for x in "0 3 0 0 1 0".split(" ") if x])
                 input_tensor = tf.constant(np.ndarray((4, 3, 32, 32)), name="hashable")
                 fl = MacroChild.FixedLayer(mc, 0, 0, 3, 24, True, mc.weights, False)
                 fl([input_tensor])
@@ -405,7 +405,7 @@ class TestMacroChild(unittest.TestCase):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
         mc.whole_channels = True
-        mc.sample_arc = np.array([int(x) for x in "6 3 0 0 1 0".split(" ") if x])
+        mc.current_controller_arc = lambda: np.array([int(x) for x in "6 3 0 0 1 0".split(" ") if x])
         self.assertRaises(ValueError, MacroChild.FixedLayer, mc, 0, 0, 3, 24, True, mc.weights, False)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init_nhwc)
@@ -420,7 +420,7 @@ class TestMacroChild(unittest.TestCase):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
             mc.whole_channels = False
-            mc.sample_arc = np.array([int(x) for x in "0 3 0 0 1 0 2 0 0 1 2 0 0 0 0".split(" ") if x])
+            mc.current_controller_arc = lambda: np.array([int(x) for x in "0 3 0 0 1 0 2 0 0 1 2 0 0 0 0".split(" ") if x])
             input_tensor = tf.constant(np.ndarray((4, 32, 32, 3)), name="hashable")
             with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
                 fl = MacroChild.FixedLayer(mc, 0, 0, 3, 24, True, mc.weights, False)
@@ -448,7 +448,7 @@ class TestMacroChild(unittest.TestCase):
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
             mc.whole_channels = False
-            mc.sample_arc = np.array([int(x) for x in "0 3 0 0 1 0 2 0 0 1 2 0 0 0 0".split(" ") if x])
+            mc.current_controller_arc = lambda: np.array([int(x) for x in "0 3 0 0 1 0 2 0 0 1 2 0 0 0 0".split(" ") if x])
             input_tensor = tf.constant(np.ndarray((4, 3, 32, 32)), name="hashable")
             with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
                 fl = MacroChild.FixedLayer(mc, 1, 0, 3, 24, True, mc.weights, False)

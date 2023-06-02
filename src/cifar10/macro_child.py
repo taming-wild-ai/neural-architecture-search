@@ -207,7 +207,7 @@ class MacroChild(Child):
   # Because __call__ is overridden, this superclass is just for ease of find.
   class ENASLayerNotWholeChannels(LayeredModel):
     def __init__(self, child, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse):
-      count = child.sample_arc[start_idx:start_idx + 2 * child.num_branches]
+      count = child.current_controller_arc()[start_idx:start_idx + 2 * child.num_branches]
       with fw.name_scope('branch_0'):
           branch_0 = MacroChild.ConvBranch(child, 3, is_training, count[1], num_input_chan, out_filters, weights, reuse, 1, count[0], False)
       with fw.name_scope('branch_1'):
@@ -255,7 +255,7 @@ class MacroChild(Child):
       if layer_id > 0:
         self.has_skip_layer = True
         skip_start = start_idx + 1
-        skip = child.sample_arc[skip_start: skip_start + layer_id]
+        skip = child.current_controller_arc()[skip_start: skip_start + layer_id]
         with fw.name_scope("skip"):
           self.layers.append(MacroChild.ENASSkipLayers(layer_id, skip, is_training, child.data_format, weights, num_input_chan, reuse))
       else:
@@ -274,7 +274,7 @@ class MacroChild(Child):
   class ENASLayerWholeChannels(LayeredModel):
     def __init__(self, child, layer_id, start_idx, num_input_chan, out_filters, is_training, weights, reuse):
       self.layers = [lambda inputs: child.data_format.get_HW(inputs)]
-      count = child.sample_arc[start_idx]
+      count = child.current_controller_arc()[start_idx]
       with fw.name_scope('branch_0'):
           branch_0 = MacroChild.ConvBranch(child, 3, is_training, out_filters, num_input_chan, out_filters, weights, reuse, 1, 0, False)
       with fw.name_scope('branch_1'):
@@ -322,7 +322,7 @@ class MacroChild(Child):
       if layer_id > 0:
         self.has_skip_layer = True
         skip_start = start_idx + 1
-        skip = child.sample_arc[skip_start: skip_start + layer_id]
+        skip = child.current_controller_arc()[skip_start: skip_start + layer_id]
         with fw.name_scope("skip"):
           self.layers.append(MacroChild.ENASSkipLayers(layer_id, skip, is_training, child.data_format, weights, num_input_chan, reuse))
       else:
@@ -388,7 +388,7 @@ class MacroChild(Child):
   class FixedLayerNotWholeChannels(LayeredModel):
     def __init__(self, child, layer_id, start_idx, num_input_chan: int, out_filters: int, is_training: bool, weights, reuse: bool):
       count = (
-        child.sample_arc[start_idx:start_idx + 2 * child.num_branches]
+        child.current_controller_arc()[start_idx:start_idx + 2 * child.num_branches]
         * child.out_filters_scale)
       total_out_channels = 0
       with fw.name_scope("branch_0"):
@@ -459,7 +459,7 @@ class MacroChild(Child):
       if layer_id > 0:
         self.has_skip_layer = True
         skip_start = start_idx + 2 * child.num_branches
-        skip = child.sample_arc[skip_start: skip_start + layer_id]
+        skip = child.current_controller_arc()[skip_start: skip_start + layer_id]
         total_skip_channels = np.sum(skip) + 1
         with fw.name_scope("skip") as scope:
           conv1x1 = MacroChild.Conv1x1(
@@ -498,7 +498,7 @@ class MacroChild(Child):
     def __init__(self, child, layer_id, start_idx, num_input_chan: int, out_filters: int, is_training: bool, weights, reuse: bool):
       self.layers = []
       inp_c = num_input_chan
-      count = child.sample_arc[start_idx]
+      count = child.current_controller_arc()[start_idx]
       if count in [0, 1, 2, 3]:
         filter_size = [3, 3, 5, 5][count]
         with fw.name_scope("conv_1x1") as scope:
@@ -514,7 +514,7 @@ class MacroChild(Child):
       if layer_id > 0:
         self.has_skip_layer = True
         skip_start = start_idx + 1
-        skip = child.sample_arc[skip_start: skip_start + layer_id]
+        skip = child.current_controller_arc()[skip_start: skip_start + layer_id]
         total_skip_channels = np.sum(skip) + 1
         with fw.name_scope("skip") as scope:
           conv1x1 = MacroChild.Conv1x1(
@@ -900,9 +900,9 @@ class MacroChild(Child):
 
   def connect_controller(self, controller_model):
     if self.fixed_arc is None:
-      self.sample_arc = controller_model.sample_arc
+      self.current_controller_arc = lambda: controller_model.current_sample_arc
     else:
-      self.sample_arc = np.array([int(x) for x in self.fixed_arc.split(" ") if x])
+      self.current_controller_arc = lambda: np.array([int(x) for x in self.fixed_arc.split(" ") if x])
 
     self.loss, self.train_loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train(self.y_train)
     self.valid_preds, self.valid_acc = self._build_valid(self.y_valid) # unused?

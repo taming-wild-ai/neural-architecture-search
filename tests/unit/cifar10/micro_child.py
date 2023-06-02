@@ -738,7 +738,6 @@ class TestMicroChild(unittest.TestCase):
                     with patch.object(mc, '_build_valid', return_value=('predictions', 'accuracy')) as build_valid:
                         with patch.object(mc, '_build_test', return_value=('predictions', 'accuracy')) as build_test:
                             mock_controller = mock.MagicMock()
-                            mock_controller.sample_arc = (None, None)
                             mc.connect_controller(mock_controller)
                             build_train.assert_called_with(mc.y_train)
                             build_valid.assert_called_with(mc.y_valid)

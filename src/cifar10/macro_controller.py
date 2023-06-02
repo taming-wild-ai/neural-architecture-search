@@ -62,6 +62,10 @@ class MacroController(Controller):
     self.skip_count = MacroController.SkipCount(self.num_layers, self.num_branches, self.search_whole_channels)
     self.skip_penaltys = MacroController.SkipPenalty(self.num_layers, self.num_branches, self.search_whole_channels, self.skip_target)
 
+  def generate_sample_arc(self, branch_ids):
+      self.current_sample_arc = self.sample_arc(branch_ids)
+      return self.current_sample_arc
+
   def trainable_variables(self):
     new_vars = self.w_lstm + [self.g_emb]
     if self.search_whole_channels:

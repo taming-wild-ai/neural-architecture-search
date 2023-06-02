@@ -197,7 +197,7 @@ class TestCIFAR10Main(unittest.TestCase):
                     "skip_rate": mock.MagicMock(return_value=0.1),
                     "train_op": mock.MagicMock(return_value=2.0),
                     "train_step": 311,
-                    "sample_arc": mock.MagicMock(return_value="0") }})
+                    "generate_sample_arc": mock.MagicMock(return_value="0") }})
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')

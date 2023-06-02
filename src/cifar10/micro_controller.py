@@ -56,15 +56,19 @@ class MicroController(Controller):
     self._create_params()
     self.sample_logit1 = MicroController.SamplerLogit(self.num_cells, self.lstm_num_layers, self.lstm_size, self.g_emb, self.w_lstm, self.w_attn_1)
     self.sample_logit2 = MicroController.SamplerLogit(self.num_cells, self.lstm_num_layers, self.lstm_size, self.g_emb, self.w_lstm, self.w_attn_1)
-    arc_seq_1 = MicroController.SampleArc(self.num_cells)
-    arc_seq_2 = MicroController.SampleArc(self.num_cells)
-    self.sample_arc = (arc_seq_1, arc_seq_2)
+    self.arc_seq_1 = MicroController.SampleArc(self.num_cells)
+    self.arc_seq_2 = MicroController.SampleArc(self.num_cells)
     entropy_1 = MicroController.Entropy(self.num_cells)
     entropy_2 = MicroController.Entropy(self.num_cells)
     self.sample_entropy = lambda logits1, logits2: entropy_1(logits1) + entropy_2(logits2)
     log_prob_1 = MicroController.LogProbabilities(self.num_cells)
     log_prob_2 = MicroController.LogProbabilities(self.num_cells)
     self.sample_log_prob = lambda logits1, logits2: log_prob_1(logits1) + log_prob_2(logits2)
+
+  def generate_sample_arc(self, logits1, logits2):
+      self.current_normal_arc = self.arc_seq_1(logits1)
+      self.current_reduce_arc = self.arc_seq_2(logits2)
+      return self.current_normal_arc, self.current_reduce_arc
 
   def trainable_variables(self):
     new_vars = self.w_lstm + [self.g_emb, self.w_emb, self.w_soft, self.w_attn_1, self.w_attn_2, self.v_attn]

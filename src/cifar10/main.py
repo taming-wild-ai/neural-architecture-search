@@ -82,7 +82,7 @@ def get_ops(images, labels):
       "optimizer": controller_optimizer,
       "baseline": controller_model.baseline,
       "entropy": controller_model.sample_entropy,
-      "sample_arc": controller_model.sample_arc,
+      "generate_sample_arc": controller_model.generate_sample_arc,
       "skip_rate": controller_model.skip_rate,
     }
   else:
@@ -150,7 +150,7 @@ def train():
         controller_valid_acc_graph =  ops['controller']['valid_acc'](child_valid_logits_graph, ops['child']['y_valid_shuffle'])
         controller_baseline =         ops['controller']['baseline']()
         controller_skip_rate =        ops['controller']['skip_rate']()
-        controller_sample_arc_graph = ops['controller']['sample_arc']()
+        controller_sample_arc_graph = ops['controller']['generate_sample_arc']()
         controller_train_op_graph =   ops['controller']['train_op'](controller_loss_graph, ops['controller']['model'].trainable_variables())
         controller_train_step_var = ops['controller']['train_step']
 

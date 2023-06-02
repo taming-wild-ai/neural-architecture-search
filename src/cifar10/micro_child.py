@@ -920,11 +920,11 @@ class MicroChild(Child):
 
   def connect_controller(self, controller_model):
     if self.fixed_arc is None:
-      self.normal_arc, self.reduce_arc = controller_model.sample_arc
+      self.current_controller_normal_arc, self.current_controller_reduce_arc = lambda: controller_model.current_normal_arc, lambda: controller_model.current_reduce_arc
     else:
       fixed_arc = np.array([int(x) for x in self.fixed_arc.split(" ") if x])
-      self.normal_arc = fixed_arc[:4 * self.num_cells]
-      self.reduce_arc = fixed_arc[4 * self.num_cells:]
+      self.current_controller_normal_arc = fixed_arc[:4 * self.num_cells]
+      self.current_controller_reduce_arc = fixed_arc[4 * self.num_cells:]
 
     self.loss, self.train_loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train(self.y_train)
     self.valid_preds, self.valid_acc = self._build_valid(self.y_valid)
