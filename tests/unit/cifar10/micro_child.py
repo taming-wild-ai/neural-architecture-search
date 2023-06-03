@@ -1,3 +1,4 @@
+import sys
 import unittest
 import unittest.mock as mock
 from unittest.mock import patch
@@ -6,10 +7,11 @@ import numpy as np
 
 from src.cifar10.micro_child import MicroChild
 from src.cifar10.child import Child, DataFormat
-from src.framework import WeightRegistry
+import src.framework as fw
 
 import tensorflow as tf
-tf.compat.v1.disable_eager_execution()
+from absl import flags
+flags.FLAGS(['test'])
 
 def mock_init_nhwc(self, images, labels, **kwargs):
     self.data_format = DataFormat.new("NHWC")
@@ -21,10 +23,10 @@ def mock_init_nhwc(self, images, labels, **kwargs):
     self.fixed_arc = None
     self.out_filters = 24
     self.learning_rate = mock.MagicMock(name='learning_rate')
-    self.weights = WeightRegistry()
-    self.x_train, self.y_train = None, None
-    self.x_valid, self.y_valid = None, None
-    self.x_test, self.y_test = None, None
+    self.weights = fw.WeightRegistry()
+    self.dataset = None
+    self.dataset_valid = None
+    self.dataset_test = None
     self.global_step = 0
 
 def mock_init_nchw(self, images, labels, **kwargs):
@@ -37,10 +39,10 @@ def mock_init_nchw(self, images, labels, **kwargs):
     self.fixed_arc = None
     self.out_filters = 24
     self.learning_rate = mock.MagicMock(name='learning_rate')
-    self.weights = WeightRegistry()
-    self.x_train, self.y_train = None, None
-    self.x_valid, self.y_valid = None, None
-    self.x_test, self.y_test = None, None
+    self.weights = fw.WeightRegistry()
+    self.dataset = None
+    self.dataset_valid = None
+    self.dataset_test = None
     self.global_step = 0
 
 def mock_init_invalid_data_format(self, images, labels, **kwargs):
@@ -57,9 +59,9 @@ def mock_init_invalid_data_format(self, images, labels, **kwargs):
     self.lr_min = None
     self.lr_T_0 = None
     self.lr_T_mul = None
-    self.weights = WeightRegistry()
-    self.x_valid, self.y_valid = None, None
-    self.x_test, self.y_test = None, None
+    self.weights = fw.WeightRegistry()
+    self.dataset_valid = None
+    self.dataset_test = None
 
 
 class TestMicroChild(unittest.TestCase):
@@ -218,8 +220,8 @@ class TestMicroChild(unittest.TestCase):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
                 mc.name = "MicroChild"
-                mc.reduce_arc = None
-                mc.normal_arc = None
+                mc.current_controller_reduce_arc = lambda: None
+                mc.current_controller_normal_arc = lambda: None
                 mc.keep_prob = None
                 el_result = el()
                 with patch.object(mc, 'data_format') as data_format:
@@ -254,8 +256,8 @@ class TestMicroChild(unittest.TestCase):
                     el_value = el()
                     with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
                         mc.name = "MicroChild"
-                        mc.reduce_arc = None
-                        mc.normal_arc = None
+                        mc.current_controller_reduce_arc = lambda: None
+                        mc.current_controller_normal_arc = lambda: None
                         mc.keep_prob = 0.9
                         m = MicroChild.Model(mc, True)
                         m({})
@@ -292,8 +294,8 @@ class TestMicroChild(unittest.TestCase):
                 gap.get_shape = mock.MagicMock(return_value=[3, 3])
                 with patch.object(mc.weights, "get", return_value="fw.create_weight") as create_weight:
                     mc.name = "MicroChild"
-                    mc.reduce_arc = None
-                    mc.normal_arc = None
+                    mc.current_controller_reduce_arc = lambda: None
+                    mc.current_controller_normal_arc = lambda: None
                     mc.keep_prob = 0.9
                     mc.use_aux_heads = True
                     mc.aux_head_indices = [0]
@@ -399,22 +401,21 @@ class TestMicroChild(unittest.TestCase):
     @patch('src.cifar10.micro_child.fw.avg_pool2d', return_value=mock.MagicMock(return_value="avg_pool2d"))
     def test_enas_cell(self, avg_pool2d, max_pool2d, reshape, relu, conv2d, batch_norm, stack, ec):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
-            with tf.Graph().as_default():
-                mc = MicroChild({}, {})
-                with patch.object(mc.weights, 'get', return_value="fw.create_weight") as create_weight:
-                    mcec = MicroChild.ENASCell(mc, 0, 1, 3, 24, mc.weights, False)
-                    mcec(None, 0)
-                    avg_pool2d.assert_called_with([3, 3], [1, 1], "SAME", data_format="channels_last")
-                    avg_pool2d().assert_called_with(None)
-                    create_weight.assert_called_with(False, 'x_conv/', "w", [1, 72], None)
-                    reshape.assert_called_with('w', [1, 1, 3, 24])
-                    relu.assert_called_with(None)
-                    conv2d.assert_called_with("relu", 'reshape', strides=[1, 1, 1, 1], padding="SAME", data_format="NHWC")
-                    batch_norm.assert_called_with(True, mc.data_format, mc.weights, mc.out_filters, False)
-                    batch_norm().assert_called_with('conv2d')
-                    ec.assert_called_with(mc, 0, 1, 5, 24, mc.weights, False)
-                    ec().assert_called_with('batch_norm')
-                    stack.assert_called_with([ec()(), ec()(), 'batch_norm', 'batch_norm', 'batch_norm'], axis=0)
+            mc = MicroChild({}, {})
+            with patch.object(mc.weights, 'get', return_value="fw.create_weight") as create_weight:
+                mcec = MicroChild.ENASCell(mc, 0, 1, 3, 24, mc.weights, False)
+                mcec(None, 0)
+                avg_pool2d.assert_called_with([3, 3], [1, 1], "SAME", data_format="channels_last")
+                avg_pool2d().assert_called_with(None)
+                create_weight.assert_called_with(False, 'x_conv/', "w", [1, 72], None)
+                reshape.assert_called_with('w', [1, 1, 3, 24])
+                relu.assert_called_with(None)
+                conv2d.assert_called_with("relu", 'reshape', strides=[1, 1, 1, 1], padding="SAME", data_format="NHWC")
+                batch_norm.assert_called_with(True, mc.data_format, mc.weights, mc.out_filters, False)
+                batch_norm().assert_called_with('conv2d')
+                ec.assert_called_with(mc, 0, 1, 5, 24, mc.weights, False)
+                ec().assert_called_with('batch_norm')
+                stack.assert_called_with([ec()(), ec()(), 'batch_norm', 'batch_norm', 'batch_norm'], axis=0)
 
     @patch('src.cifar10.micro_child.fw.ones_init', return_value="ones")
     @patch('src.cifar10.micro_child.fw.zeros_init', return_value="zeros")
@@ -698,37 +699,35 @@ class TestMicroChild(unittest.TestCase):
 
     @patch('src.cifar10.child.Child.__init__')
     @patch('src.cifar10.micro_child.MicroChild.Model', return_value=mock.MagicMock(return_value='model'))
-    @patch('src.cifar10.micro_child.fw.map_fn', return_value="map_fn")
     @patch('src.cifar10.micro_child.fw.reduce_sum', return_value="reduce_sum")
     @patch('src.cifar10.micro_child.fw.equal', return_value="equal")
     @patch('src.cifar10.micro_child.fw.to_int32', return_value="to_int32")
     @patch('src.cifar10.micro_child.fw.argmax', return_value="argmax")
-    @patch('src.cifar10.micro_child.fw.shuffle_batch', return_value=(tf.constant(np.ndarray((2, 32, 32, 3))), "y_valid_shuffle"))
+    @patch('src.cifar10.micro_child.fw.shuffle_batch')
     @patch('src.cifar10.micro_child.print')
-    def test_build_valid_rl(self, print, shuffle_batch, argmax, to_int32, equal, reduce_sum, map_fn, model, _Child):
+    def test_build_valid_rl(self, print, shuffle_batch, argmax, to_int32, equal, reduce_sum, model, _Child):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
-            with tf.Graph().as_default():
-                mc = MicroChild({}, {})
-                mc.images = { 'valid_original': np.ndarray((1, 32, 32, 3)) }
-                mc.labels = { 'valid_original': np.ndarray((1)) }
-                mc.batch_size = 32
-                mc.seed = None
-                shuffle = MicroChild.ValidationRLShuffle(mc, True)
-                vrl = MicroChild.ValidationRL()
-                x_valid_shuffle, y_valid_shuffle = shuffle(mc.images['valid_original'], mc.labels['valid_original'])
-                logits = MicroChild.Model(mc, True, True)(x_valid_shuffle)
-                vrl(logits, y_valid_shuffle)
-                shuffle_batch.assert_called_with(
-                    [mc.images['valid_original'], mc.labels['valid_original']],
-                    mc.batch_size,
-                    mc.seed,
-                    25000)
-                map_fn.assert_called()
-                argmax.assert_called_with('model', axis=1)
-                to_int32.assert_any_call("argmax")
-                equal.assert_called_with("to_int32", "y_valid_shuffle")
-                to_int32.assert_any_call("equal")
-                reduce_sum.assert_called_with("to_int32")
+            mc = MicroChild({}, {})
+            mc.images = { 'valid_original': np.ndarray((5000, 32, 32, 3)) }
+            mc.labels = { 'valid_original': np.ndarray((5000)) }
+            mc.batch_size = 32
+            mc.seed = None
+            shuffle_batch.return_value = fw.shuffle_batch((mc.images, mc.labels), mc.batch_size, mc.seed, 25000)
+            shuffle = MicroChild.ValidationRLShuffle(mc, True)
+            vrl = MicroChild.ValidationRL()
+            dataset_valid_shuffle = shuffle(mc.images['valid_original'], mc.labels['valid_original'])
+            logits = MicroChild.Model(mc, True, True)(dataset_valid_shuffle)
+            vrl(logits, dataset_valid_shuffle)
+            shuffle_batch.assert_called_with(
+                (mc.images['valid_original'], mc.labels['valid_original']),
+                mc.batch_size,
+                mc.seed,
+                25000)
+            argmax.assert_called_with('model', axis=1)
+            to_int32.assert_any_call("argmax")
+            equal.assert_called_with("to_int32", shuffle_batch().map())
+            to_int32.assert_any_call("equal")
+            reduce_sum.assert_called_with("to_int32")
 
     def test_connect_controller(self):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
@@ -739,9 +738,9 @@ class TestMicroChild(unittest.TestCase):
                         with patch.object(mc, '_build_test', return_value=('predictions', 'accuracy')) as build_test:
                             mock_controller = mock.MagicMock()
                             mc.connect_controller(mock_controller)
-                            build_train.assert_called_with(mc.y_train)
-                            build_valid.assert_called_with(mc.y_valid)
-                            build_test.assert_called_with(mc.y_test)
+                            build_train.assert_called_with(mc.dataset)
+                            build_valid.assert_called_with(mc.dataset_valid)
+                            build_test.assert_called_with(mc.dataset_test)
 
 if "__main__" == "__name__":
     unittest.main()

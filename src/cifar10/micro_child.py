@@ -181,6 +181,7 @@ class MicroChild(Child):
   class Model(LayeredModel):
     def __init__(self, child, is_training, reuse=False):
       self.child = child
+      self.trainable_variables = child.trainable_variables
       self.layers = {}
       self.aux_logits = {}
       if child.fixed_arc is None:
@@ -196,10 +197,10 @@ class MicroChild(Child):
           with fw.name_scope(f'layer_{layer_id}') as scope:
             if layer_id not in child.pool_layers:
               if child.fixed_arc is None:
-                self.layers[layer_id] = MicroChild.ENASLayer(child, child.normal_arc, layers_hw, layers_channels, out_filters, child.weights, reuse)
+                self.layers[layer_id] = MicroChild.ENASLayer(child, child.current_controller_normal_arc(), layers_hw, layers_channels, out_filters, child.weights, reuse)
                 x_chan = out_filters
               else:
-                self.layers[layer_id] = MicroChild.FixedLayer(child, layer_id, child.normal_arc, layers_hw, layers_channels, out_filters, 1, is_training, child.weights, reuse)
+                self.layers[layer_id] = MicroChild.FixedLayer(child, layer_id, child.current_controller_normal_arc(), layers_hw, layers_channels, out_filters, 1, is_training, child.weights, reuse)
                 x_chan = self.layers[layer_id].out_chan
               x_hw = layers_hw[-1]
             else:
@@ -209,10 +210,10 @@ class MicroChild(Child):
                 x_hw = layers_hw[-1] // 2
                 layers_hw = [layers_hw[-1], x_hw]
                 layers_channels = [layers_channels[-1], out_filters]
-                self.layers[layer_id].append(MicroChild.ENASLayer(child, child.reduce_arc, layers_hw, layers_channels, out_filters, child.weights, reuse))
+                self.layers[layer_id].append(MicroChild.ENASLayer(child, child.current_controller_reduce_arc(), layers_hw, layers_channels, out_filters, child.weights, reuse))
                 x_chan = out_filters
               else:
-                self.layers[layer_id] = MicroChild.FixedLayer(child, layer_id, child.reduce_arc, layers_hw, layers_channels, out_filters, 2, is_training, child.weights, reuse)
+                self.layers[layer_id] = MicroChild.FixedLayer(child, layer_id, child.current_controller_reduce_arc(), layers_hw, layers_channels, out_filters, 2, is_training, child.weights, reuse)
                 x_chan = self.layers[layer_id].out_chan
                 x_hw = layers_hw[-1] // 2
             layers_hw = [layers_hw[-1], x_hw]
@@ -265,6 +266,7 @@ class MicroChild(Child):
         print("Model has {0} params".format(count_model_params(child.trainable_variables())))
 
     def __call__(self, images):
+      """images should be a tf.data.Dataset batch."""
       with fw.name_scope(self.child.name):
         with fw.name_scope('stem_conv'):
           logits = self.stem_conv(images)
@@ -833,8 +835,6 @@ class MicroChild(Child):
       train_loss = lambda logits_aux_logits: loss(logits_aux_logits) + 0.4 * self.aux_loss(logits_aux_logits)
     else:
       train_loss = loss
-
-
     train_op, lr, grad_norm, optimizer = get_train_ops(
       self.global_step,
       self.learning_rate,
@@ -848,6 +848,7 @@ class MicroChild(Child):
 
     return loss, train_loss, train_acc, train_op, lr, grad_norm, optimizer
 
+
   # override
   def _build_valid(self, y):
     print("-" * 80)
@@ -857,6 +858,7 @@ class MicroChild(Child):
       predictions,
       lambda logits: fw.reduce_sum(fw.to_int32(fw.equal(predictions(logits), y))))
     return retval
+
 
   # override
   def _build_test(self, y):
@@ -876,28 +878,34 @@ class MicroChild(Child):
           self.layers = [lambda x: child.data_format.child_init(x)] # 0
         else:
           self.layers = [lambda x: x] # 0
-        self.layers.append(lambda x, y: fw.shuffle_batch([x, y], child.batch_size, child.seed, 25000)) # 1
+        self.layers.append(lambda x, y: fw.shuffle_batch((x, y), child.batch_size, child.seed, 25000)) # 1
         if shuffle:
 
-          def _pre_process(x):
-            return child.data_format.child_init_preprocess(
-              fw.image.random_flip_left_right(
-                fw.image.random_crop(
-                  fw.pad(x, [[4, 4], [4, 4], [0, 0]]),
-                  [32, 32, 3],
-                  seed=child.seed),
-                seed=child.seed))
+          def _pre_process2(image):
+              return child.data_format.child_init_preprocess(
+                  fw.random_flip_left_right(
+                      fw.random_crop(
+                          fw.pad(image, [[4, 4], [4, 4], [0, 0]]),
+                          [32, 32, 3],
+                          seed=child.seed),
+                      seed=child.seed))
 
-          self.layers.append(lambda x: fw.map_fn(_pre_process, x, back_prop=False)) # 2
+          def _pre_process(image_batch, label_batch):
+              return fw.map_fn(_pre_process2, image_batch), label_batch
+
+          def layer2(x):
+            return x.map(_pre_process)
+
+          self.layers.append(layer2) # 2
         else:
           self.layers.append(lambda x: x) # 2
 
     def __call__(self, x, y):
       with fw.device('/cpu:0'):
         x = self.layers[0](x)
-        x_valid_shuffle, y_valid_shuffle = self.layers[1](x, y)
-        x_valid_shuffle = self.layers[2](x_valid_shuffle)
-        return x_valid_shuffle, y_valid_shuffle
+        dataset_valid_shuffle = self.layers[1](x, y)
+        dataset_valid_shuffle = self.layers[2](dataset_valid_shuffle)
+        return dataset_valid_shuffle
 
 
   class ValidationRL(LayeredModel):
@@ -923,10 +931,10 @@ class MicroChild(Child):
       self.current_controller_normal_arc, self.current_controller_reduce_arc = lambda: controller_model.current_normal_arc, lambda: controller_model.current_reduce_arc
     else:
       fixed_arc = np.array([int(x) for x in self.fixed_arc.split(" ") if x])
-      self.current_controller_normal_arc = fixed_arc[:4 * self.num_cells]
-      self.current_controller_reduce_arc = fixed_arc[4 * self.num_cells:]
+      self.current_controller_normal_arc = lambda: fixed_arc[:4 * self.num_cells]
+      self.current_controller_reduce_arc = lambda: fixed_arc[4 * self.num_cells:]
 
-    self.loss, self.train_loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train(self.y_train)
-    self.valid_preds, self.valid_acc = self._build_valid(self.y_valid)
-    self.test_preds, self.test_acc = self._build_test(self.y_test)
+    self.loss, self.train_loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train(self.dataset)
+    self.valid_preds, self.valid_acc = self._build_valid(self.dataset_valid)
+    self.test_preds, self.test_acc = self._build_test(self.dataset_test)
     return train_op, lr, grad_norm, optimizer

@@ -5,7 +5,6 @@ from unittest.mock import patch
 import numpy as np
 from absl import flags
 import tensorflow as tf
-tf.compat.v1.disable_eager_execution()
 import src.framework as fw
 
 from src.cifar10.child import DataFormat, Child
@@ -23,9 +22,9 @@ def mock_init(self, images, labels, **kwargs):
     self.out_filters = 24
     self.learning_rate = mock.MagicMock()
     self.weights = fw.WeightRegistry()
-    self.x_train, self.y_train = None, None
-    self.x_valid, self.y_valid = None, None
-    self.x_test, self.y_test = None, None
+    self.dataset = None
+    self.dataset_valid = None
+    self.dataset_test = None
     self.global_step = fw.Variable(0, dtype=fw.int64)
 
 def mock_init_nhwc(self, images, labels, **kwargs):
@@ -39,9 +38,9 @@ def mock_init_nhwc(self, images, labels, **kwargs):
     self.out_filters = 24
     self.learning_rate = mock.MagicMock()
     self.weights =fw.WeightRegistry()
-    self.x_train, self.y_train = None, None
-    self.x_valid, self.y_valid = None, None
-    self.x_test, self.y_test = None, None
+    self.dataset = None
+    self.dataset_valid = None
+    self.dataset_test = None
 
 def mock_init_invalid(self, images, labels, **kwargs):
     self.whole_channels = False
@@ -253,8 +252,7 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.macro_child.fw.add_n', return_value="add_n")
     @patch('src.cifar10.macro_child.BatchNorm', return_value=mock.MagicMock(return_value="batch_norm"))
     def test_enas_layer_whole_channels_nchw(self, batch_norm, add_n, case, conv_branch, pool_branch):
-        with tf.Graph().as_default():
-            mc = MacroChild({}, {})
+        mc = MacroChild({}, {})
         mc.whole_channels = True
         mc.current_controller_arc = lambda: np.array([int(x) for x in "0 3 0 0 1 0".split(" ") if x])
         with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
@@ -543,19 +541,18 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.macro_child.fw.separable_conv2d', return_value="sep_conv2d")
     @patch('src.cifar10.macro_child.BatchNormWithMask', return_value=mock.MagicMock(return_value="bnwm"))
     def test_conv_branch_nchw_second_index(self, bnwm, sep_conv2d, reshape, transpose, relu, batch_norm1, batch_norm, conv2d):
-        with tf.Graph().as_default():
-            mc = MacroChild({}, {})
-            with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
-                    mc.fixed_arc = "0 3 0 0 1 0"
-                    input_tensor = tf.constant(np.ndarray((4, 3, 32, 32)), name="hashable")
-                    cb = MacroChild.ConvBranch(mc, 24, True, 0, 3, 24, mc.weights, False, 1, 1, False)
-                    cb(input_tensor)
-                    create_weight.assert_any_call(False, 'inp_conv_1/', "w", [1, 1, 3, 24], None)
-                    conv2d.assert_called_with('relu', transpose.return_value, [1, 1, 1, 1], 'SAME', data_format='NCHW')
-                    batch_norm1.assert_called_with(True, mc.data_format, mc.weights, 24, False)
-                    batch_norm1().assert_called_with('conv2d')
-                    relu.assert_called_with("bnwm")
-                    create_weight.assert_called_with(False, 'out_conv_24/', "w", [24, 24, 24, 24], None)
+        mc = MacroChild({}, {})
+        with patch.object(mc.weights, 'get', return_value='fw.create_weight') as create_weight:
+                mc.fixed_arc = "0 3 0 0 1 0"
+                input_tensor = tf.constant(np.ndarray((4, 3, 32, 32)), name="hashable")
+                cb = MacroChild.ConvBranch(mc, 24, True, 0, 3, 24, mc.weights, False, 1, 1, False)
+                cb(input_tensor)
+                create_weight.assert_any_call(False, 'inp_conv_1/', "w", [1, 1, 3, 24], None)
+                conv2d.assert_called_with('relu', transpose.return_value, [1, 1, 1, 1], 'SAME', data_format='NCHW')
+                batch_norm1.assert_called_with(True, mc.data_format, mc.weights, 24, False)
+                batch_norm1().assert_called_with('conv2d')
+                relu.assert_called_with("bnwm")
+                create_weight.assert_called_with(False, 'out_conv_24/', "w", [24, 24, 24, 24], None)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     @patch('src.cifar10.macro_child.fw.conv2d', return_value="conv2d")
@@ -769,62 +766,66 @@ class TestMacroChild(unittest.TestCase):
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     @patch('src.cifar10.macro_child.MacroChild.Model', return_value=mock.MagicMock(return_value='model'))
-    @patch('src.cifar10.macro_child.fw.map_fn', return_value="map_fn")
     @patch('src.cifar10.macro_child.fw.reduce_sum', return_value="reduce_sum")
     @patch('src.cifar10.macro_child.fw.equal', return_value="equal")
     @patch('src.cifar10.macro_child.fw.to_int32', return_value="to_int32")
     @patch('src.cifar10.macro_child.fw.argmax', return_value="argmax")
-    @patch('src.cifar10.macro_child.fw.shuffle_batch', return_value=(tf.constant(np.ndarray((2, 3, 32, 32))), "y_valid_shuffle"))
+    @patch('src.cifar10.macro_child.fw.shuffle_batch')
     @patch('src.cifar10.macro_child.print')
-    def test_build_valid_rl(self, print, shuffle_batch, argmax, to_int32, equal, reduce_sum, map_fn, model):
+    def test_build_valid_rl(self, print, shuffle_batch, argmax, to_int32, equal, reduce_sum, model):
+        mock_images = np.ndarray((1, 3, 32, 32))
+        mock_labels = np.ndarray((1))
+        mock_dataset = mock.MagicMock(name='shuffled, batched dataset')
+        dataset_iterator = mock.MagicMock()
+        dataset_iterator.__next__ = mock.MagicMock(return_value=(mock_images, mock_labels))
+        mock_dataset.as_numpy_array = mock.MagicMock(return_value=dataset_iterator)
+        shuffle_batch.return_value = mock_dataset
         with tf.Graph().as_default():
             mc = MacroChild({}, {})
         mc.data_format = "NCHW"
-        mc.images = { 'valid_original': np.ndarray((1, 3, 32, 32)) }
-        mc.labels = { 'valid_original': np.ndarray((1)) }
+        mc.images = { 'valid_original': mock_images }
+        mc.labels = { 'valid_original': mock_labels }
         mc.batch_size = 32
         mc.seed = None
         shuffle = MacroChild.ValidationRLShuffle(mc, True)
         vrl = MacroChild.ValidationRL()
-        x_valid_shuffle, y_valid_shuffle = shuffle(mc.images['valid_original'], mc.labels['valid_original'])
-        logits = MacroChild.Model(mc, True, True)(x_valid_shuffle)
-        vrl(logits, y_valid_shuffle)
+        dataset_valid_shuffle = shuffle(mc.images['valid_original'], mc.labels['valid_original'])
+        batch = dataset_valid_shuffle.as_numpy_array().__next__()
+        logits = MacroChild.Model(mc, True, True)(batch[0])
+        vrl(logits, batch[1])
         shuffle_batch.assert_called_with(
-            [mc.images['valid_original'], mc.labels['valid_original']],
+            (mc.images['valid_original'], mc.labels['valid_original']),
             mc.batch_size,
             mc.seed)
         model.assert_called_with(mc, True, True)
-        model().assert_called_with('map_fn')
+        model().assert_called_with(batch[0])
         argmax.assert_called_with("model", axis=1)
         to_int32.assert_any_call("argmax")
-        equal.assert_called_with("to_int32", "y_valid_shuffle")
+        equal.assert_called_with("to_int32", batch[1])
         to_int32.assert_any_call("equal")
         reduce_sum.assert_called_with("to_int32")
-        map_fn.assert_called()
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     def test_connect_controller_no_fixed_arc(self):
-        with tf.Graph().as_default():
-            mc = MacroChild({}, {})
+        mc = MacroChild({}, {})
         with patch.object(mc, '_build_train', return_value=('loss', 'train_loss', 'acc', 'op', 'lr', 'gn', 'o')) as build_train:
             with patch.object(mc, '_build_valid', return_value=('predictions', 'accuracy')) as build_valid:
                 with patch.object(mc, '_build_test', return_value=('predictions', 'accuracy')) as build_test:
                     controller_mock = mock.MagicMock()
                     mc.connect_controller(controller_mock)
-                    build_train.assert_called_with(mc.y_train)
-                    build_valid.assert_called_with(mc.y_valid)
-                    build_test .assert_called_with(mc.y_test)
+                    build_train.assert_called_with(mc.dataset)
+                    build_valid.assert_called_with(mc.dataset_valid)
+                    build_test .assert_called_with(mc.dataset_test)
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     def test_connect_controller_fixed_arc(self):
-        with tf.Graph().as_default():
-            mc = MacroChild({}, {})
+        mc = MacroChild({}, {})
         mc.fixed_arc = ""
         with patch.object(mc, '_build_train', return_value=('loss', 'train_loss', 'acc', 'op', 'lr', 'gn', 'o')) as build_train:
             with patch.object(mc, '_build_valid', return_value=('predictions', 'accuracy')) as build_valid:
                 with patch.object(mc, '_build_test', return_value=('predictions', 'accuracy')) as build_test:
                     controller_mock = mock.MagicMock()
                     mc.connect_controller(controller_mock)
-                    build_train.assert_called_with(mc.y_train)
-                    build_valid.assert_called_with(mc.y_valid)
-                    build_test .assert_called_with(mc.y_test)
+                    build_train.assert_called_with(mc.dataset)
+                    build_valid.assert_called_with(mc.dataset_valid)
+                    build_test .assert_called_with(mc.dataset_test)

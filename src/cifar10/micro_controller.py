@@ -54,10 +54,11 @@ class MicroController(Controller):
     self.name = name
 
     self._create_params()
-    self.sample_logit1 = MicroController.SamplerLogit(self.num_cells, self.lstm_num_layers, self.lstm_size, self.g_emb, self.w_lstm, self.w_attn_1)
-    self.sample_logit2 = MicroController.SamplerLogit(self.num_cells, self.lstm_num_layers, self.lstm_size, self.g_emb, self.w_lstm, self.w_attn_1)
+    self.sample_logit1 = MicroController.SamplerLogit(self.num_cells, self.temperature, self.tanh_constant, self.op_tanh_reduce, self.lstm_num_layers, self.lstm_size, self.g_emb, self.w_emb, self.w_lstm, self.w_soft, self.b_soft, self.w_attn_1, self.w_attn_2, self.v_attn)
+    self.sample_logit2 = MicroController.SamplerLogit(self.num_cells, self.temperature, self.tanh_constant, self.op_tanh_reduce, self.lstm_num_layers, self.lstm_size, self.g_emb, self.w_emb, self.w_lstm, self.w_soft, self.b_soft, self.w_attn_1, self.w_attn_2, self.v_attn)
     self.arc_seq_1 = MicroController.SampleArc(self.num_cells)
     self.arc_seq_2 = MicroController.SampleArc(self.num_cells)
+    _1, _2 = self.generate_sample_arc()
     entropy_1 = MicroController.Entropy(self.num_cells)
     entropy_2 = MicroController.Entropy(self.num_cells)
     self.sample_entropy = lambda logits1, logits2: entropy_1(logits1) + entropy_2(logits2)
@@ -65,7 +66,9 @@ class MicroController(Controller):
     log_prob_2 = MicroController.LogProbabilities(self.num_cells)
     self.sample_log_prob = lambda logits1, logits2: log_prob_1(logits1) + log_prob_2(logits2)
 
-  def generate_sample_arc(self, logits1, logits2):
+  def generate_sample_arc(self):
+      logits1, c, h = self.sample_logit1(None, None)
+      logits2, _1, _2 = self.sample_logit2(c, h)
       self.current_normal_arc = self.arc_seq_1(logits1)
       self.current_reduce_arc = self.arc_seq_2(logits2)
       return self.current_normal_arc, self.current_reduce_arc
@@ -108,16 +111,26 @@ class MicroController(Controller):
 
 
   class SamplerLogit(LayeredModel):
-      def __init__(self, num_cells, lstm_num_layers, lstm_size, g_emb, w_lstm, w_attn_1):
+      def __init__(self, num_cells, temperature, tanh_constant, op_tanh_reduce, lstm_num_layers, lstm_size, g_emb, w_emb, w_lstm, w_soft, b_soft, w_attn_1, w_attn_2, v_attn, use_bias=False):
           self.num_cells = num_cells
+          self.temperature = temperature
+          self.tanh_constant = tanh_constant
+          self.op_tanh_reduce = op_tanh_reduce
           self.lstm_num_layers = lstm_num_layers
           self.lstm_size = lstm_size
           self.g_emb = g_emb
+          self.w_emb = w_emb
           self.w_lstm = w_lstm
+          self.w_soft = w_soft
+          self.b_soft = b_soft
           self.w_attn_1 = w_attn_1
+          self.w_attn_2 = w_attn_2
+          self.v_attn = v_attn
+          self.use_bias = use_bias
 
       def __call__(self, prev_c, prev_h):
           logits = fw.TensorArray(fw.float32, size=((self.num_cells + 2) * 4))
+          logits = [0] * (self.num_cells + 2) * 4
           anchors = fw.TensorArray(
               fw.float32,
               size=self.num_cells + 2,
@@ -164,7 +177,8 @@ class MicroController(Controller):
                       logit /= self.temperature
                   if self.tanh_constant is not None:
                       logit = self.tanh_constant * fw.tanh(logit)
-                  logits = logits.write(layer_id * 4 + i, logit)
+                  logits[layer_id * 4 + i] = logit
+                #   logits = logits.write(layer_id * 4 + i, logit)
                   index = fw.reshape(fw.to_int32(fw.multinomial(logit, 1)), [1])
                   prev_layers.append(anchors.read(fw.reduce_sum(index)))
                   inputs = prev_layers[-1]
@@ -179,14 +193,16 @@ class MicroController(Controller):
                       logit = op_tanh * fw.tanh(logit)
                   if self.use_bias:
                       logit += self.b_soft_no_learn
-                  logits.write(layer_id * 4 + 2 + i, logit)
+                  sys.stderr.write(f'*** layer_id = {layer_id}, i = {i}, logit.shape = {logit.shape}, logits = {logits}\n')
+                  logits[layer_id * 4 + 2 + i] = logit
+                #   logits.write(layer_id * 4 + 2 + i, logit)
                   op_id = fw.reshape(fw.to_int32(fw.multinomial(logit, 1)), [1])
                   inputs = fw.embedding_lookup(self.w_emb, op_id)
               next_c, next_h = stack_lstm(inputs, prev_c, prev_h, self.w_lstm)
               anchors = anchors.write(layer_id, next_h[-1])
               anchors_w_1 = anchors_w_1.write(layer_id, fw.matmul(next_h[-1], self.w_attn_1))
               inputs = self.g_emb
-              return (layer_id + 1, inputs, next_c, next_h, anchors, anchors_w_1)
+              return (layer_id + 1, inputs, next_c, next_h, anchors, anchors_w_1, logits)
 
           loop_outputs = fw.while_loop(
               _condition,
@@ -217,11 +233,9 @@ class MicroController(Controller):
               start_id = 4 * (layer_id - 2)
               for i in range(2):  # index_1, index_2
                   index = fw.reshape(fw.to_int32(fw.multinomial(logits[layer_id * 4 + i], 1)), [1])
-                  logits_index += 1
                   arc_seq = arc_seq.write(start_id + 2 * i, index)
               for i in range(2):  # op_1, op_2
                   op_id = fw.reshape(fw.to_int32(fw.multinomial(logits[layer_id * 4 + 2 + i], 1)), [1])
-                  logits_index += 1
                   arc_seq = arc_seq.write(start_id + 2 * i + 1, op_id)
               return (layer_id + 1, arc_seq)
 
@@ -295,7 +309,7 @@ class MicroController(Controller):
 
   def build_trainer(self, child_model, vrl):
     self.skip_rate = fw.constant(0.0, dtype=fw.float32)
-    self.sample_log_prob = fw.reduce_sum(self.sample_log_prob)
+    self.sample_log_prob = lambda logits1, logits2: fw.reduce_sum(self.sample_log_prob(logits1, logits2))
     self.valid_acc = lambda logits_aux_logits, y_valid_shuffle: (fw.to_float(vrl(logits_aux_logits[0], y_valid_shuffle)) /
                       fw.to_float(child_model.batch_size))
 

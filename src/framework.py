@@ -79,26 +79,34 @@ boolean_mask = tf.boolean_mask
 case = tf.case
 clip_by_norm = tf.clip_by_norm
 clip_by_global_norm = tf.clip_by_global_norm
+
 def concat(values, axis, name=None):
   if name is None:
     name = name_scope().current() + "concat"
   return tf.concat(values, axis, name)
+
 cond = tf.cond
 constant = tf.constant
 constant_initializer = tf.constant_initializer
 control_dependencies = tf.control_dependencies
 conv2d = tf.nn.conv2d
 cos = tf.cos
+
+def Dataset(images, labels):
+   return tf.data.Dataset.from_tensor_slices((images, labels))
+
 device = tf.device
 divide = tf.math.divide
 dropout = tf.nn.dropout
 embedding_lookup = tf.nn.embedding_lookup
 equal = tf.equal
+executing_eagerly = tf.compat.v1.executing_eagerly
 exp = tf.exp
 exp_decay = tf.keras.optimizers.schedules.ExponentialDecay
 fill = tf.fill
 float32 = tf.float32
 floor = tf.floor
+function = tf.function
 fused_batch_norm = tf.raw_ops.FusedBatchNorm
 gather = tf.gather
 
@@ -120,7 +128,10 @@ less_equal = tf.less_equal
 log = tf.math.log
 logical_and = tf.logical_and
 logical_or = tf.logical_or
-map_fn = tf.map_fn
+
+def map_fn(fn, elems):
+   return tf.nest.map_structure(tf.stop_gradient, tf.map_fn(fn, elems))
+
 matmul = tf.matmul
 maximum = tf.maximum
 max_pool2d = tf.keras.layers.MaxPooling2D
@@ -146,6 +157,10 @@ def reshape(tensor, shape, name=None):
 scatter_sub = tf.tensor_scatter_nd_sub
 separable_conv2d = tf.nn.separable_conv2d
 shape = tf.shape
+
+def shuffle_batch(data, batch_size, seed, capacity=25000):
+    return tf.data.Dataset.from_tensor_slices(data).shuffle(capacity, seed).batch(batch_size)
+
 sigmoid = tf.sigmoid
 size = tf.size
 softmax = tf.nn.softmax
@@ -168,25 +183,6 @@ zeros_like = tf.zeros_like
 # TensorFlow 1 Compatibility
 ConfigProto = partial(tf.compat.v1.ConfigProto, allow_soft_placement=True)
 Saver = partial(tf.compat.v1.train.Saver, max_to_keep=2)
-Session = tf.compat.v1.train.SingularMonitoredSession
-batch = partial(
-    tf.compat.v1.train.batch,
-    enqueue_many=True,
-    num_threads=1,
-    allow_smaller_final_batch=True)
-run = tf.compat.v1.app.run
-
-def shuffle_batch(data, batch_size, seed, capacity=25000):
-    return tf.compat.v1.train.shuffle_batch(
-        data,
-        batch_size=batch_size,
-        capacity=capacity,
-        enqueue_many=True,
-        min_after_dequeue=0,
-        num_threads=16,
-        seed=seed,
-        allow_smaller_final_batch=True)
-
 
 class Optimizer(object):
     @staticmethod

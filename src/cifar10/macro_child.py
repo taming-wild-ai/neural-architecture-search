@@ -6,6 +6,7 @@ import sys
 
 import numpy as np
 from absl import flags
+flags.FLAGS(['test'])
 import src.framework as fw
 
 from src.cifar10.child import Child
@@ -91,6 +92,7 @@ class MacroChild(Child):
   class Model(LayeredModel):
     def __init__(self, child, is_training: bool, reuse=False):
       self.child = child
+      self.trainable_variables = child.trainable_variables
       self.enas_layers = []
       self.model_factorized_reduction = {}
       with fw.name_scope(child.name):
@@ -140,6 +142,7 @@ class MacroChild(Child):
         print("Model has {0} params".format(count_model_params(child.trainable_variables())))
 
     def __call__(self, images):
+      """images should be a tf.data.Dataset batch."""
       with fw.name_scope(self.child.name):
         layers = [self.model_layers[0](images)]
 
@@ -287,38 +290,39 @@ class MacroChild(Child):
           branch_4 = MacroChild.PoolBranch(child, reuse, out_filters, is_training, out_filters, "avg", 0)
       with fw.name_scope('branch_5'):
           branch_5 = MacroChild.PoolBranch(child, reuse, out_filters, is_training, out_filters, "max", 0)
+
       def branches(inputs):
         arms = {}
         with fw.name_scope("branch_0"):
           y = branch_0(inputs)
-          arms[fw.equal(count, 0)] = lambda: y
+          arms[fw.equal(count, 0).ref()] = lambda: y
         with fw.name_scope("branch_1"):
           y = branch_1(inputs)
-          arms[fw.equal(count, 1)] = lambda: y
+          arms[fw.equal(count, 1).ref()] = lambda: y
         with fw.name_scope("branch_2"):
           y = branch_2(inputs)
-          arms[fw.equal(count, 2)] = lambda: y
+          arms[fw.equal(count, 2).ref()] = lambda: y
         with fw.name_scope("branch_3"):
           y = branch_3(inputs)
-          arms[fw.equal(count, 3)] = lambda: y
+          arms[fw.equal(count, 3).ref()] = lambda: y
         with fw.name_scope("branch_4"):
           y = branch_4(inputs)
-          arms[fw.equal(count, 4)] = lambda: y
+          arms[fw.equal(count, 4).ref()] = lambda: y
         with fw.name_scope("branch_5"):
           y = branch_5(inputs)
-          arms[fw.equal(count, 5)] = lambda: y
+          arms[fw.equal(count, 5).ref()] = lambda: y
         return fw.case(
           arms,
           default=lambda: fw.constant(0, fw.float32),
           exclusive=True)
 
-      self.layers.append(branches)
+      self.layers.append(branches) # 1
 
       def reshape(inputs, h, w):
         child.data_format.set_shape(inputs, h, w, out_filters)
         return inputs
 
-      self.layers.append(reshape)
+      self.layers.append(reshape) # 2
       if layer_id > 0:
         self.has_skip_layer = True
         skip_start = start_idx + 1
@@ -858,27 +862,28 @@ class MacroChild(Child):
           self.layers = [lambda x: child.data_format.child_init(x)] # 0
         else:
           self.layers = [lambda x: x] # 0
-        self.layers.append(lambda x, y: fw.shuffle_batch([x, y], child.batch_size, child.seed)) # 1
+        self.layers.append(lambda x, y: fw.shuffle_batch((x, y), child.batch_size, child.seed)) # 1
         if shuffle:
 
-          def _pre_process(x):
-            return self.data_format.child_init_preprocess(fw.image.random_flip_left_right(
-              fw.image.random_crop(
-                fw.pad(x, [[4, 4], [4, 4], [0, 0]]),
-                [32, 32, 3],
-                seed=self.seed),
-              seed=self.seed))
+          def _pre_process(x, _y):
+              return self.data_format.child_init_preprocess(
+                  fw.random_flip_left_right(
+                      fw.random_crop(
+                          fw.pad(x, [[4, 4], [4, 4], [0, 0]]),
+                          [32, 32, 3],
+                          seed=child.seed),
+                      seed=child.seed)), _y
 
-          self.layers.append(lambda x: fw.map_fn(_pre_process, x, back_prop=False)) # 2
+          self.layers.append(lambda dataset: dataset.map(_pre_process)) # 2
         else:
           self.layers.append(lambda x: x) # 2
 
     def __call__(self, x, y):
       with fw.device('/cpu:0'):
         x = self.layers[0](x)
-        x_valid_shuffle, y_valid_shuffle = self.layers[1](x, y)
-        x_valid_shuffle = self.layers[2](x_valid_shuffle)
-        return x_valid_shuffle, y_valid_shuffle
+        dataset_valid_shuffle = self.layers[1](x, y)
+        dataset_valid_shuffle = self.layers[2](dataset_valid_shuffle)
+        return dataset_valid_shuffle
 
 
   class ValidationRL(LayeredModel):
@@ -904,7 +909,7 @@ class MacroChild(Child):
     else:
       self.current_controller_arc = lambda: np.array([int(x) for x in self.fixed_arc.split(" ") if x])
 
-    self.loss, self.train_loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train(self.y_train)
-    self.valid_preds, self.valid_acc = self._build_valid(self.y_valid) # unused?
-    self.test_preds, self.test_acc = self._build_test(self.y_test) # unused?
+    self.loss, self.train_loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train(self.dataset)
+    self.valid_preds, self.valid_acc = self._build_valid(self.dataset_valid) # unused?
+    self.test_preds, self.test_acc = self._build_test(self.dataset_test) # unused?
     return train_op, lr, grad_norm, optimizer
