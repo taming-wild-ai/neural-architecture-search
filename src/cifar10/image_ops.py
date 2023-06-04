@@ -31,8 +31,8 @@ class BatchNorm(LayeredModel):
           x=x,
           scale=scale,
           offset=offset,
-          mean=x,
-          variance=x,
+          mean=fw.reshape((), (0,)),
+          variance=fw.reshape((), (0,)),
           epsilon=epsilon,
           data_format=data_format.name,
           is_training=True)
@@ -95,8 +95,8 @@ class BatchNormWithMask(LayeredModel):
           x=x,
           scale=scale,
           offset=offset,
-          mean=x,
-          variance=x,
+          mean=fw.reshape((), (0,)),
+          variance=fw.reshape((), (0,)),
           epsilon=epsilon,
           data_format=data_format,
           is_training=True)

@@ -17,7 +17,6 @@ python src/cifar10/main.py \
   --child_out_filters=36 \
   --child_l2_reg=0.00025 \
   --child_num_branches=6 \
-  --child_num_cell_layers=5 \
   --child_keep_prob=0.90 \
   --child_drop_path_keep_prob=0.60 \
   --child_lr_cosine \

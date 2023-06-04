@@ -44,7 +44,6 @@ python src/cifar10/main.py \
   --child_out_filters=96 \
   --child_l2_reg=2e-4 \
   --child_num_branches=4 \
-  --child_num_cell_layers=5 \
   --child_keep_prob=0.50 \
   --child_lr_cosine \
   --child_lr_max=0.05 \

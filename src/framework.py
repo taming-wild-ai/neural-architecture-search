@@ -105,6 +105,7 @@ exp = tf.exp
 exp_decay = tf.keras.optimizers.schedules.ExponentialDecay
 fill = tf.fill
 float32 = tf.float32
+float64 = tf.float64
 floor = tf.floor
 function = tf.function
 fused_batch_norm = tf.raw_ops.FusedBatchNorm

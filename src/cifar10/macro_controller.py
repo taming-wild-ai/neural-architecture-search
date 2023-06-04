@@ -384,8 +384,15 @@ class MacroController(Controller):
     self.skip_rate = lambda branch_ids: fw.to_float(self.skip_count(branch_ids)) / fw.to_float(self.num_layers * (self.num_layers - 1) / 2)
     inner_sample_log_prob = self.sample_log_prob
     self.sample_log_prob = lambda logits, branch_ids: fw.reduce_sum(inner_sample_log_prob(logits, branch_ids)[0])
-    self.valid_acc = lambda logits, y_valid_shuffle: (fw.to_float(vrl(logits, y_valid_shuffle)) /
-                      fw.to_float(child_model.batch_size))
+
+    def valid_acc(logits, y_valid_shuffle):
+        retval = (
+            fw.to_float(vrl(logits, y_valid_shuffle)) /
+            fw.to_float(child_model.batch_size))
+        return retval
+
+    self.valid_acc = valid_acc
+
     def reward(logits, y_valid_shuffle):
       retval = self.valid_acc(logits, y_valid_shuffle)
       if self.entropy_weight is not None:

@@ -12,12 +12,13 @@ class TestImageOps(unittest.TestCase):
     def test_drop_path(self):
         drop_path(tf.constant(np.ndarray((45000, 32, 32, 3)), dtype=tf.float32), keep_prob=0.9)
 
+    @patch('src.cifar10.image_ops.fw.reshape')
     @patch('src.cifar10.image_ops.fw.control_dependencies')
     @patch('src.cifar10.image_ops.moving_averages', return_value="ama")
     @patch('src.cifar10.image_ops.fw.constant_initializer', return_value="constant")
     @patch('src.cifar10.image_ops.fw.fused_batch_norm', return_value=("fbn", 1.0, 1.0, 1.0, 1.0))
     @patch('src.cifar10.image_ops.fw.identity', return_value="identity")
-    def test_batch_norm_nhwc_training(self, identity, fbn, constant, ama, cd):
+    def test_batch_norm_nhwc_training(self, identity, fbn, constant, ama, cd, reshape):
         mock_weights = mock.MagicMock()
         mock_weights.get = mock.MagicMock(return_value="get_variable")
         input_tensor = tf.constant(np.ndarray((45000, 32, 32, 3)))
@@ -25,7 +26,7 @@ class TestImageOps(unittest.TestCase):
             bn = BatchNorm(True, DataFormat.new('NHWC'), mock_weights, 3, True)
             self.assertEqual("identity", bn(input_tensor))
             mock_weights.get.assert_any_call(True, 'bn/', "offset", [3], "constant")
-            fbn.assert_called_with(x=input_tensor, scale="get_variable", offset="get_variable", mean=input_tensor, variance=input_tensor, epsilon=1e-5, data_format="NHWC", is_training=True)
+            fbn.assert_called_with(x=input_tensor, scale="get_variable", offset="get_variable", mean=reshape(), variance=reshape(), epsilon=1e-5, data_format="NHWC", is_training=True)
             identity.assert_called_with("fbn")
 
     @patch('src.cifar10.image_ops.fw.constant_initializer', return_value="constant")
