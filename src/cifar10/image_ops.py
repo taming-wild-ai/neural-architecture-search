@@ -64,7 +64,7 @@ class BatchNorm(LayeredModel):
 class BatchNormWithMask(LayeredModel):
   def __init__(self, is_training: bool, mask, num_channels: int, weights, parent_scope_reuse: bool, name='bn', decay=0.9, epsilon=1e-3, data_format='NHWC'):
     shape = [num_channels]
-    indices =fw.reshape(fw.to_int32(fw.where(mask)), [-1])
+    indices = fw.to_int32(fw.where(mask))
     with fw.name_scope(name) as scope:
       reuse = parent_scope_reuse if is_training else True
       offset = fw.boolean_mask(

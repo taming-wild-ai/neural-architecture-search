@@ -60,17 +60,15 @@ class TestImageOps(unittest.TestCase):
     @patch('src.cifar10.image_ops.fw.fused_batch_norm', return_value=("fbn", 1.0, 1.0, 1.0, 1.0))
     @patch('src.cifar10.image_ops.fw.boolean_mask', return_value="boolean_mask")
     @patch('src.cifar10.image_ops.fw.constant_initializer', return_value="constant")
-    @patch('src.cifar10.image_ops.fw.reshape')
     @patch('src.cifar10.image_ops.fw.to_int32', return_value="to_int32")
     @patch('src.cifar10.image_ops.fw.where', return_value="where")
-    def test_batch_norm_with_mask_not_training(self, where, to_int32, reshape, constant, boolean_mask, fbn):
+    def test_batch_norm_with_mask_not_training(self, where, to_int32, constant, boolean_mask, fbn):
         weights_mock = mock.MagicMock()
         with tf.Graph().as_default():
             bn = BatchNormWithMask(False, None, 3, weights_mock, True)
             self.assertEqual('fbn', bn(None))
             where.assert_called_with(None)
             to_int32.assert_called_with("where")
-            reshape.assert_called_with("to_int32", [-1])
             weights_mock.get.assert_called_with(True, 'bn/', "moving_variance", [3], "constant", trainable=False)
             weights_mock.get.assert_any_call(True, 'bn/', "moving_mean", [3], "constant", trainable=False)
             weights_mock.get.assert_any_call(True, 'bn/', "scale", [3], "constant")
