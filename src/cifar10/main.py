@@ -82,6 +82,8 @@ def get_ops(images, labels):
       "optimizer": controller_optimizer,
       "baseline": controller_model.baseline,
       "entropy": controller_model.sample_entropy,
+      "sampler_logit": controller_model.sampler_logit,
+      "sample_log_prob": controller_model.sample_log_prob,
       "generate_sample_arc": controller_model.generate_sample_arc,
       "skip_rate": controller_model.skip_rate,
     }
@@ -166,7 +168,7 @@ def train():
       if global_step % FLAGS.log_every == 0:
           log_string = ""
           log_string += "epoch={:<6d}".format(epoch)
-          log_string += "ch_step={:<6d}".format(global_step)
+          log_string += f"ch_step={global_step}"
           log_string += " loss={:<8.6f}".format(loss)
           log_string += " lr={:<8.4f}".format(lr)
           log_string += " |g|={:<8.4f}".format(gn)
@@ -182,8 +184,14 @@ def train():
           print(("Epoch {}: Training controller".format(epoch)))
           for ct_step in range(FLAGS.controller_train_steps *
                                 FLAGS.controller_num_aggregate):
-            child_valid_logits = ops['child']['model'](ops['child']['dataset_valid_shuffle'])
-            loss = ops["controller"]["loss"](child_valid_logits, ops['child']['dataset_valid_shuffle'])
+            images_batch, labels_batch = ops['child']['dataset_valid_shuffle'].as_numpy_iterator().__next__()
+            child_valid_logits = ops['child']['model'](images_batch)
+            controller_logits, branch_ids = ops['controller']['sampler_logit']()
+            result = ops['controller']['sample_log_prob'](controller_logits, branch_ids)
+            print(f'result = {result} of type(result) = {type(result)}')
+            log_prob = result[0]
+            log_prob_list = result[1]
+            controller_loss = ops["controller"]["loss"](child_valid_logits, labels_batch, controller_logits, branch_ids, log_prob_list)
             entropy = ops["controller"]["entropy"]()
             lr = ops["controller"]["lr"]()
             gn = ops["controller"]["grad_norm"](loss, ops['controller']['model'].trainable_variables())
@@ -195,7 +203,7 @@ def train():
               curr_time = time.time()
               log_string = ""
               log_string += "ctrl_step={:<6d}".format(ops["controller"]["train_step"])
-              log_string += " loss={:<7.3f}".format(loss)
+              log_string += " loss={:<7.3f}".format(controller_loss)
               log_string += " ent={:<5.2f}".format(entropy)
               log_string += " lr={:<6.4f}".format(lr)
               log_string += " |g|={:<8.4f}".format(gn)

@@ -3,6 +3,9 @@ import unittest
 import unittest.mock as mock
 from unittest.mock import patch
 
+from absl import flags
+flags.FLAGS(['test'])
+
 from src.utils import print_user_flags, Logger, get_train_ops
 from src.cifar10.child import ClipMode, Optimizer, LearningRate
 import src.framework as fw
@@ -42,7 +45,10 @@ class TestUtils(unittest.TestCase):
             grad_norm(0.0, [var])
             grad_norms(0.0, [var])
             add_n.assert_called_with([reduce_sum()])
-            gradients.assert_called_with(1e-4, [var])
+            # gradients.assert_called_with(1e-4, [var])
+            self.assertEqual(len(gradients.call_args_list), 1)
+            self.assertEqual(1e-4, gradients.call_args_list[0][0][0])
+            self.assertEqual(list, type(gradients.call_args_list[0][0][1]))
             global_norm.assert_called_with([0.0])
             sqrt.assert_called_with(reduce_sum())
             max.assert_called_with('exp_decay', 5)
@@ -78,7 +84,10 @@ class TestUtils(unittest.TestCase):
             grad_norm(0.0, [var])
             grad_norms(0.0, [var])
             add_n.assert_called_with([reduce_sum()])
-            gradients.assert_called_with(1e-4, [var])
+            # gradients.assert_called_with(1e-4, [var])
+            self.assertEqual(len(gradients.call_args_list), 1)
+            self.assertEqual(1e-4, gradients.call_args_list[0][0][0])
+            self.assertEqual(list, type(gradients.call_args_list[0][0][1]))
             global_norm.assert_called_with([0.0])
             sqrt.assert_called_with(reduce_sum())
             max.assert_called_with('exp_decay', 5)
@@ -121,7 +130,10 @@ class TestUtils(unittest.TestCase):
                 grad_norm(0.0, [var])
                 grad_norms(0.0, [var])
                 add_n.assert_called_with([reduce_sum()])
-                gradients.assert_called_with(1e-4, [var])
+                # gradients.assert_called_with(1e-4, [var])
+                self.assertEqual(len(gradients.call_args_list), 1)
+                self.assertEqual(1e-4, gradients.call_args_list[0][0][0])
+                self.assertEqual(list, type(gradients.call_args_list[0][0][1]))
                 global_norm.assert_called_with([0.0])
                 sqrt.assert_called_with(reduce_sum())
                 max.assert_not_called()

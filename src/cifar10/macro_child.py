@@ -292,25 +292,25 @@ class MacroChild(Child):
           branch_5 = MacroChild.PoolBranch(child, reuse, out_filters, is_training, out_filters, "max", 0)
 
       def branches(inputs):
-        arms = {}
+        arms = []
         with fw.name_scope("branch_0"):
           y = branch_0(inputs)
-          arms[fw.equal(count, 0).ref()] = lambda: y
+          arms.append((fw.equal(count, 0), lambda: y))
         with fw.name_scope("branch_1"):
           y = branch_1(inputs)
-          arms[fw.equal(count, 1).ref()] = lambda: y
+          arms.append((fw.equal(count, 1), lambda: y))
         with fw.name_scope("branch_2"):
           y = branch_2(inputs)
-          arms[fw.equal(count, 2).ref()] = lambda: y
+          arms.append((fw.equal(count, 2), lambda: y))
         with fw.name_scope("branch_3"):
           y = branch_3(inputs)
-          arms[fw.equal(count, 3).ref()] = lambda: y
+          arms.append((fw.equal(count, 3), lambda: y))
         with fw.name_scope("branch_4"):
           y = branch_4(inputs)
-          arms[fw.equal(count, 4).ref()] = lambda: y
+          arms.append((fw.equal(count, 4), lambda: y))
         with fw.name_scope("branch_5"):
           y = branch_5(inputs)
-          arms[fw.equal(count, 5).ref()] = lambda: y
+          arms.append((fw.equal(count, 5), lambda: y))
         return fw.case(
           arms,
           default=lambda: fw.constant(0, fw.float32),
@@ -802,19 +802,27 @@ class MacroChild(Child):
 
   class LossModel(LayeredModel):
     def __init__(self, train):
-      self.layers = [
-        lambda x: fw.sparse_softmax_cross_entropy_with_logits(
-          logits=x,
-          labels=train),
-        fw.reduce_mean]
+      """
+      train is a batch of training data, (examples, labels)
+      """
+      labels = train.as_numpy_iterator().__next__()[1]
+
+      def sscewl(x):
+        return fw.sparse_softmax_cross_entropy_with_logits(logits=x, labels=labels)
+
+      self.layers = [sscewl, fw.reduce_mean]
 
 
   class TrainModel(LayeredModel):
     def __init__(self, train):
+      """
+      train is a batch of training data, (examples, labels)
+      """
+      labels = train.as_numpy_iterator().__next__()[1]
       self.layers = [
         lambda x: fw.argmax(x, axis=1),
         fw.to_int32,
-        lambda x: fw.equal(x, train),
+        lambda x: fw.equal(x, labels),
         fw.to_int32,
         fw.reduce_sum]
 

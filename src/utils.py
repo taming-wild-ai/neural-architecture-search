@@ -276,6 +276,7 @@ class GradientCalculator(object):
     else:
       self.adjuster = lambda x, _: x # identity
 
+  @fw.function
   def __call__(self, loss, tf_variables):
     return fw.gradients(self.adjuster(loss, tf_variables), tf_variables)
 

@@ -672,7 +672,11 @@ class TestMacroChild(unittest.TestCase):
         get_train_ops.return_value = (train_op, 2, grad_norm, 4)
         mc = MacroChild({}, {})
         mc.x_train = 1
-        mc.y_train = 2
+        dataset_iter = mock.MagicMock()
+        dataset_iter.__next__ = mock.MagicMock(return_value=('x', 'y'))
+        dataset = mock.MagicMock()
+        dataset.as_numpy_iterator = mock.MagicMock(return_value=dataset_iter)
+        mc.y_train = dataset
         mc.clip_mode = None
         mc.grad_bound = None
         mc.l2_reg = 1e-4
@@ -702,13 +706,13 @@ class TestMacroChild(unittest.TestCase):
         print1.assert_any_call("Build train graph")
         model.assert_called_with(mc, True)
         model().assert_called_with(mc.x_train)
-        sscewl.assert_called_with(logits="model", labels=mc.y_train)
+        sscewl.assert_called_with(logits="model", labels='y')
         reduce_mean.assert_called_with("sscewl")
         reduce_sum.assert_called_with('to_int32')
         argmax.assert_called_with("model", axis=1)
         get_train_ops.assert_called_with(mc.global_step, mc.learning_rate, clip_mode=None, l2_reg=mc.l2_reg, num_train_batches=310, optim_algo=None)
         to_int32.assert_called_with('equal')
-        equal.assert_called_with('to_int32', 2)
+        equal.assert_called_with('to_int32', 'y')
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     @patch('src.cifar10.macro_child.print')

@@ -181,7 +181,10 @@ class MacroController(Controller):
           self.lstm_num_layers = lstm_num_layers
 
       def __call__(self):
-          """Return the logits and branch IDs, generated from the LSTM."""
+          """
+          Return a tuple of logits and branch IDs, generated from the LSTM,
+          suitable for passing to LogProbabilities.
+          """
           anchors = []
           anchors_w_1 = []
           prev_c = [fw.zeros([1, self.lstm_size], fw.float32) for _ in
@@ -332,9 +335,10 @@ class MacroController(Controller):
                   log_probs.append(log_prob)
                   stackable_log_probs.append(log_prob)
                   sequence_index += 1
-          retval = fw.stack(stackable_log_probs)
-          retval = fw.reduce_sum(retval)
-          return retval, log_probs
+          log_prob = fw.stack(stackable_log_probs)
+          log_prob = fw.reduce_sum(log_prob)
+          retval = (log_prob, log_probs)
+          return retval
 
 
   class SkipCount(LayeredModel):
@@ -393,18 +397,18 @@ class MacroController(Controller):
 
     self.valid_acc = valid_acc
 
-    def reward(logits, y_valid_shuffle):
+    def reward(logits, y_valid_shuffle, log_probs):
       retval = self.valid_acc(logits, y_valid_shuffle)
       if self.entropy_weight is not None:
-        retval += self.entropy_weight * self.sample_entropy
+        retval += self.entropy_weight * self.sample_entropy(log_probs)
       return retval
 
     self.baseline = fw.Variable(0.0, dtype=fw.float32)
 
-    def loss(child_logits, y_valid_shuffle, controller_logits, branch_ids):
+    def loss(child_logits, y_valid_shuffle, controller_logits, branch_ids, log_probs):
         with fw.control_dependencies([
-            self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward(child_logits, y_valid_shuffle)))]):
-            self.reward = fw.identity(reward(child_logits, y_valid_shuffle))
+            self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward(child_logits, y_valid_shuffle, log_probs)))]):
+            self.reward = fw.identity(reward(child_logits, y_valid_shuffle, log_probs))
         retval = self.sample_log_prob(controller_logits, branch_ids) * (self.reward - self.baseline)
         if self.skip_weight is not None:
             retval += self.skip_weight * self.skip_penaltys

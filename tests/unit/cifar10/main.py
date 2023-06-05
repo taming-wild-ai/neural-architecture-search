@@ -182,7 +182,7 @@ class TestCIFAR10Main(unittest.TestCase):
                 "child": {
                     'dataset': dataset,
                     'model': child_model,
-                    'dataset_valid_shuffle': mock.MagicMock(name='dataset_valid_shuffle'),
+                    'dataset_valid_shuffle': dataset,
                     'images': mock.MagicMock(name='images'),
                     "num_train_batches": 1,
                     "loss": mock.MagicMock(return_value=2.0),
@@ -205,7 +205,9 @@ class TestCIFAR10Main(unittest.TestCase):
                     "skip_rate": mock.MagicMock(return_value=0.1),
                     "train_op": mock.MagicMock(return_value=2.0),
                     "train_step": 311,
-                    "generate_sample_arc": mock.MagicMock(return_value=("0", "1")) }})
+                    "generate_sample_arc": mock.MagicMock(return_value=('0', '1')),
+                    "sampler_logit": mock.MagicMock(return_value=('controller_logits', 'branch_ids')),
+                    "sample_log_prob": mock.MagicMock(return_value='result') }})
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')

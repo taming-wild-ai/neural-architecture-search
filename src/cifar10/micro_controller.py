@@ -56,6 +56,15 @@ class MicroController(Controller):
     self._create_params()
     self.sample_logit1 = MicroController.SamplerLogit(self.num_cells, self.temperature, self.tanh_constant, self.op_tanh_reduce, self.lstm_num_layers, self.lstm_size, self.g_emb, self.w_emb, self.w_lstm, self.w_soft, self.b_soft, self.w_attn_1, self.w_attn_2, self.v_attn)
     self.sample_logit2 = MicroController.SamplerLogit(self.num_cells, self.temperature, self.tanh_constant, self.op_tanh_reduce, self.lstm_num_layers, self.lstm_size, self.g_emb, self.w_emb, self.w_lstm, self.w_soft, self.b_soft, self.w_attn_1, self.w_attn_2, self.v_attn)
+
+    def sampler_logit():
+        """Return a tuple for passing to self.sample_log_prob"""
+        logits1, c, h = self.sample_logit1(None, None)
+        logits2, _1, _2 = self.sample_logit2(c, h)
+        return logits1, logits2
+
+    self.sampler_logit = sampler_logit
+
     self.arc_seq_1 = MicroController.SampleArc(self.num_cells)
     self.arc_seq_2 = MicroController.SampleArc(self.num_cells)
     _1, _2 = self.generate_sample_arc()
