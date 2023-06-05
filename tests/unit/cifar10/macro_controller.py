@@ -207,13 +207,6 @@ class TestMacroController(unittest.TestCase):
             3.0, 4.0, 3.0, 4.0, 3.0,
             3.0, 4.0, 3.0, 4.0, 3.0, 4.0, 3.0, 4.0,
             3.0, 4.0, 3.0, 4.0, 3.0], axis=0)
-        found = False
-        for call in reduce_sum.call_args_list:         # reduce_sum.assert_any_call(4.0)
-            if 1 == len(call[0]):
-                if float == type(call[0][0]) and 4.0 == call[0][0]:
-                    found = True
-                    break
-        self.assertTrue(found)
         # cd.assert_called_with(['assign_sub'])
 
 if "__main__" == __name__:

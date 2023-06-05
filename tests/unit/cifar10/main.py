@@ -207,7 +207,7 @@ class TestCIFAR10Main(unittest.TestCase):
                     "train_step": 311,
                     "generate_sample_arc": mock.MagicMock(return_value=('0', '1')),
                     "sampler_logit": mock.MagicMock(return_value=('controller_logits', 'branch_ids')),
-                    "sample_log_prob": mock.MagicMock(return_value='result') }})
+                    "sample_log_prob": mock.MagicMock(return_value=('result', ['list', 'of', 'results'])) }})
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')

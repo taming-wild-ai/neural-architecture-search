@@ -386,8 +386,6 @@ class MacroController(Controller):
 
   def build_trainer(self, child_model, vrl):
     self.skip_rate = lambda branch_ids: fw.to_float(self.skip_count(branch_ids)) / fw.to_float(self.num_layers * (self.num_layers - 1) / 2)
-    inner_sample_log_prob = self.sample_log_prob
-    self.sample_log_prob = lambda logits, branch_ids: fw.reduce_sum(inner_sample_log_prob(logits, branch_ids)[0])
 
     def valid_acc(logits, y_valid_shuffle):
         retval = (
@@ -409,7 +407,7 @@ class MacroController(Controller):
         with fw.control_dependencies([
             self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward(child_logits, y_valid_shuffle, log_probs)))]):
             self.reward = fw.identity(reward(child_logits, y_valid_shuffle, log_probs))
-        retval = self.sample_log_prob(controller_logits, branch_ids) * (self.reward - self.baseline)
+        retval = self.sample_log_prob(controller_logits, branch_ids)[0] * (self.reward - self.baseline)
         if self.skip_weight is not None:
             retval += self.skip_weight * self.skip_penaltys
         return retval

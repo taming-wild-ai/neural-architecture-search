@@ -82,8 +82,8 @@ def get_ops(images, labels):
       "optimizer": controller_optimizer,
       "baseline": controller_model.baseline,
       "entropy": controller_model.sample_entropy,
-      "sampler_logit": controller_model.sampler_logit,
-      "sample_log_prob": controller_model.sample_log_prob,
+      'sampler_logit': controller_model.sampler_logit,
+      'sample_log_prob': controller_model.sample_log_prob,
       "generate_sample_arc": controller_model.generate_sample_arc,
       "skip_rate": controller_model.skip_rate,
     }
@@ -187,10 +187,7 @@ def train():
             images_batch, labels_batch = ops['child']['dataset_valid_shuffle'].as_numpy_iterator().__next__()
             child_valid_logits = ops['child']['model'](images_batch)
             controller_logits, branch_ids = ops['controller']['sampler_logit']()
-            result = ops['controller']['sample_log_prob'](controller_logits, branch_ids)
-            print(f'result = {result} of type(result) = {type(result)}')
-            log_prob = result[0]
-            log_prob_list = result[1]
+            log_prob, log_prob_list = ops['controller']['sample_log_prob'](controller_logits, branch_ids)
             controller_loss = ops["controller"]["loss"](child_valid_logits, labels_batch, controller_logits, branch_ids, log_prob_list)
             entropy = ops["controller"]["entropy"]()
             lr = ops["controller"]["lr"]()
