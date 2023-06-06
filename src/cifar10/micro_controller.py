@@ -318,7 +318,6 @@ class MicroController(Controller):
 
   def build_trainer(self, child_model, vrl):
     self.skip_rate = fw.constant(0.0, dtype=fw.float32)
-    self.sample_log_prob = lambda logits1, logits2: fw.reduce_sum(self.sample_log_prob(logits1, logits2))
     self.valid_acc = lambda logits_aux_logits, y_valid_shuffle: (fw.to_float(vrl(logits_aux_logits[0], y_valid_shuffle)) /
                       fw.to_float(child_model.batch_size))
 

@@ -72,8 +72,8 @@ def get_ops(images, labels):
     controller_train_op, controller_lr, controller_grad_norm, controller_optimizer = controller_model.build_trainer(child_model, vrl)
 
     controller_ops = {
-      "train_step": controller_model.train_step,
-      "loss": controller_model.loss,
+      "train_step": controller_model.train_step, # tf.Variable
+      "loss": controller_model.loss, # def loss(child_logits, y_valid_shuffle, controller_logits, branch_ids, log_probs)
       "train_op": controller_train_op,
       "lr": controller_lr,
       'model': controller_model,
@@ -189,23 +189,23 @@ def train():
             controller_logits, branch_ids = ops['controller']['sampler_logit']()
             log_prob, log_prob_list = ops['controller']['sample_log_prob'](controller_logits, branch_ids)
             controller_loss = ops["controller"]["loss"](child_valid_logits, labels_batch, controller_logits, branch_ids, log_prob_list)
-            entropy = ops["controller"]["entropy"]()
+            entropy = ops["controller"]["entropy"](log_prob_list)
             lr = ops["controller"]["lr"]()
             gn = ops["controller"]["grad_norm"](loss, ops['controller']['model'].trainable_variables())
-            val_acc = ops["controller"]["valid_acc"](child_valid_logits, ops['child']['dataset_valid_shuffle'])
-            bl = ops["controller"]["baseline"]()
-            skip = ops["controller"]["skip_rate"]()
+            val_acc = ops["controller"]["valid_acc"](child_valid_logits, labels_batch)
+            bl = ops["controller"]["baseline"]
+            skip = ops["controller"]["skip_rate"](branch_ids)
 
             if ct_step % FLAGS.log_every == 0:
               curr_time = time.time()
               log_string = ""
-              log_string += "ctrl_step={:<6d}".format(ops["controller"]["train_step"])
+              log_string += f'ctrl_step={ops["controller"]["train_step"]}'
               log_string += " loss={:<7.3f}".format(controller_loss)
               log_string += " ent={:<5.2f}".format(entropy)
               log_string += " lr={:<6.4f}".format(lr)
               log_string += " |g|={:<8.4f}".format(gn)
               log_string += " acc={:<6.4f}".format(val_acc)
-              log_string += " bl={:<5.2f}".format(bl)
+              log_string += f' bl={bl}'
               log_string += " mins={:<.2f}".format(
                   float(curr_time - start_time) / 60)
               print(log_string)
@@ -233,7 +233,7 @@ def train():
         print(("Epoch {}: Eval".format(epoch)))
         if FLAGS.child_fixed_arc is None:
           ops["eval_func"]("valid")
-        ops["eval_func"]("test")
+        ops["eval_func"]("test", child_train_logits)
 
       if epoch >= FLAGS.num_epochs:
         break

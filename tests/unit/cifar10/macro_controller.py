@@ -164,7 +164,6 @@ class TestMacroController(unittest.TestCase):
         child_model.batch_size = 6
         shuffle = mock.MagicMock(return_value=('x_valid_shuffle', 'y_valid_shuffle'))
         vrl = mock.MagicMock(return_value=42)
-        mc.skip_penaltys = 1.0
         self.assertEqual((train_op, 2, grad_norm, 4), mc.build_trainer(child_model, vrl))
         mc.skip_rate(branch_ids)
         mc.sample_log_prob(controller_logits, branch_ids)

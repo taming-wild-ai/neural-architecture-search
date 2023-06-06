@@ -667,8 +667,8 @@ class MicroChild(Child):
             data_format=data_format.name),
           scale=scale,
           offset=offset,
-          mean=x,
-          variance=x,
+          mean=fw.reshape((), (0,)),
+          variance=fw.reshape((), (0,)),
           epsilon=1e-5,
           data_format=data_format.name,
           is_training=True)[0]
@@ -808,30 +808,34 @@ class MicroChild(Child):
 
 
   class Loss(LayeredModel):
-    def __init__(self, y):
-      self.layers = [
-        lambda x: fw.sparse_softmax_cross_entropy_with_logits(logits=x, labels=y),
-        fw.reduce_mean]
+      def __init__(self, data_batch):
+          labels = data_batch.as_numpy_iterator().__next__()[1]
+
+          def loss(logits):
+            return fw.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels)
+
+          self.layers = [loss, fw.reduce_mean]
 
 
   class Accuracy(LayeredModel):
-    def __init__(self, y):
+    def __init__(self, data_batch):
+      labels = data_batch.as_numpy_iterator().__next__()[1]
       self.layers = [
         lambda x: fw.argmax(x, axis=1),
         fw.to_int32,
-        lambda x: fw.equal(x, y),
+        lambda x: fw.equal(x, labels),
         fw.to_int32,
         fw.reduce_sum]
 
   # override
-  def _build_train(self, y):
+  def _build_train(self, dataset):
     print("-" * 80)
     print("Build train graph")
-    logit_fn1 = MicroChild.Loss(y)
+    logit_fn1 = MicroChild.Loss(dataset)
     loss = lambda logits_aux_logits: logit_fn1(logits_aux_logits[0])
     if self.use_aux_heads:
       self.aux_loss = lambda logits_aux_logits: fw.reduce_mean(fw.sparse_softmax_cross_entropy_with_logits(
-        logits=logits_aux_logits[0], labels=y))
+        logits=logits_aux_logits[0], labels=dataset))
       train_loss = lambda logits_aux_logits: loss(logits_aux_logits) + 0.4 * self.aux_loss(logits_aux_logits)
     else:
       train_loss = loss
@@ -843,7 +847,7 @@ class MicroChild(Child):
       num_train_batches=self.num_train_batches,
       optim_algo=self.optim_algo)
 
-    logit_fn2 = MicroChild.Accuracy(y)
+    logit_fn2 = MicroChild.Accuracy(dataset)
     train_acc = lambda logits_aux_logits: logit_fn2(logits_aux_logits[0])
 
     return loss, train_loss, train_acc, train_op, lr, grad_norm, optimizer

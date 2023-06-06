@@ -353,7 +353,7 @@ class MacroController(Controller):
           for layer_id in range(self.num_layers):
               branch_ids_index += 1
               if layer_id > 0:
-                  skip = fw.reshape(fw.to_float(branch_ids[branch_ids_index]))
+                  skip = fw.reshape(fw.to_float(branch_ids[branch_ids_index]), [1, layer_id])
                   skip_count.append(fw.reduce_sum(skip))
                   branch_ids_index += 1
           retval = fw.stack(skip_count)
@@ -409,7 +409,7 @@ class MacroController(Controller):
             self.reward = fw.identity(reward(child_logits, y_valid_shuffle, log_probs))
         retval = self.sample_log_prob(controller_logits, branch_ids)[0] * (self.reward - self.baseline)
         if self.skip_weight is not None:
-            retval += self.skip_weight * self.skip_penaltys
+            retval += self.skip_weight * self.skip_penaltys(controller_logits)
         return retval
 
     self.loss = loss

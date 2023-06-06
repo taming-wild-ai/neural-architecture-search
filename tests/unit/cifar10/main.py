@@ -256,7 +256,7 @@ class TestCIFAR10Main(unittest.TestCase):
             print.assert_any_call(("-" * 80))
             print.assert_any_call("Starting session")
             print.assert_called_with("Epoch 311: Eval")
-            eval_func.assert_called_with("test")
+            eval_func.assert_called_with('test', 'logits')
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
@@ -283,7 +283,7 @@ class TestCIFAR10Main(unittest.TestCase):
             print.assert_any_call("Starting session")
             print.assert_any_call("Epoch 311: Training controller")
             print.assert_called_with("Epoch 311: Eval")
-            eval_func.assert_called_with("test")
+            eval_func.assert_called_with('test', 'logits')
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
@@ -310,7 +310,7 @@ class TestCIFAR10Main(unittest.TestCase):
             print.assert_any_call("Starting session")
             print.assert_any_call("Epoch 311: Training controller")
             print.assert_called_with("Epoch 311: Eval")
-            eval_func.assert_called_with("test")
+            eval_func.assert_called_with('test', 'logits')
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')

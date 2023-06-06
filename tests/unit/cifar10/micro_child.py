@@ -433,10 +433,10 @@ class TestMicroChild(unittest.TestCase):
                     ec(None)
                     create_weight.assert_any_call(False, 'conv_3x3/stack_1/bn/', 'scale', [2, 24], 'ones')
                     create_weight.assert_called_with(False, 'conv_3x3/stack_1/', 'w_point', [2, 576], None)
-                    reshape.assert_called_with(create_weight().__getitem__(), [1, 1, 24, 24])
+                    reshape.assert_called_with((), (0,))
                     relu.assert_called_with('f')
                     s_conv.assert_called_with('relu', depthwise_filter='reshape', pointwise_filter='reshape', strides=[1, 1, 1, 1], padding="SAME", data_format="NHWC")
-                    fbn.assert_called_with(x='s_conv2d', scale=create_weight().__getitem__(), offset=create_weight().__getitem__(), mean='f', variance='f', epsilon=1e-05, data_format='NHWC', is_training=True)
+                    fbn.assert_called_with(x='s_conv2d', scale=create_weight().__getitem__(), offset=create_weight().__getitem__(), mean='reshape', variance='reshape', epsilon=1e-05, data_format='NHWC', is_training=True)
                     zeros.assert_called_with()
                     ones.assert_called_with()
 
@@ -551,8 +551,10 @@ class TestMicroChild(unittest.TestCase):
                 mc = MicroChild({}, {})
                 mc.name = "MicroChild"
                 mc.use_aux_heads = True
-                mc.x_train = {}
-                mc.y_train = {}
+                dataset_iter = mock.MagicMock()
+                dataset_iter.__next__ = mock.MagicMock(return_value=('images', 'labels'))
+                dataset = mock.MagicMock()
+                dataset.as_numpy_iterator = mock.MagicMock(return_value=dataset_iter)
                 mc.aux_logits = None
                 mc.clip_mode = None
                 mc.grad_bound = None
@@ -566,8 +568,8 @@ class TestMicroChild(unittest.TestCase):
                 mc.sync_replicas = None
                 mc.num_aggregate = None
                 mc.num_replicas = None
-                loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train(mc.y_train)
-                logits_aux_logits = MicroChild.Model(mc, True)(mc.x_train)
+                loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train(dataset)
+                logits_aux_logits = MicroChild.Model(mc, True)(dataset)
                 train_loss = train_loss0(logits_aux_logits)
                 loss = loss0(logits_aux_logits)
                 train_acc = train_acc0(logits_aux_logits)
@@ -583,12 +585,12 @@ class TestMicroChild(unittest.TestCase):
                 print.assert_any_call('-' * 80)
                 print.assert_any_call("Build train graph")
                 model.assert_called_with(mc, True)
-                model().assert_called_with({})
-                sscewl.assert_called_with(logits='logit', labels={})
+                model().assert_called_with(dataset)
+                sscewl.assert_called_with(logits='logit', labels=dataset_iter.__next__().__getitem__(1))
                 reduce_mean.assert_called_with("sscewl")
                 argmax.assert_called_with('logit', axis=1)
                 to_int32.assert_called_with("equal")
-                equal.assert_called_with("to_int32", {})
+                equal.assert_called_with("to_int32", 'labels')
                 reduce_sum.assert_called_with("to_int32")
                 get_train_ops.assert_called_with(mc.global_step, mc.learning_rate, clip_mode=None, l2_reg=None, num_train_batches=1, optim_algo=None)
 
@@ -610,8 +612,10 @@ class TestMicroChild(unittest.TestCase):
                 mc = MicroChild({}, {})
                 mc.name = "MicroChild"
                 mc.use_aux_heads = False
-                mc.x_train = {}
-                mc.y_train = {}
+                dataset_iter = mock.MagicMock()
+                dataset_iter.__next__ = mock.MagicMock(return_value=('images', 'labels'))
+                dataset = mock.MagicMock()
+                dataset.as_numpy_iterator = mock.MagicMock(return_value=dataset_iter)
                 mc.clip_mode = None
                 mc.grad_bound = None
                 mc.l2_reg = None
@@ -623,8 +627,8 @@ class TestMicroChild(unittest.TestCase):
                 mc.sync_replicas = None
                 mc.num_aggregate = None
                 mc.num_replicas = None
-                loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train(mc.y_train)
-                logits_aux_logits = MicroChild.Model(mc, True)(mc.x_train)
+                loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train(dataset)
+                logits_aux_logits = MicroChild.Model(mc, True)(dataset)
                 train_loss = train_loss0(logits_aux_logits)
                 loss = loss0(logits_aux_logits)
                 train_acc = train_acc0(logits_aux_logits)
@@ -638,12 +642,12 @@ class TestMicroChild(unittest.TestCase):
                 print.assert_any_call('-' * 80)
                 print.assert_any_call("Build train graph")
                 model.assert_called_with(mc, True)
-                model().assert_called_with({})
-                sscewl.assert_called_with(logits='logit', labels={})
+                model().assert_called_with(dataset)
+                sscewl.assert_called_with(logits='logit', labels=dataset_iter.__next__().__getitem__(1))
                 reduce_mean.assert_called_with("sscewl")
                 argmax.assert_called_with('logit', axis=1)
                 to_int32.assert_called_with("equal")
-                equal.assert_called_with("to_int32", {})
+                equal.assert_called_with("to_int32", 'labels')
                 reduce_sum.assert_called_with("to_int32")
                 get_train_ops.assert_called_with(mc.global_step, mc.learning_rate, clip_mode=None, l2_reg=None, num_train_batches=1, optim_algo=None)
 

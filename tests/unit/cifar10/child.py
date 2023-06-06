@@ -64,7 +64,7 @@ class TestChild(unittest.TestCase):
         ds_ctor().shuffle().map().batch.assert_called_with(m.batch_size)
         m.global_step = "global_step"
         m.test_acc = mock.MagicMock("test_acc")
-        m.eval_once("test")
+        m.eval_once("test", 'logits')
 
     @patch('src.cifar10.child.fw.Dataset')
     @patch('src.cifar10.child.print')
@@ -84,4 +84,4 @@ class TestChild(unittest.TestCase):
         ds_ctor().shuffle().map().batch.assert_called_with(m.batch_size)
         m.global_step = "global_step"
         m.valid_acc = mock.MagicMock(return_value=4)
-        m.eval_once("valid")
+        m.eval_once("valid", 'logits')

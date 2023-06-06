@@ -827,9 +827,9 @@ class MacroChild(Child):
         fw.reduce_sum]
 
   # override
-  def _build_train(self, y):
-    loss = MacroChild.LossModel(y)
-    train_acc = MacroChild.TrainModel(y)
+  def _build_train(self, dataset):
+    loss = MacroChild.LossModel(dataset)
+    train_acc = MacroChild.TrainModel(dataset)
     print("-" * 80)
     print("Build train graph")
     train_op, lr, grad_norm, optimizer = get_train_ops(
@@ -842,24 +842,30 @@ class MacroChild(Child):
     return loss, loss, train_acc, train_op, lr, grad_norm, optimizer
 
 
-  def _build_valid(self, y):
-    print("-" * 80)
-    print("Build valid graph")
-    predictions = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
-    retval = (
-      predictions,
-      lambda logits: fw.reduce_sum(fw.to_int32(fw.equal(predictions(logits), y))))
-    return retval
+  def _build_valid(self, dataset):
+      print("-" * 80)
+      print("Build valid graph")
+      prediction_fn = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
+
+      def validation_fn(logits):
+          _images, labels = dataset.as_numpy_iterator().__next__()
+          return fw.reduce_sum(fw.to_int32(fw.equal(prediction_fn(logits), labels)))
+
+      retval = (prediction_fn, validation_fn)
+      return retval
 
 
   # override
-  def _build_test(self, y):
-    print("-" * 80)
-    print("Build test graph")
-    predictions = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
-    return (
-      predictions,
-      lambda logits: fw.reduce_sum(fw.to_int32(fw.equal(predictions(logits), y))))
+  def _build_test(self, dataset):
+      print("-" * 80)
+      print("Build test graph")
+      prediction_fn = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
+
+      def test_fn(logits):
+          _images, labels = dataset.as_numpy_iterator().__next__()
+          return fw.reduce_sum(fw.to_int32(fw.equal(prediction_fn(logits), labels)))
+
+      return (prediction_fn, test_fn)
 
 
   class ValidationRLShuffle(LayeredModel):

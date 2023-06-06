@@ -723,18 +723,20 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.macro_child.fw.reduce_sum', return_value="reduce_sum")
     def test_build_valid(self, reduce_sum, equal, to_int32, argmax, model, print):
         mc = MacroChild({}, {})
-        mc.x_valid = True
-        mc.y_valid = None
-        predictions, accuracy = mc._build_valid(mc.y_valid)
-        logits = MacroChild.Model(mc, False, True)(mc.x_valid)
+        dataset_iter = mock.MagicMock()
+        dataset_iter.__next__ = mock.MagicMock(return_value=('images', 'labels'))
+        dataset = mock.MagicMock()
+        dataset.as_numpy_iterator = mock.MagicMock(return_value=dataset_iter)
+        predictions, accuracy = mc._build_valid(dataset)
+        logits = MacroChild.Model(mc, False, True)(dataset)
         self.assertEqual(('to_int32', 'reduce_sum'), (predictions(logits), accuracy(logits)))
         print.assert_any_call("-" * 80)
         print.assert_any_call("Build valid graph")
         model.assert_called_with(mc, False, True)
-        model().assert_called_with(True)
+        model().assert_called_with(dataset)
         argmax.assert_called_with('model', axis=1)
         to_int32.assert_any_call('argmax')
-        equal.assert_called_with('to_int32', None)
+        equal.assert_called_with('to_int32', 'labels')
         to_int32.assert_any_call('equal')
         reduce_sum.assert_called_with('to_int32')
 
@@ -747,18 +749,20 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.macro_child.fw.reduce_sum', return_value="reduce_sum")
     def test_build_test(self, reduce_sum, equal, to_int32, argmax, model, print):
         mc = MacroChild({}, {})
-        mc.x_test = True
-        mc.y_test = False
-        predictions, accuracy = mc._build_test(mc.y_test)
-        logits = MacroChild.Model(mc, False, True)(mc.x_test)
+        dataset_iter = mock.MagicMock()
+        dataset_iter.__next__ = mock.MagicMock(return_value=('images', 'labels'))
+        dataset = mock.MagicMock()
+        dataset.as_numpy_iterator = mock.MagicMock(return_value=dataset_iter)
+        predictions, accuracy = mc._build_test(dataset)
+        logits = MacroChild.Model(mc, False, True)(dataset)
         self.assertEqual(('to_int32', 'reduce_sum'), (predictions(logits), accuracy(logits)))
         print.assert_any_call('-' * 80)
         print.assert_any_call("Build test graph")
         model.assert_called_with(mc, False, True)
-        model().assert_called_with(True)
+        model().assert_called_with(dataset)
         argmax.assert_called_with('model', axis=1)
         to_int32.assert_any_call('argmax')
-        equal.assert_called_with('to_int32', False)
+        equal.assert_called_with('to_int32', 'labels')
         to_int32.assert_any_call('equal')
         reduce_sum.assert_called_with('to_int32')
 
