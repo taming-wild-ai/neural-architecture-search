@@ -142,7 +142,10 @@ class MacroChild(Child):
         print("Model has {0} params".format(count_model_params(child.trainable_variables())))
 
     def __call__(self, images):
-      """images should be a tf.data.Dataset batch."""
+      """
+      Generates logits from images.
+      images should be a tf.data.Dataset batch.
+      """
       with fw.name_scope(self.child.name):
         layers = [self.model_layers[0](images)]
 
@@ -800,36 +803,39 @@ class MacroChild(Child):
         self.layers.append(lambda x: child.data_format.pool_branch(x, start_idx, count))
 
 
-  class LossModel(LayeredModel):
-    def __init__(self, train):
-      """
-      train is a batch of training data, (examples, labels)
-      """
-      labels = train.as_numpy_iterator().__next__()[1]
-
-      def sscewl(x):
-        return fw.sparse_softmax_cross_entropy_with_logits(logits=x, labels=labels)
+  class Loss(LayeredModel):
+    def __init__(self):
+      def sscewl(logits, labels):
+          return fw.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels)
 
       self.layers = [sscewl, fw.reduce_mean]
 
+    def __call__(self, logits, labels):
+        x = self.layers[0](logits, labels)
+        return self.layers[1](x)
 
-  class TrainModel(LayeredModel):
-    def __init__(self, train):
-      """
-      train is a batch of training data, (examples, labels)
-      """
-      labels = train.as_numpy_iterator().__next__()[1]
+
+  class Accuracy(LayeredModel):
+    def __init__(self):
       self.layers = [
-        lambda x: fw.argmax(x, axis=1),
+        lambda logits: fw.argmax(logits, axis=1),
         fw.to_int32,
-        lambda x: fw.equal(x, labels),
+        lambda x, labels: fw.equal(x, labels),
         fw.to_int32,
         fw.reduce_sum]
 
+    def __call__(self, logits, labels):
+        x = self.layers[0](logits)
+        x = self.layers[1](x)
+        x = self.layers[2](x, labels)
+        x = self.layers[3](x)
+        return self.layers[4](x)
+
   # override
-  def _build_train(self, dataset):
-    loss = MacroChild.LossModel(dataset)
-    train_acc = MacroChild.TrainModel(dataset)
+  def _build_train(self):
+    loss = MacroChild.Loss()
+    train_acc = MacroChild.Accuracy()
+    self.train_model = MacroChild.Model(self, True)
     print("-" * 80)
     print("Build train graph")
     train_op, lr, grad_norm, optimizer = get_train_ops(
@@ -842,13 +848,13 @@ class MacroChild(Child):
     return loss, loss, train_acc, train_op, lr, grad_norm, optimizer
 
 
-  def _build_valid(self, dataset):
+  def _build_valid(self):
+      self.valid_model = MacroChild.Model(self, False)
       print("-" * 80)
       print("Build valid graph")
       prediction_fn = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
 
-      def validation_fn(logits):
-          _images, labels = dataset.as_numpy_iterator().__next__()
+      def validation_fn(logits, labels):
           return fw.reduce_sum(fw.to_int32(fw.equal(prediction_fn(logits), labels)))
 
       retval = (prediction_fn, validation_fn)
@@ -856,13 +862,13 @@ class MacroChild(Child):
 
 
   # override
-  def _build_test(self, dataset):
+  def _build_test(self):
+      self.test_model =  MacroChild.Model(self, False)
       print("-" * 80)
       print("Build test graph")
       prediction_fn = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
 
-      def test_fn(logits):
-          _images, labels = dataset.as_numpy_iterator().__next__()
+      def test_fn(logits, labels):
           return fw.reduce_sum(fw.to_int32(fw.equal(prediction_fn(logits), labels)))
 
       return (prediction_fn, test_fn)
@@ -922,8 +928,14 @@ class MacroChild(Child):
       self.current_controller_arc = lambda: controller_model.current_sample_arc
     else:
       self.current_controller_arc = lambda: np.array([int(x) for x in self.fixed_arc.split(" ") if x])
-
-    self.loss, self.train_loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train(self.dataset)
-    self.valid_preds, self.valid_acc = self._build_valid(self.dataset_valid) # unused?
-    self.test_preds, self.test_acc = self._build_test(self.dataset_test) # unused?
+    self.loss, self.train_loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train()
+    self.valid_preds, self.valid_acc = self._build_valid() # unused?
+    self.test_preds, self.test_acc = self._build_test() # unused?
     return train_op, lr, grad_norm, optimizer
+
+  def generate_train_losses(self, images):
+      logits = self.train_model(images)
+      return logits, self.loss(logits), self.train_loss(logits), self.train_acc(logits)
+
+  def generate_valid_logits(self, images):
+      return self.valid_model(images)

@@ -14,6 +14,7 @@ from absl import flags
 flags.FLAGS(['test'])
 
 def mock_init_nhwc(self, images, labels, **kwargs):
+    self.name = "child"
     self.data_format = DataFormat.new("NHWC")
     self.cutout_size = None
     self.num_layers = 2
@@ -30,6 +31,7 @@ def mock_init_nhwc(self, images, labels, **kwargs):
     self.global_step = 0
 
 def mock_init_nchw(self, images, labels, **kwargs):
+    self.name = "child"
     self.data_format = DataFormat.new("NCHW")
     self.cutout_size = None
     self.num_layers = 2
@@ -553,8 +555,8 @@ class TestMicroChild(unittest.TestCase):
                 mc.use_aux_heads = True
                 dataset_iter = mock.MagicMock()
                 dataset_iter.__next__ = mock.MagicMock(return_value=('images', 'labels'))
-                dataset = mock.MagicMock()
-                dataset.as_numpy_iterator = mock.MagicMock(return_value=dataset_iter)
+                mc.dataset = mock.MagicMock()
+                mc.dataset.as_numpy_iterator = mock.MagicMock(return_value=dataset_iter)
                 mc.aux_logits = None
                 mc.clip_mode = None
                 mc.grad_bound = None
@@ -568,11 +570,11 @@ class TestMicroChild(unittest.TestCase):
                 mc.sync_replicas = None
                 mc.num_aggregate = None
                 mc.num_replicas = None
-                loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train(dataset)
-                logits_aux_logits = MicroChild.Model(mc, True)(dataset)
-                train_loss = train_loss0(logits_aux_logits)
-                loss = loss0(logits_aux_logits)
-                train_acc = train_acc0(logits_aux_logits)
+                loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train()
+                child_logits, child_aux_logits = MicroChild.Model(mc, True)(mc.dataset)
+                train_loss = train_loss0(child_logits, child_aux_logits, 'labels')
+                loss = loss0(child_logits, 'labels')
+                train_acc = train_acc0(child_logits)
                 train_op = train_op0(train_loss, mc.trainable_variables())
                 grad_norm = grad_norm0(train_loss, mc.trainable_variables())
                 self.assertEqual(loss, 1.0)
@@ -585,7 +587,7 @@ class TestMicroChild(unittest.TestCase):
                 print.assert_any_call('-' * 80)
                 print.assert_any_call("Build train graph")
                 model.assert_called_with(mc, True)
-                model().assert_called_with(dataset)
+                model().assert_called_with(mc.dataset)
                 sscewl.assert_called_with(logits='logit', labels=dataset_iter.__next__().__getitem__(1))
                 reduce_mean.assert_called_with("sscewl")
                 argmax.assert_called_with('logit', axis=1)
@@ -614,8 +616,8 @@ class TestMicroChild(unittest.TestCase):
                 mc.use_aux_heads = False
                 dataset_iter = mock.MagicMock()
                 dataset_iter.__next__ = mock.MagicMock(return_value=('images', 'labels'))
-                dataset = mock.MagicMock()
-                dataset.as_numpy_iterator = mock.MagicMock(return_value=dataset_iter)
+                mc.dataset = mock.MagicMock()
+                mc.dataset.as_numpy_iterator = mock.MagicMock(return_value=dataset_iter)
                 mc.clip_mode = None
                 mc.grad_bound = None
                 mc.l2_reg = None
@@ -627,11 +629,11 @@ class TestMicroChild(unittest.TestCase):
                 mc.sync_replicas = None
                 mc.num_aggregate = None
                 mc.num_replicas = None
-                loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train(dataset)
-                logits_aux_logits = MicroChild.Model(mc, True)(dataset)
-                train_loss = train_loss0(logits_aux_logits)
-                loss = loss0(logits_aux_logits)
-                train_acc = train_acc0(logits_aux_logits)
+                loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train()
+                child_logits, child_aux_logits = MicroChild.Model(mc, True)(mc.dataset, 'labels')
+                train_loss = train_loss0(child_logits, child_aux_logits, 'labels')
+                loss = loss0(child_logits, 'labels')
+                train_acc = train_acc0(child_logits)
                 train_op = train_op0(train_loss, mc.trainable_variables())
                 grad_norm = grad_norm0(train_loss, mc.trainable_variables())
                 self.assertEqual(loss, 1.0)
@@ -642,7 +644,7 @@ class TestMicroChild(unittest.TestCase):
                 print.assert_any_call('-' * 80)
                 print.assert_any_call("Build train graph")
                 model.assert_called_with(mc, True)
-                model().assert_called_with(dataset)
+                model().assert_called_with(mc.dataset, 'labels')
                 sscewl.assert_called_with(logits='logit', labels=dataset_iter.__next__().__getitem__(1))
                 reduce_mean.assert_called_with("sscewl")
                 argmax.assert_called_with('logit', axis=1)
@@ -661,10 +663,9 @@ class TestMicroChild(unittest.TestCase):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
-            mc.x_valid = {}
-            mc.y_valid = {}
-            logits = MicroChild.Model(mc, False, True)(mc.x_valid)
-            predictions, accuracy = mc._build_valid(mc.y_valid)
+            mc.dataset_valid = {}
+            predictions, accuracy = mc._build_valid()
+            logits = mc.valid_model(mc.dataset_valid)
             self.assertEqual(('to_int32', 'reduce_sum'), (predictions(logits), accuracy(logits)))
             print.assert_any_call('-' * 80)
             print.assert_any_call("Build valid graph")
@@ -686,10 +687,9 @@ class TestMicroChild(unittest.TestCase):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
-            mc.x_test = {}
-            mc.y_test = {}
-            logits = MicroChild.Model(mc, False, True)(mc.x_test)
-            predictions, accuracy = mc._build_test(mc.y_test)
+            mc.dataset_test = {}
+            logits = MicroChild.Model(mc, False, True)(mc.dataset_test)
+            predictions, accuracy = mc._build_test()
             self.assertEqual(('to_int32', 'reduce_sum'), (predictions(logits), accuracy(logits)))
             print.assert_any_call('-' * 80)
             print.assert_any_call("Build test graph")
@@ -742,9 +742,9 @@ class TestMicroChild(unittest.TestCase):
                         with patch.object(mc, '_build_test', return_value=('predictions', 'accuracy')) as build_test:
                             mock_controller = mock.MagicMock()
                             mc.connect_controller(mock_controller)
-                            build_train.assert_called_with(mc.dataset)
-                            build_valid.assert_called_with(mc.dataset_valid)
-                            build_test.assert_called_with(mc.dataset_test)
+                            build_train.assert_called_with()
+                            build_valid.assert_called_with()
+                            build_test.assert_called_with()
 
 if "__main__" == "__name__":
     unittest.main()

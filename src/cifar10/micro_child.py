@@ -179,7 +179,7 @@ class MicroChild(Child):
 
   # Because __call__ is overridden, this superclass is just for ease of find.
   class Model(LayeredModel):
-    def __init__(self, child, is_training, reuse=False):
+    def __init__(self, child, is_training: bool, reuse=False):
       self.child = child
       self.trainable_variables = child.trainable_variables
       self.layers = {}
@@ -808,37 +808,41 @@ class MicroChild(Child):
 
 
   class Loss(LayeredModel):
-      def __init__(self, data_batch):
-          labels = data_batch.as_numpy_iterator().__next__()[1]
+      def __init__(self):
 
-          def loss(logits):
+          def loss(logits, labels):
             return fw.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels)
 
           self.layers = [loss, fw.reduce_mean]
+
+      def __call__(self, logits, labels):
+        x = self.layers[0](logits, labels)
+        return self.layers[1](x)
 
 
   class Accuracy(LayeredModel):
     def __init__(self, data_batch):
       labels = data_batch.as_numpy_iterator().__next__()[1]
       self.layers = [
-        lambda x: fw.argmax(x, axis=1),
+        lambda logits: fw.argmax(logits, axis=1),
         fw.to_int32,
         lambda x: fw.equal(x, labels),
         fw.to_int32,
         fw.reduce_sum]
 
+
   # override
-  def _build_train(self, dataset):
+  def _build_train(self):
+    self.train_model = MicroChild.Model(self, True)
     print("-" * 80)
     print("Build train graph")
-    logit_fn1 = MicroChild.Loss(dataset)
-    loss = lambda logits_aux_logits: logit_fn1(logits_aux_logits[0])
+    loss = MicroChild.Loss()
     if self.use_aux_heads:
-      self.aux_loss = lambda logits_aux_logits: fw.reduce_mean(fw.sparse_softmax_cross_entropy_with_logits(
-        logits=logits_aux_logits[0], labels=dataset))
-      train_loss = lambda logits_aux_logits: loss(logits_aux_logits) + 0.4 * self.aux_loss(logits_aux_logits)
+        self.aux_loss = lambda child_aux_logits: fw.reduce_mean(fw.sparse_softmax_cross_entropy_with_logits(
+            logits=child_aux_logits, labels=self.dataset))
+        train_loss = lambda child_logits, child_aux_logits, labels: loss(child_logits, labels) + 0.4 * self.aux_loss(child_aux_logits)
     else:
-      train_loss = loss
+        train_loss = lambda child_logits, _, labels: loss(child_logits, labels)
     train_op, lr, grad_norm, optimizer = get_train_ops(
       self.global_step,
       self.learning_rate,
@@ -847,31 +851,32 @@ class MicroChild(Child):
       num_train_batches=self.num_train_batches,
       optim_algo=self.optim_algo)
 
-    logit_fn2 = MicroChild.Accuracy(dataset)
-    train_acc = lambda logits_aux_logits: logit_fn2(logits_aux_logits[0])
+    train_acc = MicroChild.Accuracy(self.dataset)
 
     return loss, train_loss, train_acc, train_op, lr, grad_norm, optimizer
 
 
   # override
-  def _build_valid(self, y):
+  def _build_valid(self):
+    self.valid_model = MicroChild.Model(self, False, True)
     print("-" * 80)
     print("Build valid graph")
-    predictions = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
+    prediction_fn = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
     retval = (
-      predictions,
-      lambda logits: fw.reduce_sum(fw.to_int32(fw.equal(predictions(logits), y))))
+      prediction_fn,
+      lambda logits: fw.reduce_sum(fw.to_int32(fw.equal(prediction_fn(logits), self.dataset_valid))))
     return retval
 
 
   # override
-  def _build_test(self, y):
+  def _build_test(self):
+    self.test_model =  MicroChild.Model(self, False, True)
     print("-" * 80)
     print("Build test graph")
-    predictions = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
+    prediction_fn = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
     return (
-      predictions,
-      lambda logits: fw.reduce_sum(fw.to_int32(fw.equal(predictions(logits), y))))
+      prediction_fn,
+      lambda logits: fw.reduce_sum(fw.to_int32(fw.equal(prediction_fn(logits), self.dataset_test))))
 
 
   class ValidationRLShuffle(LayeredModel):
@@ -930,6 +935,7 @@ class MicroChild(Child):
         valid_shuffle_acc =   self.layers[3](valid_shuffle_acc)
         return                self.layers[4](valid_shuffle_acc)
 
+
   def connect_controller(self, controller_model):
     if self.fixed_arc is None:
       self.current_controller_normal_arc, self.current_controller_reduce_arc = lambda: controller_model.current_normal_arc, lambda: controller_model.current_reduce_arc
@@ -937,8 +943,15 @@ class MicroChild(Child):
       fixed_arc = np.array([int(x) for x in self.fixed_arc.split(" ") if x])
       self.current_controller_normal_arc = lambda: fixed_arc[:4 * self.num_cells]
       self.current_controller_reduce_arc = lambda: fixed_arc[4 * self.num_cells:]
-
-    self.loss, self.train_loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train(self.dataset)
-    self.valid_preds, self.valid_acc = self._build_valid(self.dataset_valid)
-    self.test_preds, self.test_acc = self._build_test(self.dataset_test)
+    self.loss, self.train_loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train()
+    self.valid_preds, self.valid_acc = self._build_valid()
+    self.test_preds, self.test_acc = self._build_test()
     return train_op, lr, grad_norm, optimizer
+
+  def generate_train_losses(self, images):
+      logits, aux_logits = self.train_model(images)
+      return logits, self.loss(logits), self.train_loss(logits, aux_logits), self.train_acc(logits)
+
+  def generate_valid_acc(self, images):
+      logits = self.valid_model(images)
+      return self.valid_acc(logits)

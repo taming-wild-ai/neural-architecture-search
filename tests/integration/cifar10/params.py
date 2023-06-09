@@ -74,7 +74,7 @@ class TestParameterCounts(unittest.TestCase):
             fixed_arc +=" 0 1 1 0 0 0 1 1 1 0 1 0 0 0 1 0 1 0 0 1 1 0 0 0"
             mc.fixed_arc = fixed_arc
             mc.current_controller_arc = lambda: np.array([int(x) for x in fixed_arc.split(" ") if x])
-            loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train(mc.dataset)
+            loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train()
             model = MacroChild.Model(mc, True)
             # Parameters should be allocated before graph execution. Number of weight parameters used to be
             # printed in original code
@@ -132,7 +132,7 @@ class TestParameterCounts(unittest.TestCase):
             fixed_arc +=" 0 1 0 1 0 1 0 0 0 0 0 0 0 0 1 0 1 0 0 1 0 0 0"
             fixed_arc +=" 0 1 1 0 0 0 1 1 1 0 1 0 0 0 1 0 1 0 0 1 1 0 0 0"
             mc.current_controller_arc = lambda: np.array([int(x) for x in fixed_arc.split(" ") if x])
-            loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train(mc.dataset)
+            loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train()
             model = MacroChild.Model(mc, True)
             # Parameters should be allocated before graph execution. Number of weight parameters used to be
             # printed in original code
@@ -167,16 +167,16 @@ class TestParameterCounts(unittest.TestCase):
             fixed_arc = np.array([int(x) for x in mc.fixed_arc.split(" ") if x])
             mc.current_controller_normal_arc = lambda: fixed_arc[:4 * mc.num_cells]
             mc.current_controller_reduce_arc = lambda: fixed_arc[4 * mc.num_cells:]
-            loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train(mc.dataset)
+            loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train()
             model = MicroChild.Model(mc, True)
             # Parameters should be allocated before graph execution. Number of weight parameters used to be
             # printed in original code
             self.assertEqual(3894372, count_model_params(mc.trainable_variables()))
             images, labels = mc.dataset.as_numpy_iterator().__next__()
-            logits_aux_logits = model(images)
-            train_loss = train_loss0(logits_aux_logits)
-            loss = loss0(logits_aux_logits)
-            train_acc = train_acc0(logits_aux_logits)
+            child_logits, child_aux_logits = model(images)
+            train_loss = train_loss0(child_logits, child_aux_logits)
+            loss = loss0(child_logits)
+            train_acc = train_acc0(child_logits)
             train_op = train_op0(train_loss, mc.trainable_variables())
             grad_norm = grad_norm0(train_loss, mc.trainable_variables())
             print2.assert_any_call("-" * 80)
@@ -213,16 +213,16 @@ class TestParameterCounts(unittest.TestCase):
             fixed_arc = np.array([int(x) for x in fixed_arc.split(" ") if x])
             mc.current_controller_normal_arc = lambda: fixed_arc[:4 * mc.num_cells]
             mc.current_controller_reduce_arc = lambda: fixed_arc[4 * mc.num_cells:]
-            loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train(mc.dataset)
+            loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train()
             train_model = MicroChild.Model(mc, True)
             # Parameters should be allocated before graph execution. Number of weight parameters used to be
             # printed in original code
             self.assertEqual(5373140, count_model_params(mc.trainable_variables()))
             images, labels = mc.dataset.as_numpy_iterator().__next__()
-            logits_aux_logits = train_model(images)
-            train_loss = train_loss0(logits_aux_logits)
-            loss = loss0(logits_aux_logits)
-            train_acc = train_acc0(logits_aux_logits)
+            child_logits, child_aux_logits = train_model(images)
+            train_loss = train_loss0(child_logits, child_aux_logits)
+            loss = loss0(child_logits)
+            train_acc = train_acc0(child_logits)
             train_op = train_op0(train_loss, mc.trainable_variables())
             grad_norm = grad_norm0(train_loss, mc.trainable_variables())
             for layer_num in range(8):
@@ -247,8 +247,8 @@ class TestParameterCounts(unittest.TestCase):
             shuffle = mc.ValidationRLShuffle(mc, False)
             vrl = mc.ValidationRL()
             x_valid_shuffle, y_valid_shuffle = shuffle(mc.images['valid_original'], mc.labels['valid_original'])
-            logits_aux_logits = MicroChild.Model(mc, True, True)(x_valid_shuffle) # https://github.com/melodyguan/enas/blob/master/src/cifar10/micro_child.py#L804
-            vrl(logits_aux_logits[0], y_valid_shuffle)
+            child_logits, child_aux_logits = MicroChild.Model(mc, True, True)(x_valid_shuffle) # https://github.com/melodyguan/enas/blob/master/src/cifar10/micro_child.py#L804
+            vrl(child_logits, y_valid_shuffle)
             num_aux_params = count_model_params([var for _, var in mc.weights.weight_map.items() if (var.trainable and var.name.startswith(mc.name) and 'aux_head' in var.name)])
             self.assertEqual(412928, num_aux_params)
 

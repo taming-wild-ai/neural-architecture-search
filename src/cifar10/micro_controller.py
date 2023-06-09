@@ -67,10 +67,10 @@ class MicroController(Controller):
 
     self.arc_seq_1 = MicroController.SampleArc(self.num_cells)
     self.arc_seq_2 = MicroController.SampleArc(self.num_cells)
-    _1, _2 = self.generate_sample_arc()
     entropy_1 = MicroController.Entropy(self.num_cells)
     entropy_2 = MicroController.Entropy(self.num_cells)
     self.sample_entropy = lambda logits1, logits2: entropy_1(logits1) + entropy_2(logits2)
+    _1, _2 = self.generate_sample_arc()
     log_prob_1 = MicroController.LogProbabilities(self.num_cells)
     log_prob_2 = MicroController.LogProbabilities(self.num_cells)
     self.sample_log_prob = lambda logits1, logits2: log_prob_1(logits1) + log_prob_2(logits2)
@@ -78,6 +78,7 @@ class MicroController(Controller):
   def generate_sample_arc(self):
       logits1, c, h = self.sample_logit1(None, None)
       logits2, _1, _2 = self.sample_logit2(c, h)
+      self.current_entropy = self.sample_entropy(logits1, logits2)
       self.current_normal_arc = self.arc_seq_1(logits1)
       self.current_reduce_arc = self.arc_seq_2(logits2)
       return self.current_normal_arc, self.current_reduce_arc
@@ -318,7 +319,7 @@ class MicroController(Controller):
 
   def build_trainer(self, child_model, vrl):
     self.skip_rate = fw.constant(0.0, dtype=fw.float32)
-    self.valid_acc = lambda logits_aux_logits, y_valid_shuffle: (fw.to_float(vrl(logits_aux_logits[0], y_valid_shuffle)) /
+    self.valid_acc = lambda child_logits, y_valid_shuffle: (fw.to_float(vrl(child_logits, y_valid_shuffle)) /
                       fw.to_float(child_model.batch_size))
 
     def reward(logits, y_valid_shuffle):
@@ -329,10 +330,10 @@ class MicroController(Controller):
 
     self.baseline = fw.Variable(0.0, dtype=fw.float32)
 
-    def loss(logits_aux_logits, y_valid_shuffle):
+    def loss(child_logits, y_valid_shuffle):
       with fw.control_dependencies([
-        self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward(logits_aux_logits[0], y_valid_shuffle)))]):
-        self.reward = fw.identity(reward(logits_aux_logits[0], y_valid_shuffle))
+        self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward(child_logits, y_valid_shuffle)))]):
+        self.reward = fw.identity(reward(child_logits, y_valid_shuffle))
       retval = self.sample_log_prob * (self.reward - self.baseline)
       return retval
 

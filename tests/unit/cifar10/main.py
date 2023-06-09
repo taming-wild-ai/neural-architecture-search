@@ -180,8 +180,10 @@ class TestCIFAR10Main(unittest.TestCase):
                 "eval_every": 1,
                 "num_train_batches": 1,
                 "child": {
+                    'trainable_variables': ['child trainable variables'],
+                    'generate_train_losses': mock.MagicMock(return_value=('logits', 3.14, 'train_loss', 42)),
+                    'generate_valid_logits': mock.MagicMock(return_value='logits'),
                     'dataset': dataset,
-                    'model': child_model,
                     'dataset_valid_shuffle': dataset,
                     'images': mock.MagicMock(name='images'),
                     "num_train_batches": 1,
@@ -194,7 +196,7 @@ class TestCIFAR10Main(unittest.TestCase):
                     "global_step": 311,
                     "optimizer": child_optimizer},
                 "controller": {
-                    'model': controller_model,
+                    'trainable_variables': ['controller trainable variables'],
                     "optimizer": controller_optimizer,
                     "loss": mock.MagicMock(return_value=2.0),
                     "entropy": mock.MagicMock(return_value=2.0),

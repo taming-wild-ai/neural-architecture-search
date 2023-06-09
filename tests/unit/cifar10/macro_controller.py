@@ -169,7 +169,7 @@ class TestMacroController(unittest.TestCase):
         mc.sample_log_prob(controller_logits, branch_ids)
         train_op(mc.loss, [])
         grad_norm(mc.loss, [])
-        mc.loss('child_logits', 'y_valid_shuffle', controller_logits, branch_ids, log_probs)
+        mc.loss('child_logits', 'y_valid_shuffle')
         # variable.assert_called_with(0, dtype=tf.int32, name='train_step')
         # variable(0.0, dtype=fw.float32).assign_sub.assert_called_with(variable().__sub__().__rmul__())
         print.assert_any_call("-" * 80)

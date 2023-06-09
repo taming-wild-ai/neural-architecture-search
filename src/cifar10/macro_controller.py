@@ -57,15 +57,17 @@ class MacroController(Controller):
     self._create_params()
     self.sampler_logit = MacroController.SamplerLogit(self.num_layers, self.num_branches, self.out_filters, self.temperature, self.tanh_constant, self.lstm_size, self.lstm_num_layers, self.search_for, self.search_whole_channels, self.w_lstm, self.w_soft, self.w_emb, self.w_attn_1, self.w_attn_2, self.v_attn, self.g_emb)
     self.sample_arc = MacroController.SampleArc(self.num_layers, self.num_branches, self.search_whole_channels)
-    _ = self.generate_sample_arc()
     self.sample_log_prob = MacroController.LogProbabilities(self.num_layers, self.num_branches, self.search_whole_channels)
     self.sample_entropy = MacroController.Entropy(self.num_layers, self.num_branches, self.search_whole_channels)
+    _ = self.generate_sample_arc()
     self.skip_count = MacroController.SkipCount(self.num_layers, self.num_branches, self.search_whole_channels)
     self.skip_penaltys = MacroController.SkipPenalty(self.num_layers, self.num_branches, self.search_whole_channels, self.skip_target)
 
   def generate_sample_arc(self):
-      _, branch_ids = self.sampler_logit()
-      self.current_sample_arc = self.sample_arc(branch_ids)
+      self.current_controller_logits, self.current_branch_ids = self.sampler_logit()
+      self.current_sample_arc = self.sample_arc(self.current_branch_ids)
+      self.current_log_prob, self.current_log_prob_list = self.sample_log_prob(self.current_controller_logits, self.current_branch_ids)
+      self.current_entropy = self.sample_entropy(self.current_log_prob_list)
       return self.current_sample_arc
 
   def trainable_variables(self):
@@ -387,9 +389,9 @@ class MacroController(Controller):
   def build_trainer(self, child_model, vrl):
     self.skip_rate = lambda branch_ids: fw.to_float(self.skip_count(branch_ids)) / fw.to_float(self.num_layers * (self.num_layers - 1) / 2)
 
-    def valid_acc(logits, y_valid_shuffle):
+    def valid_acc(child_logits, y_valid_shuffle):
         retval = (
-            fw.to_float(vrl(logits, y_valid_shuffle)) /
+            fw.to_float(vrl(child_logits, y_valid_shuffle)) /
             fw.to_float(child_model.batch_size))
         return retval
 
@@ -403,13 +405,13 @@ class MacroController(Controller):
 
     self.baseline = fw.Variable(0.0, dtype=fw.float32)
 
-    def loss(child_logits, y_valid_shuffle, controller_logits, branch_ids, log_probs):
+    def loss(child_logits, y_valid_shuffle):
         with fw.control_dependencies([
-            self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward(child_logits, y_valid_shuffle, log_probs)))]):
-            self.reward = fw.identity(reward(child_logits, y_valid_shuffle, log_probs))
-        retval = self.sample_log_prob(controller_logits, branch_ids)[0] * (self.reward - self.baseline)
+            self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward(child_logits, y_valid_shuffle, self.current_log_prob_list)))]):
+            self.reward = fw.identity(reward(child_logits, y_valid_shuffle, self.current_log_prob_list))
+        retval = self.sample_log_prob(self.current_controller_logits, self.current_branch_ids)[0] * (self.reward - self.baseline)
         if self.skip_weight is not None:
-            retval += self.skip_weight * self.skip_penaltys(controller_logits)
+            retval += self.skip_weight * self.skip_penaltys(self.current_controller_logits)
         return retval
 
     self.loss = loss
@@ -425,4 +427,3 @@ class MacroController(Controller):
       l2_reg=self.l2_reg,
       optim_algo=self.optim_algo)
     return train_op, lr, grad_norm, optimizer
-

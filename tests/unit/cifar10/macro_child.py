@@ -13,6 +13,7 @@ from src.cifar10.macro_child import MacroChild
 from src.cifar10.macro_controller import DEFINE_boolean # for controller_search_whole_channels
 
 def mock_init(self, images, labels, **kwargs):
+    self.name = "child"
     self.whole_channels = False
     self.data_format = DataFormat.new("NCHW")
     self.cutout_size = None
@@ -27,8 +28,10 @@ def mock_init(self, images, labels, **kwargs):
     self.dataset_valid = None
     self.dataset_test = None
     self.global_step = fw.Variable(0, dtype=fw.int64)
+    self.train_model = mock.MagicMock(name='train_model')
 
 def mock_init_nhwc(self, images, labels, **kwargs):
+    self.name = "child"
     self.whole_channels = False
     self.data_format = DataFormat.new("NHWC")
     self.cutout_size = None
@@ -44,6 +47,7 @@ def mock_init_nhwc(self, images, labels, **kwargs):
     self.dataset_test = None
 
 def mock_init_invalid(self, images, labels, **kwargs):
+    self.name = "child"
     self.whole_channels = False
     self.data_format = DataFormat.new("INVALID")
     self.weights = fw.WeightRegistry()
@@ -690,10 +694,10 @@ class TestMacroChild(unittest.TestCase):
         mc.num_aggregate = None
         mc.num_replicas = None
         mc.name = "macro_child"
-        loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train(mc.y_train)
+        loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train()
         logits = MacroChild.Model(mc, True)(mc.x_train)
-        loss = loss0(logits)
-        train_acc = train_acc0(logits)
+        loss = loss0(logits, 'y')
+        train_acc = train_acc0(logits, 'y')
         train_op = train_op0(loss, mc.trainable_variables())
         grad_norm = grad_norm0(loss, mc.trainable_variables())
         self.assertEqual(loss, 'reduce_mean')
@@ -727,9 +731,9 @@ class TestMacroChild(unittest.TestCase):
         dataset_iter.__next__ = mock.MagicMock(return_value=('images', 'labels'))
         dataset = mock.MagicMock()
         dataset.as_numpy_iterator = mock.MagicMock(return_value=dataset_iter)
-        predictions, accuracy = mc._build_valid(dataset)
+        predictions, accuracy = mc._build_valid()
         logits = MacroChild.Model(mc, False, True)(dataset)
-        self.assertEqual(('to_int32', 'reduce_sum'), (predictions(logits), accuracy(logits)))
+        self.assertEqual(('to_int32', 'reduce_sum'), (predictions(logits), accuracy(logits, 'labels')))
         print.assert_any_call("-" * 80)
         print.assert_any_call("Build valid graph")
         model.assert_called_with(mc, False, True)
@@ -753,9 +757,9 @@ class TestMacroChild(unittest.TestCase):
         dataset_iter.__next__ = mock.MagicMock(return_value=('images', 'labels'))
         dataset = mock.MagicMock()
         dataset.as_numpy_iterator = mock.MagicMock(return_value=dataset_iter)
-        predictions, accuracy = mc._build_test(dataset)
+        predictions, test = mc._build_test()
         logits = MacroChild.Model(mc, False, True)(dataset)
-        self.assertEqual(('to_int32', 'reduce_sum'), (predictions(logits), accuracy(logits)))
+        self.assertEqual(('to_int32', 'reduce_sum'), (predictions(logits), test(logits, 'labels')))
         print.assert_any_call('-' * 80)
         print.assert_any_call("Build test graph")
         model.assert_called_with(mc, False, True)
@@ -815,9 +819,9 @@ class TestMacroChild(unittest.TestCase):
                 with patch.object(mc, '_build_test', return_value=('predictions', 'accuracy')) as build_test:
                     controller_mock = mock.MagicMock()
                     mc.connect_controller(controller_mock)
-                    build_train.assert_called_with(mc.dataset)
-                    build_valid.assert_called_with(mc.dataset_valid)
-                    build_test .assert_called_with(mc.dataset_test)
+                    build_train.assert_called_with()
+                    build_valid.assert_called_with()
+                    build_test .assert_called_with()
 
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     def test_connect_controller_fixed_arc(self):
@@ -828,6 +832,6 @@ class TestMacroChild(unittest.TestCase):
                 with patch.object(mc, '_build_test', return_value=('predictions', 'accuracy')) as build_test:
                     controller_mock = mock.MagicMock()
                     mc.connect_controller(controller_mock)
-                    build_train.assert_called_with(mc.dataset)
-                    build_valid.assert_called_with(mc.dataset_valid)
-                    build_test .assert_called_with(mc.dataset_test)
+                    build_train.assert_called_with()
+                    build_valid.assert_called_with()
+                    build_test .assert_called_with()
