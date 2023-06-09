@@ -933,9 +933,9 @@ class MacroChild(Child):
     self.test_preds, self.test_acc = self._build_test() # unused?
     return train_op, lr, grad_norm, optimizer
 
-  def generate_train_losses(self, images):
+  def generate_train_losses(self, images, labels):
       logits = self.train_model(images)
-      return logits, self.loss(logits), self.train_loss(logits), self.train_acc(logits)
+      return logits, self.loss(logits, labels), self.train_loss(logits, labels), self.train_acc(logits, labels)
 
   def generate_valid_logits(self, images):
       return self.valid_model(images)

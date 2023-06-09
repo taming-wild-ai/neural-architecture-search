@@ -158,7 +158,7 @@ def train():
           batch_iterator = ops['child']['dataset'].as_numpy_iterator()
           images, labels = batch_iterator.__next__()
 
-      child_train_logits, child_loss, child_train_loss, child_train_acc = ops['child']['generate_train_losses'](images)
+      child_train_logits, child_loss, child_train_loss, child_train_acc = ops['child']['generate_train_losses'](images, labels)
       child_lr = ops['child']['lr']()
       child_grad_norm = ops['child']['grad_norm'](child_loss, ops['child']['trainable_variables'])
       train_op = ops['child']['train_op'](child_loss, ops['child']['trainable_variables'])
