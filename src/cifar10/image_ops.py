@@ -47,10 +47,10 @@ class BatchNorm(LayeredModel):
     else:
 
       def fbn(x):
-        x, _, _ = fw.fused_batch_norm(
-          x,
-          scale,
-          offset,
+        x, _, _, _, _ = fw.fused_batch_norm(
+          x=x,
+          scale=scale,
+          offset=offset,
           mean=moving_mean,
           variance=moving_variance,
           epsilon=epsilon,

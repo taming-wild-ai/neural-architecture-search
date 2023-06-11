@@ -256,7 +256,7 @@ class Child(object):
     self.images = images
     self.labels = labels
 
-  def eval_once(self, eval_set, logits, verbose=False):
+  def eval_once(self, eval_set, logits, labels, verbose=False):
     """Expects self.acc and self.global_step to be defined.
 
     Args:
@@ -286,7 +286,7 @@ class Child(object):
     total_acc = 0
     total_exp = 0
     for batch_id in range(num_batches):
-      acc = acc_op(logits)
+      acc = acc_op(logits, labels)
       total_acc += acc
       total_exp += self.eval_batch_size
       if verbose:

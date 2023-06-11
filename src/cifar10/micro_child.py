@@ -871,7 +871,7 @@ class MicroChild(Child):
     prediction_fn = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
     retval = (
       prediction_fn,
-      lambda logits: fw.reduce_sum(fw.to_int32(fw.equal(prediction_fn(logits), self.dataset_valid))))
+      lambda logits, labels: fw.reduce_sum(fw.to_int32(fw.equal(prediction_fn(logits), labels))))
     return retval
 
 
@@ -883,11 +883,13 @@ class MicroChild(Child):
     prediction_fn = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
     return (
       prediction_fn,
-      lambda logits: fw.reduce_sum(fw.to_int32(fw.equal(prediction_fn(logits), self.dataset_test))))
+      lambda logits, labels: fw.reduce_sum(fw.to_int32(fw.equal(prediction_fn(logits), labels))))
 
 
   class ValidationRLShuffle(LayeredModel):
     def __init__(self, child, shuffle):
+      valid_rl_model = MicroChild.Model(child, True, True)
+      child.valid_rl_model = lambda images: valid_rl_model(images)[0] # Return only the logits, not aux_logits
       with fw.device('/cpu:0'):
         # shuffled valid data: for choosing validation model
         if not shuffle:
@@ -934,11 +936,11 @@ class MicroChild(Child):
           fw.to_int32,
           fw.reduce_sum]
 
-    def __call__(self, logits, y_valid_shuffle):
+    def __call__(self, logits, labels):
       with fw.device('/cpu:0'):
-        valid_shuffle_preds = self.layers[0](logits)
-        valid_shuffle_preds = self.layers[1](valid_shuffle_preds)
-        valid_shuffle_acc =   self.layers[2](valid_shuffle_preds, y_valid_shuffle)
+        valid_shuffle_preds = self.layers[0](logits) # *** logits.shape = (None, 10)
+        valid_shuffle_preds = self.layers[1](valid_shuffle_preds) # *** 1. valid_shuffle_preds.shape = (None,)
+        valid_shuffle_acc =   self.layers[2](valid_shuffle_preds, labels) # *** 2. valid_shuffle_preds.shape = (None,), y_valid_shuffle.shape = (None,)
         valid_shuffle_acc =   self.layers[3](valid_shuffle_acc)
         return                self.layers[4](valid_shuffle_acc)
 
@@ -959,6 +961,6 @@ class MicroChild(Child):
       logits, aux_logits = self.train_model(images)
       return logits, self.loss(logits, labels), self.train_loss(logits, aux_logits, labels), self.train_acc(logits, labels)
 
-  def generate_valid_acc(self, images):
+  def generate_valid_acc(self, images, labels):
       logits = self.valid_model(images)
-      return self.valid_acc(logits)
+      return self.valid_acc(logits, labels)

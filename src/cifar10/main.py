@@ -71,6 +71,7 @@ def get_ops(images, labels):
         False)(
             child_model.images['valid_original'],
             child_model.labels['valid_original'])
+    images_batch, labels_batch = dataset_valid_shuffle.as_numpy_iterator().__next__()
     controller_train_op, controller_lr, controller_grad_norm, controller_optimizer = controller_model.build_trainer(
         child_model,
         child_model.ValidationRL())
@@ -90,16 +91,20 @@ def get_ops(images, labels):
       "baseline": controller_model.baseline, # tf.Variable
       "entropy": lambda: controller_model.current_entropy,
     }
+    child_valid_rl_model = child_model.valid_rl_model
   else:
     assert not FLAGS.controller_training, (
       "--child_fixed_arc is given, cannot train controller")
     child_train_op, child_lr, child_grad_norm, child_optimizer = child_model.connect_controller(None)
     dataset_valid_shuffle = None
     controller_ops = None
+    child_valid_rl_model = None
 
   return {
     "child": {
-      'generate_train_losses': child_model.generate_train_losses, # Child.generate_train_losses(images) -> loss, train_loss, train_acc
+      'generate_train_losses': child_model.generate_train_losses, # Child.generate_train_losses(images, labels) -> logits, loss, train_loss, train_acc
+      'validation_model': child_model.valid_model, # Child.valid_model(images) -> child_logits
+      'validation_rl_model': child_valid_rl_model, # Child.valid_rl_model(images) -> child_valid_rl_logits
       'global_step': child_model.global_step, # tf.Variable
       'dataset': child_model.dataset,
       'dataset_valid_shuffle': dataset_valid_shuffle, # tf.Dataset
@@ -190,13 +195,12 @@ def train():
           for ct_step in range(FLAGS.controller_train_steps *
                                 FLAGS.controller_num_aggregate):
             images_batch, labels_batch = ops['child']['dataset_valid_shuffle'].as_numpy_iterator().__next__()
-            child_valid_logits = ops['child']['generate_valid_logits'](images_batch)
-            controller_valid_acc = ops['controller']['valid_acc'](child_valid_logits, labels_batch)
-            controller_loss = ops['controller']['loss'](child_valid_logits, labels_batch)
+            child_valid_rl_logits = ops['child']['validation_rl_model'](images_batch)
+            controller_valid_acc = ops['controller']['valid_acc'](child_valid_rl_logits, labels_batch)
+            controller_loss = ops['controller']['loss'](child_train_logits, labels)
             controller_entropy = 0
             lr = ops["controller"]["lr"]()
             gn = ops["controller"]["grad_norm"](controller_loss, ops['controller']['trainable_variables'])
-            val_acc = ops["controller"]["valid_acc"](child_valid_logits, labels_batch)
             bl = ops["controller"]["baseline"]
 
             if ct_step % FLAGS.log_every == 0:
@@ -207,7 +211,7 @@ def train():
               log_string += " ent={:<5.2f}".format(controller_entropy)
               log_string += " lr={:<6.4f}".format(lr)
               log_string += " |g|={:<8.4f}".format(gn)
-              log_string += " acc={:<6.4f}".format(val_acc)
+              log_string += " acc={:<6.4f}".format(controller_valid_acc)
               log_string += f' bl={bl}'
               log_string += " mins={:<.2f}".format(
                   float(curr_time - start_time) / 60)
@@ -216,7 +220,7 @@ def train():
           print("Here are 10 architectures")
           for _ in range(10):
             arc = ops["controller"]["generate_sample_arc"]()
-            acc = ops["controller"]["valid_acc"](child_valid_logits, ops['child']['dataset_valid_shuffle'])
+            acc = ops["controller"]["valid_acc"](child_valid_rl_logits, labels_batch)
             if FLAGS.search_for == "micro":
               normal_arc, reduce_arc = arc
               print((np.reshape(normal_arc, [-1])))
@@ -235,8 +239,8 @@ def train():
 
         print(("Epoch {}: Eval".format(epoch)))
         if FLAGS.child_fixed_arc is None:
-          ops["eval_func"]("valid")
-        ops["eval_func"]("test", child_train_logits)
+          ops["eval_func"]("valid", child_valid_rl_logits, labels_batch)
+        ops["eval_func"]("test", child_train_logits, labels)
 
       if epoch >= FLAGS.num_epochs:
         break

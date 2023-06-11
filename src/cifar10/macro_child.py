@@ -174,7 +174,7 @@ class MacroChild(Child):
             start_idx += 1 + layer_id
           else:
             start_idx += 2 * self.child.num_branches + layer_id
-          print(layers[-1])
+          # print(layers[-1])
 
         with fw.name_scope("fc") as scope:
           x = self.model_dropout(x)
