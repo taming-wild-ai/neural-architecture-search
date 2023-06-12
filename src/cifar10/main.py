@@ -65,13 +65,13 @@ def get_ops(images, labels):
       lr_dec_every=1000000,  # never decrease learning rate
       optim_algo="adam")
 
-    child_train_op, child_lr, child_grad_norm, child_optimizer = child_model.connect_controller(controller_model)
+    child_train_op, child_lr, child_optimizer = child_model.connect_controller(controller_model)
     dataset_valid_shuffle = child_model.ValidationRLShuffle(
         child_model,
         False)(
             child_model.images['valid_original'],
             child_model.labels['valid_original'])
-    controller_train_op, controller_lr, controller_grad_norm, controller_optimizer = controller_model.build_trainer(
+    controller_train_op, controller_lr, controller_optimizer = controller_model.build_trainer(
         child_model,
         child_model.ValidationRL())
 
@@ -84,7 +84,6 @@ def get_ops(images, labels):
       "train_op": controller_train_op, # Controller.train_op(loss, vars) -> iteration_num
       "lr": controller_lr, # learning_rate() -> learning_rate
       'trainable_variables': controller_model.trainable_variables(),
-      "grad_norm": controller_grad_norm, # Controller.grad_norm(loss, vars) -> grad_norm
       "valid_acc": controller_model.valid_acc, # Controller.valid_acc(child_logits, y_valid_shuffle) -> valid_acc
       "optimizer": controller_optimizer, # framework.Optimizer
       "baseline": controller_model.baseline, # tf.Variable
@@ -94,7 +93,7 @@ def get_ops(images, labels):
   else:
     assert not FLAGS.controller_training, (
       "--child_fixed_arc is given, cannot train controller")
-    child_train_op, child_lr, child_grad_norm, child_optimizer = child_model.connect_controller(None)
+    child_train_op, child_lr, child_optimizer = child_model.connect_controller(None)
     dataset_valid_shuffle = None
     controller_ops = None
     child_valid_rl_model = None
@@ -102,10 +101,12 @@ def get_ops(images, labels):
   return {
     "child": {
       'generate_train_losses': child_model.generate_train_losses, # Child.generate_train_losses(images, labels) -> logits, loss, train_loss, train_acc
+      'test_model': child_model.test_model, # Child.test_model(images) -> child_logits
       'validation_model': child_model.valid_model, # Child.valid_model(images) -> child_logits
       'validation_rl_model': child_valid_rl_model, # Child.valid_rl_model(images) -> child_valid_rl_logits
       'global_step': child_model.global_step, # tf.Variable
       'dataset': child_model.dataset,
+      'dataset_test': child_model.dataset_test,
       'dataset_valid_shuffle': dataset_valid_shuffle, # tf.Dataset
       "loss": child_model.loss, # Child.loss(child_logits) -> loss
       # MacroChild.loss(child_logits) -> train_loss
@@ -114,7 +115,6 @@ def get_ops(images, labels):
       "train_op": child_train_op, # Child.train_op(train_loss, vars) -> iteration_num
       "lr": child_lr, # Child.learning_rate() -> learning_rate
       'trainable_variables': child_model.trainable_variables(),
-      "grad_norm": child_grad_norm, # Child.grad_norm(loss, vars) -> grad_norm
       "optimizer": child_optimizer, # framework.Optimizer
       "num_train_batches": child_model.num_train_batches,
     },
@@ -164,9 +164,8 @@ def train():
 
       with fw.GradientTape() as tape:
           child_train_logits, child_loss, child_train_loss, child_train_acc = ops['child']['generate_train_losses'](images, labels)
-          train_op = ops['child']['train_op'](child_loss, ops['child']['trainable_variables'], tape)
+          child_grad_norm, child_grad_norm_list, _ = ops['child']['train_op'](child_loss, ops['child']['trainable_variables'], tape)
       child_lr = ops['child']['lr']()
-      child_grad_norm = ops['child']['grad_norm'](child_loss, ops['child']['trainable_variables'])
       global_step = ops["child"]["global_step"].value()
 
       if FLAGS.child_sync_replicas:
@@ -191,20 +190,20 @@ def train():
       if actual_step % ops["eval_every"] == 0:
         test_images_batch, test_labels_batch = ops['child']['dataset_test'].as_numpy_iterator().__next__()
         child_test_logits = ops['child']['test_model'](test_images_batch)
-        images_batch, labels_batch = ops['child']['dataset_valid_shuffle'].as_numpy_iterator().__next__()
-        child_valid_rl_logits = ops['child']['validation_rl_model'](images_batch)
         if (FLAGS.controller_training and
             epoch % FLAGS.controller_train_every == 0):
           print(("Epoch {}: Training controller".format(epoch)))
+          images_batch, labels_batch = ops['child']['dataset_valid_shuffle'].as_numpy_iterator().__next__()
+          child_valid_rl_logits = ops['child']['validation_rl_model'](images_batch)
           for ct_step in range(FLAGS.controller_train_steps *
                                 FLAGS.controller_num_aggregate):
             controller_valid_acc = ops['controller']['valid_acc'](child_valid_rl_logits, labels_batch)
             with fw.GradientTape() as tape:
+                ops["controller"]["generate_sample_arc"]()
                 controller_loss = ops['controller']['loss'](child_train_logits, labels)
-                ops['controller']['train_op'](controller_loss, ops['controller']['trainable_variables'], tape)
+                gn, gn_list, _ = ops['controller']['train_op'](controller_loss, ops['controller']['trainable_variables'], tape)
             controller_entropy = 0
             lr = ops["controller"]["lr"]()
-            gn = ops["controller"]["grad_norm"](controller_loss, ops['controller']['trainable_variables'])
             bl = ops["controller"]["baseline"]
 
             if ct_step % FLAGS.log_every == 0:

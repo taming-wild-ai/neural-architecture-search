@@ -74,7 +74,7 @@ class TestParameterCounts(unittest.TestCase):
             fixed_arc +=" 0 1 1 0 0 0 1 1 1 0 1 0 0 0 1 0 1 0 0 1 1 0 0 0"
             mc.fixed_arc = fixed_arc
             mc.current_controller_arc = lambda: np.array([int(x) for x in fixed_arc.split(" ") if x])
-            loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train()
+            loss0, train_loss0, train_acc0, train_op0, lr, optimizer = mc._build_train()
             model = MacroChild.Model(mc, True)
             # Parameters should be allocated before graph execution. Number of weight parameters used to be
             # printed in original code
@@ -132,7 +132,7 @@ class TestParameterCounts(unittest.TestCase):
             fixed_arc +=" 0 1 0 1 0 1 0 0 0 0 0 0 0 0 1 0 1 0 0 1 0 0 0"
             fixed_arc +=" 0 1 1 0 0 0 1 1 1 0 1 0 0 0 1 0 1 0 0 1 1 0 0 0"
             mc.current_controller_arc = lambda: np.array([int(x) for x in fixed_arc.split(" ") if x])
-            loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train()
+            loss0, train_loss0, train_acc0, train_op0, lr, optimizer = mc._build_train()
             model = MacroChild.Model(mc, True)
             # Parameters should be allocated before graph execution. Number of weight parameters used to be
             # printed in original code
@@ -167,7 +167,7 @@ class TestParameterCounts(unittest.TestCase):
             fixed_arc = np.array([int(x) for x in mc.fixed_arc.split(" ") if x])
             mc.current_controller_normal_arc = lambda: fixed_arc[:4 * mc.num_cells]
             mc.current_controller_reduce_arc = lambda: fixed_arc[4 * mc.num_cells:]
-            loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train()
+            loss0, train_loss0, train_acc0, train_op0, lr, optimizer = mc._build_train()
             model = MicroChild.Model(mc, True)
             # Parameters should be allocated before graph execution. Number of weight parameters used to be
             # printed in original code
@@ -213,7 +213,7 @@ class TestParameterCounts(unittest.TestCase):
             fixed_arc = np.array([int(x) for x in fixed_arc.split(" ") if x])
             mc.current_controller_normal_arc = lambda: fixed_arc[:4 * mc.num_cells]
             mc.current_controller_reduce_arc = lambda: fixed_arc[4 * mc.num_cells:]
-            loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train()
+            loss0, train_loss0, train_acc0, train_op0, lr, optimizer = mc._build_train()
             train_model = MicroChild.Model(mc, True)
             # Parameters should be allocated before graph execution. Number of weight parameters used to be
             # printed in original code

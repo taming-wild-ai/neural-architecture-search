@@ -277,29 +277,38 @@ class GradientCalculator(object):
       self.regularize = lambda x, _: x # identity
 
   def __call__(self, loss, tf_variables, tape):
-      return tape.gradient(self.regularize(loss, tf_variables), tf_variables)
+      return tape.gradient(self.regularize(loss, tf_variables), tf_variables) # Can only do this once
 
 
 class TrainStep(object):
-  def __init__(self, train_step, l2_reg, updater, clip_mode, num_train_batches, optim_algo, moving_average):
+  def __init__(self, train_step, l2_reg, updater, clip_mode, num_train_batches, optim_algo, moving_average, get_grad_norms):
     self.train_step = train_step
     self.updater = updater
     self.clip_mode = clip_mode
     self.num_train_batches = num_train_batches
     self.grads = GradientCalculator(l2_reg)
     self.opt = optim_algo.get(self.learning_rate, moving_average)
+    self.get_grad_norms = get_grad_norms
 
   def train_op(self, loss, vars, tape):
     self.train_step.assign_add(1)
-    return self.opt.apply_gradients(
-      zip(self.clip_mode.clip(self.grads(loss, vars, tape)), vars),
+    grads = self.grads(loss, vars, tape) # Can only do this once, so collect grad_norm(s) immediately
+    grad_norm = fw.global_norm(grads)
+    grad_norms = {}
+    if self.get_grad_norms:
+        for v, g in zip(vars, grads):
+            if v is None or g is None:
+                continue
+            if isinstance(g, fw.IndexedSlices):
+                grad_norms[v.name] = fw.sqrt(fw.reduce_sum(g.values ** 2))
+            else:
+                grad_norms[v.name] = fw.sqrt(fw.reduce_sum(g ** 2))
+    return grad_norm, grad_norms, self.opt.apply_gradients(
+      zip(self.clip_mode.clip(grads), vars),
       global_step=self.train_step)
 
   def learning_rate(self):
     return self.updater.update(self.num_train_batches, self.train_step)
-
-  def grad_norm(self, loss, vars, tape):
-    return fw.global_norm(self.grads(loss, vars, tape))
 
 
 def get_train_ops(
@@ -311,28 +320,13 @@ def get_train_ops(
     optim_algo=None,
     moving_average=None,
     get_grad_norms=False):
-  """
-  Args:
-    clip_mode: "global", "norm", or None.
-    moving_average: store the moving average of parameters
-  """
-  ts = TrainStep(train_step, l2_reg, updater, clip_mode, num_train_batches, optim_algo, moving_average)
-  if get_grad_norms:
-
-    def grad_norms(loss, tf_variables, tape):
-      retval = {}
-      for v, g in zip(tf_variables, ts.grads(loss, tf_variables, tape)):
-        if v is None or g is None:
-          continue
-        if isinstance(g, fw.IndexedSlices):
-          retval[v.name] = fw.sqrt(fw.reduce_sum(g.values ** 2))
-        else:
-          retval[v.name] = fw.sqrt(fw.reduce_sum(g ** 2))
-      return retval
-
-    return ts.train_op, ts.learning_rate, ts.grad_norm, ts.opt, grad_norms
-  else:
-    return ts.train_op, ts.learning_rate, ts.grad_norm, ts.opt
+    """
+    Args:
+      clip_mode: "global", "norm", or None.
+      moving_average: store the moving average of parameters
+    """
+    ts = TrainStep(train_step, l2_reg, updater, clip_mode, num_train_batches, optim_algo, moving_average, get_grad_norms)
+    return ts.train_op, ts.learning_rate, ts.opt
 
 
 class LayeredModel(object):

@@ -32,7 +32,7 @@ class TestUtils(unittest.TestCase):
         mock_momentum = mock.MagicMock()
         with patch('src.cifar10.child.fw.Optimizer.Momentum', return_value=mock_momentum) as mom:
             global_step = fw.Variable(0, dtype=fw.int64)
-            train_op, lr, grad_norm, _opt, grad_norms = get_train_ops(
+            train_op, lr, _opt = get_train_ops(
                 global_step,
                 LearningRate.new(False, 0.1, 2, 10000, 0.1, 5, 6, 7, 8, 9),
                 get_grad_norms=True,
@@ -42,9 +42,7 @@ class TestUtils(unittest.TestCase):
             lr()
             tape = mock.MagicMock()
             tape.gradient = mock.MagicMock(return_value=[0.0])
-            train_op(0.0, [var], tape)
-            grad_norm(0.0, [var], tape)
-            grad_norms(0.0, [var], tape)
+            grad_norm, grad_norms, _ = train_op(0.0, [var], tape)
             add_n.assert_called_with([reduce_sum()])
             global_norm.assert_called_with([0.0])
             sqrt.assert_called_with(reduce_sum())
@@ -68,7 +66,7 @@ class TestUtils(unittest.TestCase):
         with patch('src.utils.fw.Optimizer.Adam', return_value=mock_adam) as mom:
             var = tf.ones((1))
             global_step = fw.Variable(0, dtype=fw.int32)
-            train_op, lr, grad_norm, _opt, grad_norms = get_train_ops(
+            train_op, lr, _opt = get_train_ops(
                 global_step,
                 LearningRate.new(False, 0.1, 2, 10000, 0.1, 5, 6, 7, 8, 9),
                 get_grad_norms=True,
@@ -77,10 +75,8 @@ class TestUtils(unittest.TestCase):
                 num_train_batches=1)
             tape = mock.MagicMock()
             tape.gradient = mock.MagicMock(return_value=[0.0])
-            train_op(0.0, [var], tape)
+            grad_norm, grad_norms, _ = train_op(0.0, [var], tape)
             lr()
-            grad_norm(0.0, [var], tape)
-            grad_norms(0.0, [var], tape)
             add_n.assert_called_with([reduce_sum()])
             global_norm.assert_called_with([0.0])
             sqrt.assert_called_with(reduce_sum())
@@ -111,7 +107,7 @@ class TestUtils(unittest.TestCase):
                 return_value=mock_sro) as sro:
                 var = tf.ones((1))
                 global_step = fw.Variable(0, dtype=fw.int64)
-                train_op, lr, grad_norm, _opt, grad_norms = get_train_ops(
+                train_op, lr, _opt, = get_train_ops(
                     global_step,
                     LearningRate.new(True, 1, 2, 3, 4, 5, 6, 7, 8, 9),
                     optim_algo=Optimizer.new("sgd", True, 1, 1),
@@ -120,10 +116,8 @@ class TestUtils(unittest.TestCase):
                     get_grad_norms=True)
                 tape = mock.MagicMock()
                 tape.gradient = mock.MagicMock(return_value=[0.0])
-                train_op(0.0, [var], tape)
+                grad_norm, grad_norms, _ = train_op(0.0, [var], tape)
                 lr()
-                grad_norm(0.0, [var], tape)
-                grad_norms(0.0, [var], tape)
                 add_n.assert_called_with([reduce_sum()])
                 global_norm.assert_called_with([0.0])
                 sqrt.assert_called_with(reduce_sum())

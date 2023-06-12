@@ -347,9 +347,9 @@ class MicroController(Controller):
     for var in self.trainable_variables():
       print(var)
 
-    train_op, lr, grad_norm, optimizer = get_train_ops(
+    train_op, lr, optimizer = get_train_ops(
       self.train_step,
       self.learning_rate,
       clip_mode=self.clip_mode,
       optim_algo=self.optim_algo)
-    return train_op, lr, grad_norm, optimizer
+    return train_op, lr, optimizer

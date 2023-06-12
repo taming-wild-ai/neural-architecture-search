@@ -145,7 +145,7 @@ class TestMacroController(unittest.TestCase):
     def test_build_trainer(self, print, zeros, get_train_ops, reshape, sscewl, embedding_lookup, stack_lstm, matmul, tanh, multinomial, to_int32, less_equal, where, fill, concat, reduce_sum, cd):
         train_op = mock.MagicMock(name='train_op', return_value='train_op')
         grad_norm = mock.MagicMock(name='grad_norm', return_value='grad_norm')
-        get_train_ops.return_value = (train_op, 2, grad_norm, 4)
+        get_train_ops.return_value = (train_op, 2, 4)
         # variable(0.0, dtype=fw.float32).assign_sub = mock.MagicMock(return_value='assign_sub')
         flags.FLAGS.child_num_layers = 4
         flags.FLAGS.child_num_branches = 6
@@ -164,7 +164,7 @@ class TestMacroController(unittest.TestCase):
         child_model.batch_size = 6
         shuffle = mock.MagicMock(return_value=('x_valid_shuffle', 'y_valid_shuffle'))
         vrl = mock.MagicMock(return_value=42)
-        self.assertEqual((train_op, 2, grad_norm, 4), mc.build_trainer(child_model, vrl))
+        self.assertEqual((train_op, 2, 4), mc.build_trainer(child_model, vrl))
         mc.skip_rate(branch_ids)
         mc.sample_log_prob(controller_logits, branch_ids)
         train_op(mc.loss, [])

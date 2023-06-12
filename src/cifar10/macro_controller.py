@@ -409,7 +409,7 @@ class MacroController(Controller):
         with fw.control_dependencies([
             self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - reward(child_logits, y_valid_shuffle, self.current_log_prob_list)))]):
             self.reward = fw.identity(reward(child_logits, y_valid_shuffle, self.current_log_prob_list))
-        retval = self.sample_log_prob(self.current_controller_logits, self.current_branch_ids)[0] * (self.reward - self.baseline)
+        retval = self.current_log_prob * (self.reward - self.baseline)
         if self.skip_weight is not None:
             retval += self.skip_weight * self.skip_penaltys(self.current_controller_logits)
         return retval
@@ -420,10 +420,10 @@ class MacroController(Controller):
     for var in self.trainable_variables():
       print(var)
 
-    train_op, lr, grad_norm, optimizer = get_train_ops(
+    train_op, lr, optimizer = get_train_ops(
       self.train_step,
       self.learning_rate,
       clip_mode=self.clip_mode,
       l2_reg=self.l2_reg,
       optim_algo=self.optim_algo)
-    return train_op, lr, grad_norm, optimizer
+    return train_op, lr, optimizer

@@ -545,9 +545,9 @@ class TestMicroChild(unittest.TestCase):
     @patch('src.cifar10.micro_child.fw.sparse_softmax_cross_entropy_with_logits', return_value="sscewl")
     @patch('src.cifar10.micro_child.print')
     def test_build_train_aux_heads(self, print, sscewl, reduce_mean, argmax, to_int32, equal, reduce_sum, get_train_ops, model):
-        train_op = mock.MagicMock(name="get_train_op", return_value='train_op')
+        train_op = mock.MagicMock(name="get_train_op", return_value=('grad_norm', 'grad_norms', 'train_step'))
         grad_norm = mock.MagicMock(name="get_grad_norm", return_value='grad_norm')
-        get_train_ops.return_value = (train_op, 2, grad_norm, 4)
+        get_train_ops.return_value = (train_op, 2, 4)
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
@@ -570,17 +570,16 @@ class TestMicroChild(unittest.TestCase):
                 mc.sync_replicas = None
                 mc.num_aggregate = None
                 mc.num_replicas = None
-                loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train()
+                loss0, train_loss0, train_acc0, train_op0, lr, optimizer = mc._build_train()
                 child_logits, child_aux_logits = MicroChild.Model(mc, True)(mc.dataset)
                 train_loss = train_loss0(child_logits, child_aux_logits, 'labels')
                 loss = loss0(child_logits, 'labels')
                 train_acc = train_acc0(child_logits, 'labels')
-                train_op = train_op0(train_loss, mc.trainable_variables())
-                grad_norm = grad_norm0(train_loss, mc.trainable_variables())
+                grad_norm, grad_norm_list, train_op = train_op0(train_loss, mc.trainable_variables())
                 self.assertEqual(loss, 1.0)
                 self.assertEqual(1.4, train_loss)
                 self.assertEqual(2.0, train_acc)
-                self.assertEqual('train_op', train_op)
+                self.assertEqual('train_step', train_op)
                 self.assertEqual(2, lr)
                 self.assertEqual('grad_norm', grad_norm)
                 self.assertEqual(4, optimizer)
@@ -606,9 +605,9 @@ class TestMicroChild(unittest.TestCase):
     @patch('src.cifar10.micro_child.fw.sparse_softmax_cross_entropy_with_logits', return_value="sscewl")
     @patch('src.cifar10.micro_child.print')
     def test_build_train_no_aux_heads(self, print, sscewl, reduce_mean, argmax, to_int32, equal, reduce_sum, get_train_ops, model):
-        train_op = mock.MagicMock(name="get_train_op", return_value='grad_norm')
+        train_op = mock.MagicMock(name="get_train_op", return_value=('grad_norm', 'grad_norms', 'train_step'))
         grad_norm = mock.MagicMock(name="get_grad_norm", return_value='grad_norm')
-        get_train_ops.return_value = (train_op, 2, grad_norm, 4)
+        get_train_ops.return_value = (train_op, 2, 4)
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
@@ -629,13 +628,12 @@ class TestMicroChild(unittest.TestCase):
                 mc.sync_replicas = None
                 mc.num_aggregate = None
                 mc.num_replicas = None
-                loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train()
+                loss0, train_loss0, train_acc0, train_op0, lr, optimizer = mc._build_train()
                 child_logits, child_aux_logits = MicroChild.Model(mc, True)(mc.dataset, 'labels')
                 train_loss = train_loss0(child_logits, child_aux_logits, 'labels')
                 loss = loss0(child_logits, 'labels')
                 train_acc = train_acc0(child_logits, 'labels')
-                train_op = train_op0(train_loss, mc.trainable_variables())
-                grad_norm = grad_norm0(train_loss, mc.trainable_variables())
+                grad_norm, grad_norm_list, train_op = train_op0(train_loss, mc.trainable_variables())
                 self.assertEqual(loss, 1.0)
                 self.assertEqual(1.0, train_loss)
                 self.assertEqual(2.0, train_acc)
@@ -737,7 +735,7 @@ class TestMicroChild(unittest.TestCase):
         with patch('src.cifar10.micro_child.Child.__init__', new=mock_init_nhwc):
             with tf.Graph().as_default():
                 mc = MicroChild({}, {})
-                with patch.object(mc, '_build_train', return_value=('loss', 'train_loss', 'train_acc', 'train_op', 'lr', 'grad_norm', 'optimizer')) as build_train:
+                with patch.object(mc, '_build_train', return_value=('loss', 'train_loss', 'train_acc', 'train_op', 'lr', 'optimizer')) as build_train:
                     with patch.object(mc, '_build_valid', return_value=('predictions', 'accuracy')) as build_valid:
                         with patch.object(mc, '_build_test', return_value=('predictions', 'accuracy')) as build_test:
                             mock_controller = mock.MagicMock()

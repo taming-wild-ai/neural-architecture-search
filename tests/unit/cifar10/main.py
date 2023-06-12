@@ -95,10 +95,10 @@ class TestCIFAR10Main(unittest.TestCase):
     @patch('src.cifar10.main.MacroChild')
     def test_get_ops_micro(self, gch_ctor, gco_ctor, mch_ctor, mco_ctor):
         mco = mock.MagicMock()
-        mco.build_trainer = mock.MagicMock(return_value=('train_op', 'lr', 'grad_norm', 'optimizer'))
+        mco.build_trainer = mock.MagicMock(return_value=('train_op', 'lr', 'optimizer'))
         mco_ctor.return_value = mco
         mch = mock.MagicMock()
-        mch.connect_controller = mock.MagicMock(return_value=('train_op', 'lr', 'grad_norm', 'optimizer'))
+        mch.connect_controller = mock.MagicMock(return_value=('train_op', 'lr', 'optimizer'))
         mch.ValidationRLShuffle = mock.MagicMock(return_value=mock.MagicMock(return_value=('x_valid_shuffle', 'y_valid_shuffle')))
         mch_ctor.return_value = mch
         with RestoreFLAGS(search_for="micro", controller_training=True, child_fixed_arc=None):
@@ -117,10 +117,10 @@ class TestCIFAR10Main(unittest.TestCase):
     @patch('src.cifar10.main.MacroChild')
     def test_get_ops_macro(self, gch_ctor, gco_ctor, mch_ctor, mco_ctor):
         gco = mock.MagicMock()
-        gco.build_trainer = mock.MagicMock(return_value=('train_op', 'lr', 'grad_norm', 'optimizer'))
+        gco.build_trainer = mock.MagicMock(return_value=('train_op', 'lr', 'optimizer'))
         gco_ctor.return_value = gco
         gch = mock.MagicMock()
-        gch.connect_controller = mock.MagicMock(return_value=('train_op', 'lr', 'grad_norm', 'optimizer'))
+        gch.connect_controller = mock.MagicMock(return_value=('train_op', 'lr', 'optimizer'))
         gch.ValidationRLShuffle = mock.MagicMock(return_value=mock.MagicMock(return_value=('x_valid_shuffle', 'y_valid_shuffle')))
         gch_ctor.return_value = gch
         with RestoreFLAGS(search_for="macro", controller_training=True, child_fixed_arc=None):
@@ -139,7 +139,7 @@ class TestCIFAR10Main(unittest.TestCase):
     @patch('src.cifar10.main.MacroChild')
     def test_get_ops_macro_child_only(self, gch_ctor, gco_ctor, mch_ctor, mco_ctor):
         gch = mock.MagicMock()
-        gch.connect_controller = mock.MagicMock(return_value=('train_op', 'lr', 'grad_norm', 'optimizer'))
+        gch.connect_controller = mock.MagicMock(return_value=('train_op', 'lr', 'optimizer'))
         gch_ctor.return_value = gch
         with RestoreFLAGS(search_for="macro", controller_training=False, child_fixed_arc=""):
             main.get_ops(None, None)
@@ -197,7 +197,7 @@ class TestCIFAR10Main(unittest.TestCase):
                     "lr": mock.MagicMock(return_value=0.01),
                     "grad_norm": mock.MagicMock(return_value=5),
                     "train_acc": mock.MagicMock(return_value=10),
-                    "train_op": mock.MagicMock(return_value={}),
+                    "train_op": mock.MagicMock(return_value=(0.314159, 'grad_norm_list', 'train_step')),
                     "global_step": step,
                     "optimizer": child_optimizer},
                 "controller": {
@@ -210,7 +210,7 @@ class TestCIFAR10Main(unittest.TestCase):
                     "valid_acc": mock.MagicMock(return_value=0.25),
                     "baseline": mock.MagicMock(return_value=2.0),
                     "skip_rate": mock.MagicMock(return_value=0.1),
-                    "train_op": mock.MagicMock(return_value=2.0),
+                    "train_op": mock.MagicMock(return_value=(0.628318, 'grad_norm_list', 'train_step')),
                     "train_step": step,
                     "generate_sample_arc": mock.MagicMock(return_value=('0', '1')),
                     "sampler_logit": mock.MagicMock(return_value=('controller_logits', 'branch_ids')),
@@ -227,7 +227,8 @@ class TestCIFAR10Main(unittest.TestCase):
             child_num_aggregate=1,
             controller_training=True,
             controller_sync_replicas=True,
-            child_fixed_arc=None):
+            child_fixed_arc=None,
+            controller_train_every=1):
             child_optimizer = mock.MagicMock()
             controller_optimizer = mock.MagicMock()
             main.get_ops = self.mock_get_ops(controller_optimizer, child_optimizer, mock.MagicMock())

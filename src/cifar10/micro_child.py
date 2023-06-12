@@ -850,7 +850,7 @@ class MicroChild(Child):
         train_loss = lambda child_logits, child_aux_logits, labels: loss(child_logits, labels) + 0.4 * self.aux_loss(child_aux_logits, labels)
     else:
         train_loss = lambda child_logits, _, labels: loss(child_logits, labels)
-    train_op, lr, grad_norm, optimizer = get_train_ops(
+    train_op, lr, optimizer = get_train_ops(
       self.global_step,
       self.learning_rate,
       clip_mode=self.clip_mode,
@@ -860,7 +860,7 @@ class MicroChild(Child):
 
     train_acc = MicroChild.Accuracy()
 
-    return loss, train_loss, train_acc, train_op, lr, grad_norm, optimizer
+    return loss, train_loss, train_acc, train_op, lr, optimizer
 
 
   # override
@@ -952,10 +952,10 @@ class MicroChild(Child):
       fixed_arc = np.array([int(x) for x in self.fixed_arc.split(" ") if x])
       self.current_controller_normal_arc = lambda: fixed_arc[:4 * self.num_cells]
       self.current_controller_reduce_arc = lambda: fixed_arc[4 * self.num_cells:]
-    self.loss, self.train_loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train()
+    self.loss, self.train_loss, self.train_acc, train_op, lr, optimizer = self._build_train()
     self.valid_preds, self.valid_acc = self._build_valid()
     self.test_preds, self.test_acc = self._build_test()
-    return train_op, lr, grad_norm, optimizer
+    return train_op, lr, optimizer
 
   def generate_train_losses(self, images, labels):
       logits, aux_logits = self.train_model(images)

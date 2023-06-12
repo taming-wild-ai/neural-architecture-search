@@ -671,9 +671,9 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.macro_child.fw.argmax', return_value=10)
     @patch('src.cifar10.macro_child.get_train_ops')
     def test_build_train(self, get_train_ops, argmax, reduce_mean, sscewl, print1, to_int32, equal, reduce_sum, model):
-        train_op = mock.MagicMock(name='train_op', return_value='train_op')
+        train_op = mock.MagicMock(name='train_op', return_value=('grad_norm', 'grad_norm_list', 'train_step'))
         grad_norm = mock.MagicMock(name='grad_norm', return_value='grad_norm')
-        get_train_ops.return_value = (train_op, 2, grad_norm, 4)
+        get_train_ops.return_value = (train_op, 2, 4)
         mc = MacroChild({}, {})
         mc.x_train = 1
         dataset_iter = mock.MagicMock()
@@ -694,15 +694,14 @@ class TestMacroChild(unittest.TestCase):
         mc.num_aggregate = None
         mc.num_replicas = None
         mc.name = "macro_child"
-        loss0, train_loss0, train_acc0, train_op0, lr, grad_norm0, optimizer = mc._build_train()
+        loss0, train_loss0, train_acc0, train_op0, lr, optimizer = mc._build_train()
         logits = MacroChild.Model(mc, True)(mc.x_train)
         loss = loss0(logits, 'y')
         train_acc = train_acc0(logits, 'y')
-        train_op = train_op0(loss, mc.trainable_variables())
-        grad_norm = grad_norm0(loss, mc.trainable_variables())
+        grad_norm, grad_norm_list, train_op = train_op0(loss, mc.trainable_variables())
         self.assertEqual(loss, 'reduce_mean')
         self.assertEqual('reduce_sum', train_acc)
-        self.assertEqual('train_op', train_op)
+        self.assertEqual('train_step', train_op)
         self.assertEqual(2, lr)
         self.assertEqual('grad_norm', grad_norm)
         self.assertEqual(4, optimizer)
@@ -814,7 +813,7 @@ class TestMacroChild(unittest.TestCase):
     @patch('src.cifar10.child.Child.__init__', new=mock_init)
     def test_connect_controller_no_fixed_arc(self):
         mc = MacroChild({}, {})
-        with patch.object(mc, '_build_train', return_value=('loss', 'train_loss', 'acc', 'op', 'lr', 'gn', 'o')) as build_train:
+        with patch.object(mc, '_build_train', return_value=('loss', 'train_loss', 'acc', 'op', 'lr', 'o')) as build_train:
             with patch.object(mc, '_build_valid', return_value=('predictions', 'accuracy')) as build_valid:
                 with patch.object(mc, '_build_test', return_value=('predictions', 'accuracy')) as build_test:
                     controller_mock = mock.MagicMock()
@@ -827,7 +826,7 @@ class TestMacroChild(unittest.TestCase):
     def test_connect_controller_fixed_arc(self):
         mc = MacroChild({}, {})
         mc.fixed_arc = ""
-        with patch.object(mc, '_build_train', return_value=('loss', 'train_loss', 'acc', 'op', 'lr', 'gn', 'o')) as build_train:
+        with patch.object(mc, '_build_train', return_value=('loss', 'train_loss', 'acc', 'op', 'lr', 'o')) as build_train:
             with patch.object(mc, '_build_valid', return_value=('predictions', 'accuracy')) as build_valid:
                 with patch.object(mc, '_build_test', return_value=('predictions', 'accuracy')) as build_test:
                     controller_mock = mock.MagicMock()

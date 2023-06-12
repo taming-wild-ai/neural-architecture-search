@@ -4,8 +4,6 @@ import numpy as np
 import src.framework as fw
 from absl import flags
 
-from src.utils import count_model_params
-from src.utils import get_train_ops
 from src.utils import DEFINE_boolean, DEFINE_float, DEFINE_integer, DEFINE_string
 from src.utils import LearningRate, ClipMode, Optimizer, LayeredModel
 from src.cifar10.image_ops import BatchNorm

@@ -63,7 +63,7 @@ class TestMicroController(unittest.TestCase):
     def test_build_trainer(self, print, zeros, get_train_ops, rui, variable, const, stack_lstm, tensor_array, matmul, reshape, reduce_sum, to_float, cd):
         train_op = mock.MagicMock(name='train_op', return_value='train_op')
         grad_norm = mock.MagicMock(name='grad_norm', return_value='grad_norm')
-        get_train_ops.return_value = (train_op, 2, grad_norm, 4)
+        get_train_ops.return_value = (train_op, 2, 4)
         variable().assign_sub = mock.MagicMock(return_value='assign_sub')
         rui.__call__ = mock.MagicMock(return_value="rui")
         mock_tensor_array = mock.MagicMock()
@@ -82,7 +82,7 @@ class TestMicroController(unittest.TestCase):
                 mock_child = mock.MagicMock(name='mock_child')
                 shuffle = mock.MagicMock(return_value=('x_valid_shuffle', 'y_valid_shuffle'))
                 vrl = mock.MagicMock(return_value='vrl')
-                self.assertEqual((train_op, 2, grad_norm, 4), mc.build_trainer(mock_child, vrl))
+                self.assertEqual((train_op, 2, 4), mc.build_trainer(mock_child, vrl))
                 train_op(mc.loss, [])
                 grad_norm(mc.loss, [])
                 mc.loss('logits', 'y_valid_shuffle')

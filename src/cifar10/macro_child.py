@@ -838,14 +838,14 @@ class MacroChild(Child):
     self.train_model = MacroChild.Model(self, True)
     print("-" * 80)
     print("Build train graph")
-    train_op, lr, grad_norm, optimizer = get_train_ops(
+    train_op, lr, optimizer = get_train_ops(
       self.global_step,
       self.learning_rate,
       clip_mode=self.clip_mode,
       l2_reg=self.l2_reg,
       num_train_batches=self.num_train_batches,
       optim_algo=self.optim_algo)
-    return loss, loss, train_acc, train_op, lr, grad_norm, optimizer
+    return loss, loss, train_acc, train_op, lr, optimizer
 
 
   def _build_valid(self):
@@ -930,10 +930,10 @@ class MacroChild(Child):
       self.current_controller_arc = lambda: controller_model.current_sample_arc
     else:
       self.current_controller_arc = lambda: np.array([int(x) for x in self.fixed_arc.split(" ") if x])
-    self.loss, self.train_loss, self.train_acc, train_op, lr, grad_norm, optimizer = self._build_train()
+    self.loss, self.train_loss, self.train_acc, train_op, lr, optimizer = self._build_train()
     self.valid_preds, self.valid_acc = self._build_valid() # unused?
     self.test_preds, self.test_acc = self._build_test() # unused?
-    return train_op, lr, grad_norm, optimizer
+    return train_op, lr, optimizer
 
   def generate_train_losses(self, images, labels):
       logits = self.train_model(images)
