@@ -283,7 +283,7 @@ class MicroChild(Child):
                 logits = self.layers[layer_id][1](layers)
               else:
                 logits = self.layers[layer_id](layers)
-            # print("Layer {0:>2d}: {1}".format(layer_id, logits))
+            print("Layer {0:>2d}: {1}".format(layer_id, logits))
             layers = [layers[-1], logits]
           aux_logit_fns = self.aux_logits.get(layer_id)
           if aux_logit_fns:
@@ -833,7 +833,7 @@ class MicroChild(Child):
     def __call__(self, logits, labels):
         x = self.layers[0](logits)
         x = self.layers[1](x)
-        x = self.layers[2](x, labels),
+        x = self.layers[2](x, labels)
         x = self.layers[3](x)
         return self.layers[4](x)
 

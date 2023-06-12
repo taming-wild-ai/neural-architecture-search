@@ -876,6 +876,8 @@ class MacroChild(Child):
 
   class ValidationRLShuffle(LayeredModel):
     def __init__(self, child, shuffle):
+      valid_rl_model = MacroChild.Model(child, True, True)
+      child.valid_rl_model = lambda images: valid_rl_model(images)
       with fw.device('/cpu:0'):
         # shuffled valid data: for choosing validation model
         if not shuffle:

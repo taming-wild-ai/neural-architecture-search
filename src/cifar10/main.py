@@ -71,7 +71,6 @@ def get_ops(images, labels):
         False)(
             child_model.images['valid_original'],
             child_model.labels['valid_original'])
-    images_batch, labels_batch = dataset_valid_shuffle.as_numpy_iterator().__next__()
     controller_train_op, controller_lr, controller_grad_norm, controller_optimizer = controller_model.build_trainer(
         child_model,
         child_model.ValidationRL())
@@ -163,11 +162,12 @@ def train():
           batch_iterator = ops['child']['dataset'].as_numpy_iterator()
           images, labels = batch_iterator.__next__()
 
-      child_train_logits, child_loss, child_train_loss, child_train_acc = ops['child']['generate_train_losses'](images, labels)
+      with fw.GradientTape() as tape:
+          child_train_logits, child_loss, child_train_loss, child_train_acc = ops['child']['generate_train_losses'](images, labels)
+          train_op = ops['child']['train_op'](child_loss, ops['child']['trainable_variables'], tape)
       child_lr = ops['child']['lr']()
       child_grad_norm = ops['child']['grad_norm'](child_loss, ops['child']['trainable_variables'])
-      train_op = ops['child']['train_op'](child_loss, ops['child']['trainable_variables'])
-      global_step = ops["child"]["global_step"]
+      global_step = ops["child"]["global_step"].value()
 
       if FLAGS.child_sync_replicas:
           actual_step = global_step * FLAGS.child_num_aggregate
@@ -189,15 +189,19 @@ def train():
           print(log_string)
 
       if actual_step % ops["eval_every"] == 0:
+        test_images_batch, test_labels_batch = ops['child']['dataset_test'].as_numpy_iterator().__next__()
+        child_test_logits = ops['child']['test_model'](test_images_batch)
+        images_batch, labels_batch = ops['child']['dataset_valid_shuffle'].as_numpy_iterator().__next__()
+        child_valid_rl_logits = ops['child']['validation_rl_model'](images_batch)
         if (FLAGS.controller_training and
             epoch % FLAGS.controller_train_every == 0):
           print(("Epoch {}: Training controller".format(epoch)))
           for ct_step in range(FLAGS.controller_train_steps *
                                 FLAGS.controller_num_aggregate):
-            images_batch, labels_batch = ops['child']['dataset_valid_shuffle'].as_numpy_iterator().__next__()
-            child_valid_rl_logits = ops['child']['validation_rl_model'](images_batch)
             controller_valid_acc = ops['controller']['valid_acc'](child_valid_rl_logits, labels_batch)
-            controller_loss = ops['controller']['loss'](child_train_logits, labels)
+            with fw.GradientTape() as tape:
+                controller_loss = ops['controller']['loss'](child_train_logits, labels)
+                ops['controller']['train_op'](controller_loss, ops['controller']['trainable_variables'], tape)
             controller_entropy = 0
             lr = ops["controller"]["lr"]()
             gn = ops["controller"]["grad_norm"](controller_loss, ops['controller']['trainable_variables'])
@@ -206,13 +210,13 @@ def train():
             if ct_step % FLAGS.log_every == 0:
               curr_time = time.time()
               log_string = ""
-              log_string += f'ctrl_step={ops["controller"]["train_step"]}'
+              log_string += f'ctrl_step={ops["controller"]["train_step"].value()}'
               log_string += " loss={:<7.3f}".format(controller_loss)
               log_string += " ent={:<5.2f}".format(controller_entropy)
               log_string += " lr={:<6.4f}".format(lr)
               log_string += " |g|={:<8.4f}".format(gn)
               log_string += " acc={:<6.4f}".format(controller_valid_acc)
-              log_string += f' bl={bl}'
+              log_string += f' bl={bl.value()}'
               log_string += " mins={:<.2f}".format(
                   float(curr_time - start_time) / 60)
               print(log_string)
@@ -220,6 +224,7 @@ def train():
           print("Here are 10 architectures")
           for _ in range(10):
             arc = ops["controller"]["generate_sample_arc"]()
+            child_valid_rl_logits = ops['child']['validation_rl_model'](images_batch)
             acc = ops["controller"]["valid_acc"](child_valid_rl_logits, labels_batch)
             if FLAGS.search_for == "micro":
               normal_arc, reduce_arc = arc
@@ -240,7 +245,7 @@ def train():
         print(("Epoch {}: Eval".format(epoch)))
         if FLAGS.child_fixed_arc is None:
           ops["eval_func"]("valid", child_valid_rl_logits, labels_batch)
-        ops["eval_func"]("test", child_train_logits, labels)
+        ops["eval_func"]("test", child_test_logits, test_labels_batch)
 
       if epoch >= FLAGS.num_epochs:
         break

@@ -272,13 +272,12 @@ class GradientCalculator(object):
       return loss + l2_reg * fw.add_n(l2_losses)
 
     if l2_reg > 0:
-      self.adjuster = adjust
+      self.regularize = adjust
     else:
-      self.adjuster = lambda x, _: x # identity
+      self.regularize = lambda x, _: x # identity
 
-  @fw.function
-  def __call__(self, loss, tf_variables):
-    return fw.gradients(self.adjuster(loss, tf_variables), tf_variables)
+  def __call__(self, loss, tf_variables, tape):
+      return tape.gradient(self.regularize(loss, tf_variables), tf_variables)
 
 
 class TrainStep(object):
@@ -290,17 +289,17 @@ class TrainStep(object):
     self.grads = GradientCalculator(l2_reg)
     self.opt = optim_algo.get(self.learning_rate, moving_average)
 
-  def train_op(self, loss, vars):
+  def train_op(self, loss, vars, tape):
     self.train_step.assign_add(1)
     return self.opt.apply_gradients(
-      zip(self.clip_mode.clip(self.grads(loss, vars)), vars),
+      zip(self.clip_mode.clip(self.grads(loss, vars, tape)), vars),
       global_step=self.train_step)
 
   def learning_rate(self):
     return self.updater.update(self.num_train_batches, self.train_step)
 
-  def grad_norm(self, loss, vars):
-    return fw.global_norm(self.grads(loss, vars))
+  def grad_norm(self, loss, vars, tape):
+    return fw.global_norm(self.grads(loss, vars, tape))
 
 
 def get_train_ops(
@@ -319,9 +318,10 @@ def get_train_ops(
   """
   ts = TrainStep(train_step, l2_reg, updater, clip_mode, num_train_batches, optim_algo, moving_average)
   if get_grad_norms:
-    def grad_norms(loss, tf_variables):
+
+    def grad_norms(loss, tf_variables, tape):
       retval = {}
-      for v, g in zip(tf_variables, ts.grads(loss, tf_variables)):
+      for v, g in zip(tf_variables, ts.grads(loss, tf_variables, tape)):
         if v is None or g is None:
           continue
         if isinstance(g, fw.IndexedSlices):
@@ -329,6 +329,7 @@ def get_train_ops(
         else:
           retval[v.name] = fw.sqrt(fw.reduce_sum(g ** 2))
       return retval
+
     return ts.train_op, ts.learning_rate, ts.grad_norm, ts.opt, grad_norms
   else:
     return ts.train_op, ts.learning_rate, ts.grad_norm, ts.opt

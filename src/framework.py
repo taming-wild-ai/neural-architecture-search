@@ -59,6 +59,7 @@ class WeightRegistry(object):
 
 
 # TensorFlow 2
+GradientTape = tf.GradientTape
 Graph = tf.Graph
 Hook = tf.estimator.CheckpointSaverHook
 IndexedSlices = tf.IndexedSlices

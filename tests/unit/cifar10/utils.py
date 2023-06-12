@@ -25,10 +25,9 @@ class TestUtils(unittest.TestCase):
     @patch('src.utils.fw.maximum', return_value="maximum")
     @patch('src.utils.fw.sqrt', return_value=0.0)
     @patch('src.utils.fw.global_norm', return_value="global_norm")
-    @patch('src.utils.fw.gradients', return_value=[0.0])
     @patch('src.utils.fw.add_n', return_value=1.0)
     @patch('src.utils.fw.reduce_sum')
-    def test_get_train_ops_grad_norms_momentum_global(self, reduce_sum, add_n, gradients, global_norm, sqrt, max, exp_decay, zip):
+    def test_get_train_ops_grad_norms_momentum_global(self, reduce_sum, add_n, global_norm, sqrt, max, exp_decay, zip):
         var = tf.ones((1))
         mock_momentum = mock.MagicMock()
         with patch('src.cifar10.child.fw.Optimizer.Momentum', return_value=mock_momentum) as mom:
@@ -41,14 +40,12 @@ class TestUtils(unittest.TestCase):
                 clip_mode=ClipMode.new("global", 0.0),
                 num_train_batches=1)
             lr()
-            train_op(0.0, [var])
-            grad_norm(0.0, [var])
-            grad_norms(0.0, [var])
+            tape = mock.MagicMock()
+            tape.gradient = mock.MagicMock(return_value=[0.0])
+            train_op(0.0, [var], tape)
+            grad_norm(0.0, [var], tape)
+            grad_norms(0.0, [var], tape)
             add_n.assert_called_with([reduce_sum()])
-            # gradients.assert_called_with(1e-4, [var])
-            self.assertEqual(len(gradients.call_args_list), 1)
-            self.assertEqual(1e-4, gradients.call_args_list[0][0][0])
-            self.assertEqual(list, type(gradients.call_args_list[0][0][1]))
             global_norm.assert_called_with([0.0])
             sqrt.assert_called_with(reduce_sum())
             max.assert_called_with('exp_decay', 5)
@@ -64,10 +61,9 @@ class TestUtils(unittest.TestCase):
     @patch('src.utils.fw.maximum', return_value="maximum")
     @patch('src.utils.fw.sqrt', return_value=0.0)
     @patch('src.utils.fw.global_norm', return_value="global_norm")
-    @patch('src.utils.fw.gradients', return_value=[0.0])
     @patch('src.utils.fw.add_n', return_value=1.0)
     @patch('src.utils.fw.reduce_sum')
-    def test_get_train_ops_grad_norms_adam_global(self, reduce_sum, add_n, gradients, global_norm, sqrt, max, exp_decay, zip):
+    def test_get_train_ops_grad_norms_adam_global(self, reduce_sum, add_n, global_norm, sqrt, max, exp_decay, zip):
         mock_adam = mock.MagicMock()
         with patch('src.utils.fw.Optimizer.Adam', return_value=mock_adam) as mom:
             var = tf.ones((1))
@@ -79,15 +75,13 @@ class TestUtils(unittest.TestCase):
                 optim_algo=Optimizer.new("adam", False, 1, 1),
                 clip_mode=ClipMode.new("global", 0.0),
                 num_train_batches=1)
-            train_op(0.0, [var])
+            tape = mock.MagicMock()
+            tape.gradient = mock.MagicMock(return_value=[0.0])
+            train_op(0.0, [var], tape)
             lr()
-            grad_norm(0.0, [var])
-            grad_norms(0.0, [var])
+            grad_norm(0.0, [var], tape)
+            grad_norms(0.0, [var], tape)
             add_n.assert_called_with([reduce_sum()])
-            # gradients.assert_called_with(1e-4, [var])
-            self.assertEqual(len(gradients.call_args_list), 1)
-            self.assertEqual(1e-4, gradients.call_args_list[0][0][0])
-            self.assertEqual(list, type(gradients.call_args_list[0][0][1]))
             global_norm.assert_called_with([0.0])
             sqrt.assert_called_with(reduce_sum())
             max.assert_called_with('exp_decay', 5)
@@ -106,10 +100,9 @@ class TestUtils(unittest.TestCase):
     @patch('src.utils.fw.maximum', return_value="maximum")
     @patch('src.utils.fw.sqrt', return_value=0.0)
     @patch('src.utils.fw.global_norm', return_value="global_norm")
-    @patch('src.utils.fw.gradients', return_value=[0.0])
     @patch('src.utils.fw.add_n', return_value=1.0)
     @patch('src.utils.fw.reduce_sum')
-    def test_get_train_ops_no_grad_norms_sgd_norm(self, reduce_sum, add_n, gradients, global_norm, sqrt, max, exp_decay, zip, less, ge, cond):
+    def test_get_train_ops_no_grad_norms_sgd_norm(self, reduce_sum, add_n, global_norm, sqrt, max, exp_decay, zip, less, ge, cond):
         mock_sro = mock.MagicMock(name='sro')
         mock_sgd = mock.MagicMock(name='sgd')
         with patch('src.utils.fw.Optimizer.SGD', return_value=mock_sgd) as sgd:
@@ -125,15 +118,13 @@ class TestUtils(unittest.TestCase):
                     clip_mode=ClipMode.new("norm", 0.0),
                     num_train_batches=1,
                     get_grad_norms=True)
-                train_op(0.0, [var])
+                tape = mock.MagicMock()
+                tape.gradient = mock.MagicMock(return_value=[0.0])
+                train_op(0.0, [var], tape)
                 lr()
-                grad_norm(0.0, [var])
-                grad_norms(0.0, [var])
+                grad_norm(0.0, [var], tape)
+                grad_norms(0.0, [var], tape)
                 add_n.assert_called_with([reduce_sum()])
-                # gradients.assert_called_with(1e-4, [var])
-                self.assertEqual(len(gradients.call_args_list), 1)
-                self.assertEqual(1e-4, gradients.call_args_list[0][0][0])
-                self.assertEqual(list, type(gradients.call_args_list[0][0][1]))
                 global_norm.assert_called_with([0.0])
                 sqrt.assert_called_with(reduce_sum())
                 max.assert_not_called()

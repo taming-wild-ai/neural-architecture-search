@@ -30,17 +30,17 @@ class TestImageOps(unittest.TestCase):
             identity.assert_called_with("fbn")
 
     @patch('src.cifar10.image_ops.fw.constant_initializer', return_value="constant")
-    @patch('src.cifar10.image_ops.fw.fused_batch_norm', return_value="fbn")
+    @patch('src.cifar10.image_ops.fw.fused_batch_norm', return_value=('fbn1', 'fbn2', 'fbn3', 'fbn4', 'fbn5'))
     @patch('src.cifar10.image_ops.fw.identity', return_value="identity")
     def test_batch_norm_nchw_not_training(self, identity, fbn, constant):
         mock_weights = mock.MagicMock()
         mock_weights.get = mock.MagicMock(return_value="get_variable")
         input_tensor = tf.constant(np.ndarray((45000, 3, 32, 32)))
         bn = BatchNorm(False, DataFormat.new('NCHW'), mock_weights, 3, True)
-        self.assertEqual("f", bn(input_tensor))
+        self.assertEqual("fbn1", bn(input_tensor))
         mock_weights.get.assert_any_call(True, 'bn/', "offset", [3], "constant")
         mock_weights.get.assert_called_with(True, 'bn/', 'moving_variance', [3], 'constant', trainable=False)
-        fbn.assert_called_with(input_tensor, "get_variable", "get_variable", mean="get_variable", variance="get_variable", epsilon=1e-5, data_format="NCHW", is_training=False)
+        fbn.assert_called_with(x=input_tensor, scale="get_variable", offset="get_variable", mean="get_variable", variance="get_variable", epsilon=1e-5, data_format="NCHW", is_training=False)
         identity.assert_not_called()
 
     @patch('src.cifar10.image_ops.fw.control_dependencies')

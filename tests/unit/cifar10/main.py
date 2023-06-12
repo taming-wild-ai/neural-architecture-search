@@ -174,6 +174,8 @@ class TestCIFAR10Main(unittest.TestCase):
         child_model.trainable_variables = mock.MagicMock(return_value=['child trainable variables'])
         controller_model = mock.MagicMock(name='controller model')
         controller_model.trainable_variables = mock.MagicMock(return_value=['controller trainable variables'])
+        step = mock.MagicMock()
+        step.value = mock.MagicMock(return_value=311)
         return mock.MagicMock(
             return_value={
                 "eval_func": eval_func,
@@ -183,8 +185,11 @@ class TestCIFAR10Main(unittest.TestCase):
                     'trainable_variables': ['child trainable variables'],
                     'generate_train_losses': mock.MagicMock(return_value=('logits', 3.14, 'train_loss', 42)),
                     'generate_valid_logits': mock.MagicMock(return_value='logits'),
+                    'validation_rl_model': mock.MagicMock(),
+                    'test_model': mock.MagicMock(return_value='test_logits'),
                     'dataset': dataset,
                     'dataset_valid_shuffle': dataset,
+                    'dataset_test': dataset,
                     'images': mock.MagicMock(name='images'),
                     "num_train_batches": 1,
                     "loss": mock.MagicMock(return_value=2.0),
@@ -193,7 +198,7 @@ class TestCIFAR10Main(unittest.TestCase):
                     "grad_norm": mock.MagicMock(return_value=5),
                     "train_acc": mock.MagicMock(return_value=10),
                     "train_op": mock.MagicMock(return_value={}),
-                    "global_step": 311,
+                    "global_step": step,
                     "optimizer": child_optimizer},
                 "controller": {
                     'trainable_variables': ['controller trainable variables'],
@@ -206,7 +211,7 @@ class TestCIFAR10Main(unittest.TestCase):
                     "baseline": mock.MagicMock(return_value=2.0),
                     "skip_rate": mock.MagicMock(return_value=0.1),
                     "train_op": mock.MagicMock(return_value=2.0),
-                    "train_step": 311,
+                    "train_step": step,
                     "generate_sample_arc": mock.MagicMock(return_value=('0', '1')),
                     "sampler_logit": mock.MagicMock(return_value=('controller_logits', 'branch_ids')),
                     "sample_log_prob": mock.MagicMock(return_value=('result', ['list', 'of', 'results'])) }})
@@ -258,7 +263,7 @@ class TestCIFAR10Main(unittest.TestCase):
             print.assert_any_call(("-" * 80))
             print.assert_any_call("Starting session")
             print.assert_called_with("Epoch 311: Eval")
-            eval_func.assert_called_with('test', 'logits')
+            eval_func.assert_called_with('test', 'test_logits', 'y')
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
@@ -285,7 +290,7 @@ class TestCIFAR10Main(unittest.TestCase):
             print.assert_any_call("Starting session")
             print.assert_any_call("Epoch 311: Training controller")
             print.assert_called_with("Epoch 311: Eval")
-            eval_func.assert_called_with('test', 'logits')
+            eval_func.assert_called_with('test', 'test_logits', 'y')
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
@@ -312,7 +317,7 @@ class TestCIFAR10Main(unittest.TestCase):
             print.assert_any_call("Starting session")
             print.assert_any_call("Epoch 311: Training controller")
             print.assert_called_with("Epoch 311: Eval")
-            eval_func.assert_called_with('test', 'logits')
+            eval_func.assert_called_with('test', 'test_logits', 'y')
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
     @patch('src.cifar10.main.fw.Saver')
