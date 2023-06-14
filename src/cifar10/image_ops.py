@@ -11,54 +11,57 @@ def drop_path(x, keep_prob):
     dtype=fw.float32))
 
 
+class Identity(object):
+    def __init__(self, weights, reuse, scope, shape, data_format_name, decay=0.9, epsilon=1e-5):
+        self.moving_mean = weights.get(reuse, scope, "moving_mean", shape, fw.constant_initializer(0.0), trainable=False)
+        self.moving_variance = weights.get(reuse, scope, "moving_variance", shape, fw.constant_initializer(1.0), trainable=False)
+        self.offset = weights.get(reuse, scope, "offset", shape, fw.constant_initializer(0.0))
+        self.scale = weights.get(reuse, scope, "scale", shape, fw.constant_initializer(1.0))
+        self.data_format_name = data_format_name
+        self.decay = decay
+        self.epsilon = epsilon
+
+    def identity(self, x):
+        x, mean, variance, _1, _2 = fw.fused_batch_norm(
+            x=x,
+            scale=self.scale,
+            offset=self.offset,
+            mean=fw.reshape((), (0,)),
+            variance=fw.reshape((), (0,)),
+            epsilon=self.epsilon,
+            data_format=self.data_format_name,
+            is_training=True)
+        self.moving_mean.assign_sub((1 - self.decay) * (self.moving_mean - mean))
+        self.moving_variance.assign_sub((1 - self.decay) * (self.moving_variance - variance))
+        return fw.identity(x)
+
+    def fbn(self, x):
+        x, _, _, _, _ = fw.fused_batch_norm(
+            x=x,
+            scale=self.scale,
+            offset=self.offset,
+            mean=self.moving_mean,
+            variance=self.moving_variance,
+            epsilon=self.epsilon,
+            data_format=self.data_format_name,
+            is_training=False)
+        return x
+
+
 class BatchNorm(LayeredModel):
   """
   Output channels/filters: num_chan
   """
-  def __init__(self, is_training, data_format, weights, num_chan: int, parent_scope_reuse: bool, name="bn", decay=0.9, epsilon=1e-5):
+  def __init__(self, is_training, data_format, weights, num_chan: int, parent_scope_reuse: bool, name="bn"):
     shape = [num_chan]
     with fw.name_scope(name) as scope:
       reuse = parent_scope_reuse if is_training else True
-      offset = weights.get(reuse, scope, "offset", shape, fw.constant_initializer(0.0))
-      scale = weights.get(reuse, scope, "scale", shape, fw.constant_initializer(1.0))
-      moving_mean = weights.get(reuse, scope, "moving_mean", shape, fw.constant_initializer(0.0), trainable=False)
-      moving_variance = weights.get(reuse, scope, "moving_variance", shape, fw.constant_initializer(1.0), trainable=False)
+      self.identity = Identity(weights, reuse, scope, shape, data_format.name)
     self.layers = []
     if is_training:
-
-      def identity(x):
-        x, mean, variance, _1, _2 = fw.fused_batch_norm(
-          x=x,
-          scale=scale,
-          offset=offset,
-          mean=fw.reshape((), (0,)),
-          variance=fw.reshape((), (0,)),
-          epsilon=epsilon,
-          data_format=data_format.name,
-          is_training=True)
-        update_mean = moving_averages.assign_moving_average(
-          moving_mean, mean, decay)
-        update_variance = moving_averages.assign_moving_average(
-          moving_variance, variance, decay)
-        with fw.control_dependencies([update_mean, update_variance]):
-          return fw.identity(x)
-
-      self.layers.append(identity)
+        self.layers.append(self.identity.identity)
     else:
-
-      def fbn(x):
-        x, _, _, _, _ = fw.fused_batch_norm(
-          x=x,
-          scale=scale,
-          offset=offset,
-          mean=moving_mean,
-          variance=moving_variance,
-          epsilon=epsilon,
-          data_format=data_format.name,
-          is_training=False)
-        return x
-
-      self.layers.append(fbn)
+        self.layers.append(self.identity.fbn)
 
 
 class BatchNormWithMask(LayeredModel):

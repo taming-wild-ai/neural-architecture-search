@@ -265,7 +265,7 @@ class Child(object):
 
     assert self.global_step is not None
     global_step = self.global_step
-    print("Eval at {}".format(global_step))
+    print("Eval at {}".format(global_step.value()))
 
     if eval_set == "valid":
       assert self.dataset_valid is not None

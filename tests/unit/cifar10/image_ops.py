@@ -20,13 +20,14 @@ class TestImageOps(unittest.TestCase):
     @patch('src.cifar10.image_ops.fw.identity', return_value="identity")
     def test_batch_norm_nhwc_training(self, identity, fbn, constant, ama, cd, reshape):
         mock_weights = mock.MagicMock()
-        mock_weights.get = mock.MagicMock(return_value="get_variable")
+        assign_sub = mock.MagicMock(name='assign_sub')
+        mock_weights.get = mock.MagicMock(name='get_variable', return_value=assign_sub)
         input_tensor = tf.constant(np.ndarray((45000, 32, 32, 3)))
         with tf.Graph().as_default():
             bn = BatchNorm(True, DataFormat.new('NHWC'), mock_weights, 3, True)
             self.assertEqual("identity", bn(input_tensor))
             mock_weights.get.assert_any_call(True, 'bn/', "offset", [3], "constant")
-            fbn.assert_called_with(x=input_tensor, scale="get_variable", offset="get_variable", mean=reshape(), variance=reshape(), epsilon=1e-5, data_format="NHWC", is_training=True)
+            fbn.assert_called_with(x=input_tensor, scale=assign_sub, offset=assign_sub, mean=reshape(), variance=reshape(), epsilon=1e-5, data_format="NHWC", is_training=True)
             identity.assert_called_with("fbn")
 
     @patch('src.cifar10.image_ops.fw.constant_initializer', return_value="constant")
@@ -39,7 +40,8 @@ class TestImageOps(unittest.TestCase):
         bn = BatchNorm(False, DataFormat.new('NCHW'), mock_weights, 3, True)
         self.assertEqual("fbn1", bn(input_tensor))
         mock_weights.get.assert_any_call(True, 'bn/', "offset", [3], "constant")
-        mock_weights.get.assert_called_with(True, 'bn/', 'moving_variance', [3], 'constant', trainable=False)
+        mock_weights.get.assert_any_call(True, 'bn/', 'moving_variance', [3], 'constant', trainable=False)
+        mock_weights.get.assert_called_with(True, 'bn/', 'scale', [3], 'constant')
         fbn.assert_called_with(x=input_tensor, scale="get_variable", offset="get_variable", mean="get_variable", variance="get_variable", epsilon=1e-5, data_format="NCHW", is_training=False)
         identity.assert_not_called()
 

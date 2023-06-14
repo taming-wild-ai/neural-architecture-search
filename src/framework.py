@@ -207,8 +207,4 @@ class Optimizer(object):
 
     @staticmethod
     def SyncReplicas(opt, num_aggregate, num_replicas):
-        return tf.compat.v1.train.SyncReplicasOptimizer(
-            opt,
-            replicas_to_aggregate=num_aggregate,
-            total_num_replicas=num_replicas,
-            use_locking=True)
+        return opt

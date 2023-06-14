@@ -144,15 +144,31 @@ def train():
   if FLAGS.child_sync_replicas:
     sync_replicas_hook = ops["child"]["optimizer"].make_session_run_hook(True)
     hooks.append(sync_replicas_hook)
-  if FLAGS.controller_training and FLAGS.controller_sync_replicas:
-    sync_replicas_hook = ops["controller"]["optimizer"].make_session_run_hook(True)
-    hooks.append(sync_replicas_hook)
+  # if FLAGS.controller_training and FLAGS.controller_sync_replicas:
+  #   sync_replicas_hook = ops["controller"]["optimizer"].make_session_run_hook(True)
+  #   hooks.append(sync_replicas_hook)
   batch_iterator = None
 
   print(("-" * 80))
   print("Starting session")
   config = fw.ConfigProto()
   start_time = time.time()
+
+  @fw.function
+  def child_train_op(images, labels):
+      with fw.GradientTape() as tape:
+          child_train_logits, child_loss, child_train_loss, child_train_acc = ops['child']['generate_train_losses'](images, labels)
+          child_grad_norm, child_grad_norm_list, _ = ops['child']['train_op'](child_loss, ops['child']['trainable_variables'], tape)
+      return child_train_logits, child_loss, child_train_acc, child_grad_norm
+
+  @fw.function
+  def controller_train_op(child_train_logits, labels):
+      with fw.GradientTape() as tape:
+          ops["controller"]["generate_sample_arc"]()
+          controller_loss = ops['controller']['loss'](child_train_logits, labels)
+          gn, gn_list, _ = ops['controller']['train_op'](controller_loss, ops['controller']['trainable_variables'], tape)
+          return controller_loss, gn
+
   while True:
       if batch_iterator is None:
           batch_iterator = ops['child']['dataset'].as_numpy_iterator()
@@ -161,10 +177,7 @@ def train():
       except StopIteration:
           batch_iterator = ops['child']['dataset'].as_numpy_iterator()
           images, labels = batch_iterator.__next__()
-
-      with fw.GradientTape() as tape:
-          child_train_logits, child_loss, child_train_loss, child_train_acc = ops['child']['generate_train_losses'](images, labels)
-          child_grad_norm, child_grad_norm_list, _ = ops['child']['train_op'](child_loss, ops['child']['trainable_variables'], tape)
+      child_train_logits, child_loss, child_train_acc, child_grad_norm = child_train_op(images, labels)
       child_lr = ops['child']['lr']()
       global_step = ops["child"]["global_step"].value()
 
@@ -198,10 +211,7 @@ def train():
           for ct_step in range(FLAGS.controller_train_steps *
                                 FLAGS.controller_num_aggregate):
             controller_valid_acc = ops['controller']['valid_acc'](child_valid_rl_logits, labels_batch)
-            with fw.GradientTape() as tape:
-                ops["controller"]["generate_sample_arc"]()
-                controller_loss = ops['controller']['loss'](child_train_logits, labels)
-                gn, gn_list, _ = ops['controller']['train_op'](controller_loss, ops['controller']['trainable_variables'], tape)
+            controller_loss, gn = controller_train_op(child_train_logits, labels)
             controller_entropy = 0
             lr = ops["controller"]["lr"]()
             bl = ops["controller"]["baseline"]

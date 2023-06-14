@@ -62,7 +62,8 @@ class TestChild(unittest.TestCase):
         ds_ctor().shuffle.assert_called_with(50000, None)
         ds_ctor().shuffle().map.assert_called()
         ds_ctor().shuffle().map().batch.assert_called_with(m.batch_size)
-        m.global_step = "global_step"
+        m.global_step = mock.MagicMock()
+        m.global_step.value = mock.MagicMock(return_value='global_step')
         m.test_acc = mock.MagicMock("test_acc")
         m.eval_once("test", 'logits', y_train['test'])
 
@@ -82,6 +83,7 @@ class TestChild(unittest.TestCase):
         ds_ctor().shuffle.assert_called_with(50000, None)
         ds_ctor().shuffle().map.assert_called()
         ds_ctor().shuffle().map().batch.assert_called_with(m.batch_size)
-        m.global_step = "global_step"
+        m.global_step = mock.MagicMock()
+        m.global_step.value = mock.MagicMock(return_value='global_step')
         m.valid_acc = mock.MagicMock(return_value=4)
         m.eval_once("valid", 'logits', y_train['valid'])
