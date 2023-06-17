@@ -28,11 +28,7 @@ class TestMicroController(unittest.TestCase):
         with patch('src.cifar10.micro_controller.fw.while_loop', return_value=mock_tensor_array) as while_loop:
             with tf.Graph().as_default():
                 mc = MicroController(temperature=1.0, tanh_constant=1.0, op_tanh_reduce=1.0)
-                logits1, c, h = mc.sample_logit1(None, None)
-                logits2, _c, _h = mc.sample_logit2(c, h)
                 mc.generate_sample_arc()
-                mc.sample_entropy(logits1, logits2)
-                mc.sample_log_prob(logits1, logits2)
                 print.assert_any_call('-' * 80)
                 print.assert_any_call("Building ConvController")
                 zeros.assert_any_call([1, 32], tf.float32)
@@ -74,11 +70,7 @@ class TestMicroController(unittest.TestCase):
             with tf.Graph().as_default() as graph:
                 variable()._as_graph_element().graph = graph
                 mc = MicroController(temperature=1.0, tanh_constant=1.0, op_tanh_reduce=1.0, entropy_weight=1.0)
-                logits1, c, h = mc.sample_logit1(None, None)
-                logits2, _c, _h = mc.sample_logit2(c, h)
                 mc.generate_sample_arc()
-                mc.sample_entropy(logits1, logits2)
-                mc.sample_log_prob(logits1, logits2)
                 mock_child = mock.MagicMock(name='mock_child')
                 shuffle = mock.MagicMock(return_value=('x_valid_shuffle', 'y_valid_shuffle'))
                 vrl = mock.MagicMock(return_value='vrl')

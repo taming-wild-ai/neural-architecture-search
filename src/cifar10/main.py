@@ -190,7 +190,7 @@ def train():
       if global_step % FLAGS.log_every == 0:
           log_string = ""
           log_string += "epoch={:<6d}".format(epoch)
-          log_string += f"ch_step={global_step}"
+          log_string += "ch_step={:<6d}".format(global_step)
           log_string += " loss={:<8.6f}".format(child_loss)
           log_string += " lr={:<8.4f}".format(child_lr)
           log_string += " |g|={:<8.4f}".format(child_grad_norm)
@@ -219,7 +219,7 @@ def train():
             if ct_step % FLAGS.log_every == 0:
               curr_time = time.time()
               log_string = ""
-              log_string += f'ctrl_step={ops["controller"]["train_step"].value()}'
+              log_string += "ctrl_step={:<6d}".format(ops["controller"]["train_step"].value())
               log_string += " loss={:<7.3f}".format(controller_loss)
               log_string += " ent={:<5.2f}".format(controller_entropy)
               log_string += " lr={:<6.4f}".format(lr)
