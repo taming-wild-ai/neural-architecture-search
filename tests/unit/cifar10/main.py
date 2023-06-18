@@ -217,11 +217,8 @@ class TestCIFAR10Main(unittest.TestCase):
                     "sample_log_prob": mock.MagicMock(return_value=('result', ['list', 'of', 'results'])) }})
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
-    @patch('src.cifar10.main.fw.Saver')
-    @patch('src.cifar10.main.fw.ConfigProto')
-    @patch('src.cifar10.main.fw.Hook')
     @patch('src.cifar10.main.print')
-    def test_train(self, print, hook, cp, saver, _rd):
+    def test_train(self, print, _rd):
         with RestoreFLAGS(
             child_sync_replicas=True,
             child_num_aggregate=1,
@@ -235,17 +232,10 @@ class TestCIFAR10Main(unittest.TestCase):
             main.train()
             print.assert_any_call(("-" * 80))
             print.assert_any_call("Starting session")
-            cp.assert_called_with()
-            child_optimizer.make_session_run_hook.assert_called_with(True)
-            saver.assert_called_with(var_list=['child trainable variables', 'controller trainable variables'])
-            # controller_optimizer.make_session_run_hook.assert_called_with(True)
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
-    @patch('src.cifar10.main.fw.Saver')
-    @patch('src.cifar10.main.fw.ConfigProto')
-    @patch('src.cifar10.main.fw.Hook')
     @patch('src.cifar10.main.print')
-    def test_train_child_only1(self, print, hook, cp, saver, _rd):
+    def test_train_child_only1(self, print, _rd):
         with RestoreFLAGS(
             child_sync_replicas=False,
             controller_sync_replicas=False,
@@ -257,8 +247,6 @@ class TestCIFAR10Main(unittest.TestCase):
             eval_func = mock.MagicMock()
             main.get_ops = self.mock_get_ops(controller_optimizer, child_optimizer, eval_func)
             main.train()
-            saver.assert_called_with(var_list=['child trainable variables', 'controller trainable variables'])
-            hook.assert_called_with('', save_steps=1, saver=saver())
             child_optimizer.make_session_run_hook.assert_not_called()
             controller_optimizer.make_session_run_hook.assert_not_called()
             print.assert_any_call(("-" * 80))
@@ -267,11 +255,8 @@ class TestCIFAR10Main(unittest.TestCase):
             eval_func.assert_called_with('test', 'test_logits', 'y')
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
-    @patch('src.cifar10.main.fw.Saver')
-    @patch('src.cifar10.main.fw.ConfigProto')
-    @patch('src.cifar10.main.fw.Hook')
     @patch('src.cifar10.main.print')
-    def test_train_child_only2(self, print, hook, cp, saver, _rd):
+    def test_train_child_only2(self, print, _rd):
         with RestoreFLAGS(
             child_sync_replicas=False,
             controller_sync_replicas=True,
@@ -284,8 +269,6 @@ class TestCIFAR10Main(unittest.TestCase):
             eval_func = mock.MagicMock()
             main.get_ops = self.mock_get_ops(controller_optimizer, child_optimizer, eval_func)
             main.train()
-            saver.assert_called_with(var_list=['child trainable variables', 'controller trainable variables'])
-            hook.assert_any_call('', save_steps=1, saver=saver())
             controller_optimizer.make_session_run_hooks.assert_not_called()
             print.assert_any_call(("-" * 80))
             print.assert_any_call("Starting session")
@@ -294,11 +277,8 @@ class TestCIFAR10Main(unittest.TestCase):
             eval_func.assert_called_with('test', 'test_logits', 'y')
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
-    @patch('src.cifar10.main.fw.Saver')
-    @patch('src.cifar10.main.fw.ConfigProto')
-    @patch('src.cifar10.main.fw.Hook')
     @patch('src.cifar10.main.print')
-    def test_train_child_only3(self, print, hook, cp, saver, _rd):
+    def test_train_child_only3(self, print, _rd):
         with RestoreFLAGS(
             child_sync_replicas=False,
             controller_sync_replicas=True,
@@ -311,9 +291,6 @@ class TestCIFAR10Main(unittest.TestCase):
             eval_func = mock.MagicMock()
             main.get_ops = self.mock_get_ops(controller_optimizer, child_optimizer, eval_func)
             main.train()
-            saver.assert_called_with(var_list=['child trainable variables', 'controller trainable variables'])
-            hook.assert_called_with('', save_steps=1, saver=saver())
-            # controller_optimizer.make_session_run_hook.assert_called_with(True)
             print.assert_any_call("-" * 80)
             print.assert_any_call("Starting session")
             print.assert_any_call("Epoch 311: Training controller")
@@ -321,9 +298,8 @@ class TestCIFAR10Main(unittest.TestCase):
             eval_func.assert_called_with('test', 'test_logits', 'y')
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
-    @patch('src.cifar10.main.fw.Saver')
     @patch('src.cifar10.main.print')
-    def test_train_child_only_macro(self, print, saver, _rd):
+    def test_train_child_only_macro(self, print, _rd):
         with RestoreFLAGS(
             child_sync_replicas=False,
             controller_sync_replicas=True,
@@ -338,14 +314,10 @@ class TestCIFAR10Main(unittest.TestCase):
             # controller_optimizer.make_session_run_hook.assert_called_with(True)
             print.assert_any_call(("-" * 80))
             print.assert_any_call("Starting session")
-            saver.assert_called_with(var_list=['child trainable variables', 'controller trainable variables'])
 
     @patch('src.cifar10.main.read_data', return_value=(None, None))
-    @patch('src.cifar10.main.fw.Saver')
-    @patch('src.cifar10.main.fw.ConfigProto')
-    @patch('src.cifar10.main.fw.Hook')
     @patch('src.cifar10.main.print')
-    def test_train_child_only_macro_whole_channels(self, print, hook, cp, saver, _rd):
+    def test_train_child_only_macro_whole_channels(self, print, _rd):
         with RestoreFLAGS(
             child_sync_replicas=False,
             controller_sync_replicas=True,
@@ -361,5 +333,3 @@ class TestCIFAR10Main(unittest.TestCase):
             controller_optimizer.make_session_run_hooks.assert_not_called()
             print.assert_any_call(("-" * 80))
             print.assert_any_call("Starting session")
-            saver.assert_called_with(var_list=['child trainable variables', 'controller trainable variables'])
-            hook.assert_called_with('', save_steps=1, saver=saver())

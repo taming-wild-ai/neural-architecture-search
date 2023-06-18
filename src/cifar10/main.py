@@ -132,26 +132,10 @@ def train():
   else:
     images, labels = read_data(FLAGS.data_path, num_valids=0)
   ops = get_ops(images, labels)
-  if ops['controller']:
-      saver = fw.Saver(var_list=ops['child']['trainable_variables'] + ops['controller']['trainable_variables'])
-  else:
-      saver = fw.Saver(var_list=ops['child']['trainable_variables'])
-  hooks = [
-      fw.Hook(
-          FLAGS.output_dir,
-          save_steps=ops["child"]["num_train_batches"],
-          saver=saver)]
-  if FLAGS.child_sync_replicas:
-    sync_replicas_hook = ops["child"]["optimizer"].make_session_run_hook(True)
-    hooks.append(sync_replicas_hook)
-  # if FLAGS.controller_training and FLAGS.controller_sync_replicas:
-  #   sync_replicas_hook = ops["controller"]["optimizer"].make_session_run_hook(True)
-  #   hooks.append(sync_replicas_hook)
   batch_iterator = None
 
   print(("-" * 80))
   print("Starting session")
-  config = fw.ConfigProto()
   start_time = time.time()
 
   @fw.function

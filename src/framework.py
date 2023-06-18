@@ -101,7 +101,6 @@ divide = tf.math.divide
 dropout = tf.nn.dropout
 embedding_lookup = tf.nn.embedding_lookup
 equal = tf.equal
-executing_eagerly = tf.compat.v1.executing_eagerly
 exp = tf.exp
 exp_decay = tf.keras.optimizers.schedules.ExponentialDecay
 fill = tf.fill
@@ -113,7 +112,6 @@ fused_batch_norm = tf.raw_ops.FusedBatchNorm
 gather = tf.gather
 
 def get_variable(name, shape, initializer=None):
-    assert not tf.compat.v1.get_variable_scope().reuse
     if initializer is None:
         return tf.Variable(shape=shape, name=name)
     else:
@@ -181,10 +179,6 @@ while_loop = tf.while_loop
 zeros = tf.zeros
 zeros_init = tf.zeros_initializer
 zeros_like = tf.zeros_like
-
-# TensorFlow 1 Compatibility
-ConfigProto = partial(tf.compat.v1.ConfigProto, allow_soft_placement=True)
-Saver = partial(tf.compat.v1.train.Saver, max_to_keep=2)
 
 class Optimizer(object):
     @staticmethod
