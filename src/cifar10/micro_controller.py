@@ -148,7 +148,7 @@ class MicroController(Controller):
           def _condition(layer_id, *args):
               return fw.less(layer_id, self.num_cells + 2)
 
-          def _body(layer_id, inputs, prev_c, prev_h, anchors, anchors_w_1, logits):
+          def _body(layer_id, inputs, prev_c, prev_h, anchors, anchors_w_1, arc_seq, entropy, log_prob):
               indices = fw.range(0, layer_id, dtype=fw.int32)
               start_id = 4 * (layer_id - 2)
               prev_layers = []
@@ -171,11 +171,11 @@ class MicroController(Controller):
                       logit = self.tanh_constant * fw.tanh(logit)
                   index = fw.reshape(fw.to_int32(fw.multinomial(logit, 1)), [1])
                   arc_seq = arc_seq.write(start_id + 2 * i, index)
-                  curr_log_prob = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                  logits=logits, labels=index)
+                  curr_log_prob = fw.sparse_softmax_cross_entropy_with_logits(
+                      logits=logit, labels=index)
                   log_prob += curr_log_prob
                   curr_ent = fw.stop_gradient(fw.softmax_cross_entropy_with_logits(
-                      logits=logits, labels=fw.softmax(logits)))
+                      logits=logit, labels=fw.softmax(logit)))
                   entropy += curr_ent
                   prev_layers.append(anchors.read(fw.reduce_sum(index)))
                   inputs = prev_layers[-1]
@@ -193,17 +193,17 @@ class MicroController(Controller):
                   op_id = fw.reshape(fw.to_int32(fw.multinomial(logit, 1)), [1])
                   arc_seq = arc_seq.write(start_id + 2 * i + 1, op_id)
                   curr_log_prob = fw.sparse_softmax_cross_entropy_with_logits(
-                  logits=logits, labels=op_id)
+                        logits=logit, labels=op_id)
                   log_prob += curr_log_prob
-                  curr_ent = tf.stop_gradient(fw.nn.softmax_cross_entropy_with_logits(
-                  logits=logits, labels=fw.nn.softmax(logits)))
+                  curr_ent = fw.stop_gradient(fw.softmax_cross_entropy_with_logits(
+                        logits=logit, labels=fw.softmax(logit)))
                   entropy += curr_ent
                   inputs = fw.embedding_lookup(self.w_emb, op_id)
               next_c, next_h = stack_lstm(inputs, prev_c, prev_h, self.w_lstm)
               anchors = anchors.write(layer_id, next_h[-1])
               anchors_w_1 = anchors_w_1.write(layer_id, fw.matmul(next_h[-1], self.w_attn_1))
               inputs = self.g_emb
-              return (layer_id + 1, inputs, next_c, next_h, anchors, anchors_w_1, logits, arc_seq, entropy, log_prob)
+              return (layer_id + 1, inputs, next_c, next_h, anchors, anchors_w_1, arc_seq, entropy, log_prob)
 
           loop_vars = [
               fw.constant(2, dtype=fw.int32, name="layer_id"),

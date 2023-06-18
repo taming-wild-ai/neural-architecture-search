@@ -849,7 +849,7 @@ class MacroChild(Child):
 
 
   def _build_valid(self):
-      self.valid_model = MacroChild.Model(self, False)
+      self.valid_model = MacroChild.Model(self, False, True)
       print("-" * 80)
       print("Build valid graph")
       prediction_fn = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
@@ -863,7 +863,7 @@ class MacroChild(Child):
 
   # override
   def _build_test(self):
-      self.test_model =  MacroChild.Model(self, False)
+      self.test_model = MacroChild.Model(self, False, True)
       print("-" * 80)
       print("Build test graph")
       prediction_fn = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
@@ -931,8 +931,8 @@ class MacroChild(Child):
     else:
       self.current_controller_arc = lambda: np.array([int(x) for x in self.fixed_arc.split(" ") if x])
     self.loss, self.train_loss, self.train_acc, train_op, lr, optimizer = self._build_train()
-    self.valid_preds, self.valid_acc = self._build_valid() # unused?
-    self.test_preds, self.test_acc = self._build_test() # unused?
+    self.valid_preds, self.valid_acc = self._build_valid()
+    self.test_preds, self.test_acc = self._build_test()
     return train_op, lr, optimizer
 
   def generate_train_losses(self, images, labels):

@@ -869,21 +869,30 @@ class MicroChild(Child):
     print("-" * 80)
     print("Build valid graph")
     prediction_fn = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
-    retval = (
-      prediction_fn,
-      lambda logits, labels: fw.reduce_sum(fw.to_int32(fw.equal(prediction_fn(logits), labels))))
+
+    def validation_fn(logits, labels):
+        return fw.reduce_sum(fw.to_int32(fw.equal(prediction_fn(logits), labels)))
+
+    retval = (prediction_fn, validation_fn)
     return retval
 
 
   # override
   def _build_test(self):
-    self.test_model =  MicroChild.Model(self, False, True)
+    tm = MicroChild.Model(self, False, True)
+
+    def test_model(images):
+        return tm(images)[0] # Return logits, but not aux_logits
+
+    self.test_model = test_model
     print("-" * 80)
     print("Build test graph")
     prediction_fn = lambda logits: fw.to_int32(fw.argmax(logits, axis=1))
-    return (
-      prediction_fn,
-      lambda logits, labels: fw.reduce_sum(fw.to_int32(fw.equal(prediction_fn(logits), labels))))
+
+    def test_fn(logits, labels):
+        return fw.reduce_sum(fw.to_int32(fw.equal(prediction_fn(logits), labels)))
+
+    return (prediction_fn, test_fn)
 
 
   class ValidationRLShuffle(LayeredModel):
